@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yappari JS, impedance spectroscopy fitting</title>
+<link rel="stylesheet" href="style.css">
+<script>try { var t = JSON.parse(localStorage.getItem('yappari.settings') || '{}').theme; if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="kana" lang="ja">やっぱり</span><span class="name">Yappari</span></div>
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button role="tab" data-tab="nyq">Nyquist</button>
+    <button role="tab" data-tab="zr">Zr</button>
+    <button role="tab" data-tab="zi">Zi</button>
+    <button role="tab" data-tab="bode">|Z|, θ</button>
+    <button role="tab" data-tab="d3">3D</button>
+    <button role="tab" data-tab="drt">DRT</button>
+    <button role="tab" data-tab="model">Model</button>
+    <button role="tab" data-tab="params">Parameters</button>
+    <button role="tab" data-tab="log">Log</button>
+    <button role="tab" data-tab="about">About</button>
+  </nav>
+  <button type="button" id="theme-toggle" class="theme-switch" role="switch" aria-checked="false"><span class="track" aria-hidden="true"><i></i></span><span>Dark</span></button>
+</header>
+
+<main class="work">
+  <section class="stage">
+    <div class="ptools" id="ptools">
+      <button type="button" data-plot-action="auto">Autoscale</button>
+      <button type="button" data-plot-action="png">Save PNG</button>
+      <label class="v3d" id="v3d-wrap" hidden>View
+        <select id="view3d">
+          <option value="nyq">Nyquist, measured</option><option value="nyqcalc">Nyquist, model</option>
+          <option value="zr">Zr versus f</option><option value="zi">Zi versus f</option>
+          <option value="zrdiff">Zr − model versus f</option><option value="zidiff">Zi − model versus f</option>
+        </select>
+      </label>
+      <span class="pt-group" id="pt-nyq">
+        <button type="button" data-plot-action="label">Label frequency…</button>
+        <button type="button" data-plot-action="unlabel">Clear labels</button>
+        <label class="chk"><input type="checkbox" id="label-click"> Click labels a point</label>
+      </span>
+      <label class="chk pt-group" id="pt-contrib" title="Draw each part of the series chain in its own colour"><input type="checkbox" id="contrib-toggle"> Contributions</label>
+      <span class="phint" id="phint"></span>
+      <span class="note" id="plot-note"></span>
+    </div>
+    <div class="pane plot-pane" id="pane-nyq"><div class="plot-host" id="nyq-host"></div></div>
+    <div class="pane plot-pane" id="pane-zr"><div class="plot-host" id="zr-host"></div><div class="plot-host res" id="zr-res"></div></div>
+    <div class="pane plot-pane" id="pane-zi"><div class="plot-host" id="zi-host"></div><div class="plot-host res" id="zi-res"></div></div>
+    <div class="pane plot-pane" id="pane-bode"><div class="plot-host" id="mod-host"></div><div class="plot-host" id="ph-host"></div></div>
+    <div class="pane plot-pane" id="pane-d3"><div class="plot-host" id="d3-host"></div></div>
+    <div class="pane plot-pane drt-pane" id="pane-drt">
+      <div class="drt-tools">
+        <label>Method <select id="drt-method"><option value="tikhonov">Tikhonov (NNLS)</option><option value="fisk">Fisk</option><option value="gold">Gold</option></select></label>
+        <label>Data <select id="drt-source"><option value="both">Zr and Zi</option><option value="im">Zi only</option><option value="re">Zr only</option></select></label>
+        <label class="drt-par"><span id="drt-par-name">λ</span><input type="range" id="drt-slider" aria-label="Regularisation"><input id="drt-par" class="num" spellcheck="false" autocomplete="off" aria-label="Regularisation value"></label>
+        <label title="Used by all three plots: g(τ) is placed at f = 1/(2πτ), the spectra at τ = 1/(2πf)">Axis <select id="drt-x"><option value="f">f /Hz</option><option value="tau">τ /s</option></select></label>
+        <span class="tool-gap"></span>
+        <button type="button" id="drt-search">Search λ…</button>
+        <button type="button" id="drt-all" title="Computes the DRT of every selected dataset with these settings and saves the distributions, the rebuilt spectra and the peaks to a text file">Save DRT…</button>
+      </div>
+      <div class="plot-host drt-res" id="drt-res"></div>
+      <div class="plot-host" id="drt-g"></div>
+      <div class="plot-host" id="drt-z"></div>
+      <div class="drt-peaks" id="drt-peaks"></div>
+    </div>
+
+    <div class="pane model-pane" id="pane-model">
+      <div class="model-head">
+        <label class="cdc" for="cdc">Circuit code</label>
+        <input id="cdc" spellcheck="false" autocomplete="off" placeholder="R(RQ)(Q[RW])">
+        <button type="button" id="cdc-apply">Apply</button>
+        <span id="cdc-led" class="led off" aria-hidden="true"></span>
+        <span id="cdc-msg" class="cdc-msg" role="status"></span>
+      </div>
+      <div class="model-tools">
+        <div class="seg" id="mode-seg" role="group" aria-label="Where new elements go">
+          <button type="button" data-mode="s" aria-pressed="true">In series</button><button type="button" data-mode="p" aria-pressed="false">In parallel</button><button type="button" data-mode="r" aria-pressed="false">Replace</button>
+        </div>
+        <div class="palette" id="palette" aria-label="Elements"></div>
+        <select id="templates" aria-label="Templates"></select>
+        <label class="chk" title="Colours match the contributions shown on the plots"><input type="checkbox" id="contrib-model"> Colour the parts in series</label>
+        <span class="tool-gap"></span>
+        <button type="button" id="node-del">Delete</button>
+        <button type="button" id="node-undo">Undo</button>
+        <button type="button" id="node-clear">Clear</button>
+      </div>
+      <p class="model-hint" id="model-hint"></p>
+      <div class="schematic" id="schematic-box" tabindex="0" aria-label="Circuit drawing"><svg id="schematic" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <details class="eqs"><summary>Element equations and parameter names</summary><div id="eq-table"></div></details>
+    </div>
+
+    <div class="pane settings-pane" id="pane-params">
+      <div class="settings" id="settings-form"></div>
+      <section class="block">
+        <h2>Parameter limits for the current circuit</h2>
+        <p class="hint">Bounded methods keep every parameter between these limits. Untick “shared” to give a parameter one value per dataset in a global fit. Parameters that span decades (R, C, L, Q, Aw, B, τ) are varied in relative steps during a fit, which keeps them positive; n, α and β in absolute steps.</p>
+        <div id="limits"></div>
+      </section>
+      <section class="block">
+        <h2>Start values for new elements</h2>
+        <p class="hint">Used when an element is added to the circuit. Stored in this browser.</p>
+        <div id="elem-defaults"></div>
+        <p><button type="button" id="elem-reset">Reset element values</button></p>
+      </section>
+      <section class="block">
+        <h2>Settings file</h2>
+        <p class="buttons"><button type="button" id="set-save">Save settings…</button><button type="button" id="set-load">Load settings…</button><button type="button" id="set-reset">Reset settings</button></p>
+      </section>
+    </div>
+
+    <div class="pane log-pane" id="pane-log"><p class="hint log-head" id="history-info"></p><ol id="log-list" class="log"></ol></div>
+
+    <div class="pane about-pane" id="pane-about">
+      <article class="about">
+        <p class="kana-big" lang="ja">やっぱり</p>
+        <h1>Yappari JS <small id="about-version"></small></h1>
+        <p>Yet Another Program for Analysis and Research in Impedance. One equivalent circuit is fitted to one or to thousands of impedance spectra. Browser version of Yappari 5.1 (LabVIEW) by Nita Dragoe, Université Paris-Saclay, ICMMO.</p>
+        <h2>Working with it</h2>
+        <ol>
+          <li>Read data, or drop files on the window. New datasets appear at the top of the list.</li>
+          <li>Build the circuit in the Model tab by clicking elements, or type a circuit code.</li>
+          <li>Select a dataset, set start values (mouse wheel over a parameter), tick the parameters to fit, press Fit selected.</li>
+          <li>For many spectra: Action, Clone parameters to all; select all with Ctrl+A in the list; Fit selected.</li>
+          <li>Save parameters, data, a report or the whole project from the Action menu.</li>
+        </ol>
+        <h2>Circuit code</h2>
+        <p>Elements written next to each other are in series. Round brackets put their content in parallel, square brackets put their content in series inside a parallel group. <code>R(RQ)(Q[RW])</code> is Rs + (R‖Q) + (Q‖(R + W)). Elements: R, C, L, Q (constant phase element), W, Wo, Ws (Warburg), G (Gerischer), HN (Havriliak–Negami). Numbers name the elements (R1, Q2) and are added for you.</p>
+        <h2>Checks and relaxation times</h2>
+        <p>The DRT tab shows the distribution of relaxation times of the first selected dataset (Tikhonov with non-negativity, Fisk or Gold; R∞ and Rpol from the data), with peak estimates of R and C. Action, Z-HIT checks a spectrum: |Z| rebuilt from the phase should match the measured |Z|. Contributions colours each part of the series chain, on the plots and in the circuit drawing.</p>
+        <h2>Mouse and keys</h2>
+        <table class="grid">
+          <tr><td>Plots</td><td>drag to zoom, shift-drag or right-drag to pan, wheel to zoom, double-click to autoscale</td></tr>
+          <tr><td>Parameter</td><td>mouse wheel or arrow keys change the value; Shift for larger steps, Alt for smaller ones</td></tr>
+          <tr><td>Dataset list</td><td>Ctrl+A all, Shift+click range, Ctrl+click one more, Delete, F2 or double-click to rename, drag to reorder</td></tr>
+          <tr><td>Anywhere</td><td>F9 fit selected, Ctrl+S save project</td></tr>
+          <tr><td>Drawing</td><td>click to select, Delete to remove, Ctrl+Z to undo, Esc to deselect</td></tr>
+        </table>
+        <h2>Citing</h2>
+        <p>N. Dragoe, Materials Lab 2024, 3, 230031, <a href="https://doi.org/10.54227/mlab.20230031" target="_blank" rel="noopener">doi.org/10.54227/mlab.20230031</a>. Documentation and the LabVIEW version: <a href="https://nitad54448.github.io/yappari-5-1/" target="_blank" rel="noopener">nitad54448.github.io/yappari-5-1</a>.</p>
+      </article>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="menus">
+      <button type="button" class="menu-btn" data-menu="read" aria-haspopup="menu" aria-expanded="false">Read data</button>
+      <button type="button" class="menu-btn" data-menu="action" aria-haspopup="menu" aria-expanded="false">Action</button>
+      <button type="button" class="menu-btn" data-menu="adv" aria-haspopup="menu" aria-expanded="false">Advanced</button>
+    </div>
+    <section class="side-params" aria-label="Parameters">
+      <div class="side-h"><h2>Parameters</h2><span id="param-ds" class="sub"></span></div>
+      <div id="param-list" class="param-list"></div>
+      <div id="param-stats" class="param-stats"></div>
+    </section>
+    <section class="side-data" aria-label="Datasets">
+      <div class="side-h"><h2>Datasets</h2><span id="ds-count" class="sub"></span></div>
+      <div id="ds-list" class="ds-list" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="Datasets"></div>
+    </section>
+    <div class="fitbar">
+      <button type="button" id="btn-fit" class="primary">Fit selected</button>
+      <button type="button" id="btn-stop" hidden>Stop</button>
+      <div class="progress" id="fit-progress"><div class="track"><i></i></div><span></span></div>
+    </div>
+  </aside>
+</main>
+
+<footer class="status">
+  <label class="cmd"><span aria-hidden="true">›</span><input id="cmdline" placeholder="Command, e.g. rndz>>1, undo, help" spellcheck="false" autocomplete="off" aria-label="Command line"></label>
+  <div id="status-msg" class="msg" role="status" aria-live="polite"></div>
+</footer>
+
+<dialog id="dlg"></dialog>
+<div id="menu-pop" class="menu-pop" role="menu" hidden></div>
+<div class="drop-hint" aria-hidden="true">Drop impedance files to read them</div>
+
+<script src="js/core/namespace.js"></script>
+<script src="js/core/elements.js"></script>
+<script src="js/core/circuit.js"></script>
+<script src="js/core/linalg.js"></script>
+<script src="js/core/fit.js"></script>
+<script src="js/core/globalfit.js"></script>
+<script src="js/core/dataops.js"></script>
+<script src="js/core/drt.js"></script>
+<script src="js/io/readers.js"></script>
+<script src="js/io/writers.js"></script>
+<script src="js/state.js"></script>
+<script src="js/history.js"></script>
+<script src="js/workers.js"></script>
+<script src="js/ui/dialogs.js"></script>
+<script src="js/ui/plot2d.js"></script>
+<script src="js/ui/plot3d.js"></script>
+<script src="js/ui/plots.js"></script>
+<script src="js/ui/drt_tab.js"></script>
+<script src="js/ui/schematic.js"></script>
+<script src="js/ui/model_editor.js"></script>
+<script src="js/ui/params_panel.js"></script>
+<script src="js/ui/datasets_panel.js"></script>
+<script src="js/ui/report.js"></script>
+<script src="js/ui/commands.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

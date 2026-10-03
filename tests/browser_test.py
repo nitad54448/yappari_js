@@ -1,0 +1,207 @@
+"""Drives index.html in headless Chromium (file://). Usage: python3 tests/browser_test.py [screenshot dir]"""
+import os, sys, time
+from playwright.sync_api import sync_playwright
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/yappari_shots'
+os.makedirs(OUT, exist_ok=True)
+logs = []
+def shot(pg, name): pg.screenshot(path=os.path.join(OUT, name + '.png'))
+def status(pg): return pg.inner_text('#status-msg')
+with sync_playwright() as p:
+    b = p.chromium.launch()
+    pg = b.new_page(viewport={'width': 1440, 'height': 900})
+    pg.on('console', lambda m: logs.append(m.type + ': ' + m.text) if m.type in ('error', 'warning') else None)
+    pg.on('pageerror', lambda e: logs.append('PAGEERROR: ' + str(e)))
+    pg.goto('file://' + os.path.join(ROOT, 'index.html'))
+    pg.wait_for_timeout(500)
+    print('workers:', pg.evaluate('Y.pool.usingWorkers()'), pg.evaluate('Y.pool.size()'), '|', status(pg))
+    shot(pg, '0_start')
+    # read a 3-column file through the real menu and file chooser
+    tmp = '/tmp/yappari_cell.dat'
+    with open(tmp, 'w') as fh:
+        fh.write('Freq /Hz, Zr , Zi ; Name: test\n')
+        for k in range(40):
+            f = 10 ** (6 - 8 * k / 39); w = 2 * 3.141592653589793 * f
+            z = 20 + 1000 / complex(1, w * 1000 * 1e-6)
+            fh.write('%.6E\t%.6E\t%.6E\n' % (f, z.real, z.imag))
+    pg.click('[data-menu="read"]')
+    with pg.expect_file_chooser() as fc:
+        pg.click('#menu-pop button >> nth=0')
+    fc.value.set_files(tmp)
+    pg.wait_for_timeout(300)
+    print('read file:', status(pg))
+    # the example files through the real menus and dialogs
+    FILES = os.path.join(ROOT, 'files')
+    def read_menu(index, path):
+        pg.click('[data-menu="read"]')
+        with pg.expect_file_chooser() as fc:
+            pg.click('#menu-pop button >> nth=%d' % index)
+        fc.value.set_files(path); pg.wait_for_timeout(300)
+        return status(pg)
+    print('MFLI ZView menu:', read_menu(2, os.path.join(FILES, 'MFLI_Zview_txt_imps_0_sample_00000.txt')))
+    print('3 columns on the ZView file:', read_menu(0, os.path.join(FILES, 'MFLI_Zview_txt_imps_0_sample_00000.txt')))
+    print('table on Z_MFLI:', read_menu(4, os.path.join(FILES, 'Z_MFLI.txt')))
+    print('VersaStudio menu:', read_menu(3, os.path.join(FILES, 'type_VersaStudio.par')))
+    print('MFLI csv menu (generated file):', read_menu(1, '/tmp/yappari_mfli_generated.csv'))
+    print('MFLI csv menu (sample, incomplete):', read_menu(1, os.path.join(FILES, 'mfli_imps_csv.txt')))
+    pg.click('[data-menu="read"]'); pg.click('#menu-pop button >> nth=5'); pg.wait_for_timeout(200)
+    with pg.expect_file_chooser() as fc:
+        pg.click('#dlg button:has-text("Load definition")')
+    fc.value.set_files(os.path.join(FILES, 'custom_hp4192a.xml')); pg.wait_for_timeout(300)
+    print('dialog after loading the XML: header=%r label=%s sep=%s' % (pg.input_value('#f_header'), pg.input_value('#f_label_length'), pg.input_value('#f_separator')))
+    shot(pg, '0_custom_dialog')
+    with pg.expect_file_chooser() as fc:
+        pg.click('#dlg button:has-text("Choose data files")')
+    fc.value.set_files(os.path.join(FILES, 'hp4192a.txt')); pg.wait_for_timeout(300)
+    print('custom hp4192a:', status(pg))
+    rdf = lambda f: open(os.path.join(FILES, f), newline='').read()
+    print('drop XML + data:', pg.evaluate('''async (t) => { await Y.cmd.readFiles([new File([t.x], 'Z_MFLI_datafile_example_template.xml'), new File([t.d], 'Z_MFLI.txt')], 'auto');
+        return document.getElementById('status-msg').textContent; }''', {'x': rdf('Z_MFLI_datafile_example_template.xml'), 'd': rdf('Z_MFLI.txt')}))
+    print('drop hp4192a alone:', pg.evaluate('''async (t) => { await Y.cmd.readFiles([new File([t], 'hp4192a.txt')], 'auto');
+        return document.getElementById('status-msg').textContent; }''', rdf('hp4192a.txt')))
+    pg.evaluate("Y.cmd.runCommand('select>>^Z_MFLI_449')"); pg.wait_for_timeout(300); shot(pg, '0_zmfli_nyq')
+    pg.evaluate("Y.cmd.runCommand('select>>^hp4192a_')"); pg.click('[data-tab="zr"]'); pg.wait_for_timeout(300); shot(pg, '0_hp_zr')
+    pg.evaluate("Y.cmd.runCommand('select>>^MFLI_Zview')"); pg.click('[data-tab="nyq"]'); pg.wait_for_timeout(300); shot(pg, '0_mfli_nyq')
+    # demo spectra through the command line
+    pg.fill('#cmdline', 'demo'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(400)
+    print('datasets:', pg.evaluate('Y.state.S.datasets.length'), 'circuit:', pg.evaluate('Y.state.S.model.cdc'))
+    pg.evaluate("""() => { const S = Y.state.S; Y.state.selectIds([S.datasets[0].id]);
+      const v = {R1: 60, R2: 1e4, Q1: 3e-10, Q1_n: 0.9, R3: 3e4, Q2: 1e-6, Q2_n: 0.8};
+      Object.keys(v).forEach(n => Y.state.setParam(n, v[n])); ['Q1_n', 'Q2_n'].forEach(n => Y.state.setFit(n, true)); }""")
+    pg.click('#btn-fit'); pg.wait_for_timeout(100)
+    pg.wait_for_function('!Y.state.S.busy', timeout=30000)
+    print('single fit:', status(pg))
+    print('  values:', pg.evaluate("(() => { const d = Y.state.first(); return Object.keys(d.p).map(n => n + '=' + d.p[n].toPrecision(4) + ' ±' + (d.stats.se[n] || 0).toFixed(2) + '%').join(', '); })()"))
+    shot(pg, '1_single_nyq')
+    # wheel over a parameter changes it
+    before = pg.evaluate('Y.state.first().p.R2')
+    pg.hover('#param-list .prow[data-name="R2"] .pv'); pg.mouse.wheel(0, -100); pg.wait_for_timeout(100)
+    print('wheel R2: %.4g -> %.4g' % (before, pg.evaluate('Y.state.first().p.R2')))
+    pg.evaluate('Y.cmd.cloneTo(true)')
+    pg.focus('#ds-list'); pg.keyboard.press('Control+a'); pg.wait_for_timeout(100)
+    t0 = time.time(); pg.click('#btn-fit'); pg.wait_for_timeout(100)
+    pg.wait_for_function('!Y.state.S.busy', timeout=60000)
+    print('batch fit (%.2f s wall):' % (time.time() - t0), status(pg))
+    shot(pg, '2_all_nyq')
+    for tab in ['zr', 'bode', 'd3']:
+        pg.click('[data-tab="%s"]' % tab); pg.wait_for_timeout(400); shot(pg, '3_' + tab)
+    # Model tab: select R3, add a capacitor in parallel, undo, bad code
+    pg.click('[data-tab="model"]'); pg.wait_for_timeout(200)
+    pg.click('#schematic .el[data-path="2.0"]')
+    pg.click('[data-mode="p"]'); pg.click('#palette [data-kind="C"]')
+    print('after palette:', pg.evaluate('Y.state.S.model.cdc'), '|', pg.inner_text('#model-hint'))
+    shot(pg, '4_model')
+    pg.click('#node-undo'); print('after undo:', pg.evaluate('Y.state.S.model.cdc'))
+    pg.fill('#cdc', 'R(RQ'); pg.press('#cdc', 'Enter'); print('bad code message:', pg.inner_text('#cdc-msg'))
+    pg.fill('#cdc', 'R(RQ)(RQ)'); pg.press('#cdc', 'Enter')
+    pg.click('[data-tab="params"]'); pg.wait_for_timeout(200); shot(pg, '5_params')
+    print('limits header:', pg.inner_text('#limits thead').replace('\t', ' | '))
+    # global fit: first 6 datasets, R local, Q shared
+    pg.evaluate("""() => { const S = Y.state.S; Y.state.selectIds(S.datasets.slice(0, 6).map(d => d.id));
+      ['R1', 'R2', 'R3'].forEach(n => Y.state.setShared(n, false)); }""")
+    pg.evaluate('void Y.cmd.globalFit()'); pg.wait_for_timeout(200); pg.wait_for_function('!Y.state.S.busy', timeout=60000)
+    print('global:', status(pg))
+    # mask by zooming the Nyquist plot
+    pg.click('[data-tab="nyq"]'); pg.evaluate('Y.state.selectIds([Y.state.S.datasets[0].id])'); pg.wait_for_timeout(300)
+    bb = pg.locator('#nyq-host canvas').bounding_box()
+    pg.mouse.move(bb['x'] + bb['width'] * 0.55, bb['y'] + bb['height'] * 0.15); pg.mouse.down()
+    pg.mouse.move(bb['x'] + bb['width'] * 0.95, bb['y'] + bb['height'] * 0.9, steps=6); pg.mouse.up(); pg.wait_for_timeout(200)
+    pg.evaluate('void Y.cmd.inView(false)'); pg.wait_for_timeout(300)
+    if pg.evaluate('document.getElementById("dlg").open'): pg.keyboard.press('Escape')
+    print('mask:', status(pg))
+    shot(pg, '6_masked')
+    print('masked points drawn (hollow):', pg.evaluate("Y.plots._plots.nyq.series.filter(s => s.masked).map(s => s.x.length)"))
+    print('params file:', pg.evaluate("Y.writers.paramsText(Y.state.selected(), Y.state.names(), {cdc: Y.state.S.model.cdc, method: 'm', weight: 'w'}).split('\\n')[2].slice(0, 120)"))
+    print('report html length:', pg.evaluate('Y.report.build(Y.state.selected()).length'))
+    pg.click('[data-menu="action"]'); pg.wait_for_timeout(150); shot(pg, '7_menu'); pg.keyboard.press('Escape')
+    pg.evaluate("Y.cmd.runCommand('help')"); pg.wait_for_timeout(150); shot(pg, '8_help'); pg.keyboard.press('Escape')
+    proj = pg.evaluate('Y.writers.projectJSON(Y.state.S)')
+    pg.evaluate('(t) => Y.state.loadProject(JSON.parse(t))', proj)
+    print('project reload:', pg.evaluate('Y.state.S.datasets.length'), pg.evaluate('Y.state.S.model.cdc'), 'stats kept:', pg.evaluate('Y.state.S.datasets.filter(d => d.stats).length'))
+    # ---- help, undo, contributions, labels, fit status, measured sigma, DRT, Z-HIT, dark mode
+    pg.fill('#cmdline', 'help'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(300)
+    print('help from the command line opens a dialog:', pg.evaluate('document.getElementById("dlg").open')); pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
+    pg.evaluate("Y.cmd.runCommand('select>>^demo_00$')"); pg.wait_for_timeout(100)
+    z0 = pg.evaluate('Y.state.first().zr[5]')
+    pg.fill('#cmdline', 'rndz>>5'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(100)
+    z1 = pg.evaluate('Y.state.first().zr[5]')
+    pg.fill('#cmdline', 'undo'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(100)
+    print('undo: %.7g -> %.7g -> %.7g |' % (z0, z1, pg.evaluate('Y.state.first().zr[5]')), status(pg))
+    pg.click('[data-tab="nyq"]'); pg.check('#contrib-toggle')
+    pg.fill('#cmdline', 'label>>1k'); pg.press('#cmdline', 'Enter'); pg.fill('#cmdline', 'label>>10'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(300)
+    print('labels:', status(pg)); shot(pg, 'a_contrib_nyq')
+    pg.click('[data-tab="zi"]'); pg.wait_for_timeout(300); shot(pg, 'a_contrib_zi')
+    pg.click('[data-tab="model"]'); pg.wait_for_timeout(300); shot(pg, 'a_contrib_model')
+    pg.uncheck('#contrib-model')
+    print('fit status:', pg.inner_text('#param-stats').replace('\n', ' | '))
+    pg.evaluate("""() => { const d = Y.state.first(); const sr = Array.from(d.zr, (v, k) => 0.01 * Math.hypot(d.zr[k], d.zi[k]) * (k < 30 ? NaN : 1));
+        Y.state.addDatasets([{ name: 'with_sigma', f: d.f, zr: d.zr, zi: d.zi, sr: sr, si: sr, p: d.p, fit: d.fit }]); Y.state.setSetting('useSigma', true); }""")
+    pg.click('#btn-fit'); pg.wait_for_timeout(100); pg.wait_for_function('!Y.state.S.busy', timeout=30000)
+    print('sigma fit:', status(pg))
+    print('  stats:', pg.inner_text('#param-stats').replace('\n', ' | '))
+    pg.click('[data-tab="zr"]'); pg.wait_for_timeout(300); shot(pg, 'a_sigma_zr')
+    pg.evaluate("Y.state.setSetting('useSigma', false)")
+    pg.evaluate("Y.cmd.runCommand('select>>^demo_00$')"); pg.click('[data-tab="drt"]'); pg.wait_for_timeout(600)
+    print('DRT:', pg.inner_text('#drt-peaks').replace('\n', ' | ')[:420])
+    shot(pg, 'b_drt')
+    pg.click('#drt-search'); pg.wait_for_function('document.getElementById("scan-msg") && !/Computing/.test(document.getElementById("scan-msg").textContent)', timeout=60000); pg.wait_for_timeout(200)
+    print('search:', pg.inner_text('#scan-msg')); shot(pg, 'b_search')
+    pg.click('#dlg button:has-text("Use this value")'); pg.wait_for_timeout(400); print('after search:', status(pg))
+    pg.select_option('#drt-method', 'gold'); pg.wait_for_timeout(3000); print('gold:', pg.inner_text('#drt-peaks').split('\n')[-1][:160])
+    pg.select_option('#drt-method', 'tikhonov'); pg.wait_for_timeout(300)
+    pg.set_viewport_size({'width': 1100, 'height': 650})
+    pg.evaluate("Y.cmd.runCommand('select>>^demo_0[0-3]$')"); pg.click('[data-tab="drt"]'); pg.wait_for_timeout(800)
+    print('DRT curves drawn for 4 selected:', pg.evaluate("Y.drtTab.plots()[1].series.length"))
+    with pg.expect_download() as dl:
+        pg.click('#drt-all')
+    lines = open(dl.value.path()).read().split('\n')
+    print('Save DRT:', dl.value.suggested_filename, '|', status(pg)); print('  file:', ' / '.join(lines[:6])[:300])
+    lay = pg.evaluate("""() => { const st = document.querySelector('.stage').getBoundingClientRect(), ft = document.querySelector('.status').getBoundingClientRect(),
+        pk = document.querySelector('.drt-peaks').getBoundingClientRect();
+        return { pageScrolls: document.scrollingElement.scrollHeight > innerHeight, stageBottom: Math.round(st.bottom), peaksBottom: Math.round(pk.bottom), statusTop: Math.round(ft.top) }; }""")
+    print('layout at 1100x650:', lay)
+    shot(pg, 'c_drt_small')
+    pg.select_option('#drt-x', 'tau'); pg.wait_for_timeout(300)
+    print('tau axis (spectrum x, 1/(2 pi f), residuals share x, label):', pg.evaluate("(() => { const p = Y.drtTab.plots(), z = p[2].series[0]; return [z.x[0], 1 / (2 * Math.PI * z.fq[0]), p[0].series[0].x[0] === z.x[0], p[2].o.xlabel]; })()"))
+    print('zoom on g moves the others:', pg.evaluate("(() => { const p = Y.drtTab.plots(); p[1].o.onView({ x0: -4, x1: -2 }); return [p[0].view.x0, p[2].view.x0]; })()"))
+    pg.dblclick('#drt-g canvas'); pg.wait_for_timeout(200); shot(pg, 'c_drt_tau')
+    pg.select_option('#drt-x', 'f'); pg.wait_for_timeout(200)
+    pg.set_viewport_size({'width': 1440, 'height': 900})
+    pg.fill('#cmdline', 'zhit'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(400); print('zhit:', status(pg))
+    # history: restore from the Log, then undo the restore
+    pg.evaluate("Y.cmd.runCommand('select>>^demo_01$')"); pg.wait_for_timeout(100)
+    v0 = pg.evaluate('[Y.state.first().zr[3], Y.state.first().zi[3]]')
+    for c in ['rndz>>4', 'negate_zi']:
+        pg.fill('#cmdline', c); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(150)
+    v1 = pg.evaluate('[Y.state.first().zr[3], Y.state.first().zi[3]]')
+    pg.click('[data-tab="log"]'); pg.wait_for_timeout(200)
+    nbtn = pg.evaluate("document.querySelectorAll('#log-list [data-restore]').length")
+    pg.click("#log-list li:has-text('Added noise') [data-restore]"); pg.wait_for_timeout(300)
+    v2 = pg.evaluate('[Y.state.first().zr[3], Y.state.first().zi[3]]')
+    pg.fill('#cmdline', 'undo'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(200)
+    v3 = pg.evaluate('[Y.state.first().zr[3], Y.state.first().zi[3]]')
+    print('history: %d restore buttons; before noise %s, after noise+negate %s, restored %s, undo of the restore %s' % (nbtn, v0, v1, v2, v3))
+    print('  restored == before noise:', v2 == v0, '| undo brings back the later state:', v3 == v1)
+    print('  info:', pg.inner_text('#history-info')[:120])
+    shot(pg, 'd_log')
+    pg.click('#theme-toggle'); pg.wait_for_timeout(200); print('theme after the switch:', pg.evaluate('document.documentElement.dataset.theme'))
+    pg.click('[data-tab="drt"]'); pg.wait_for_timeout(500); shot(pg, 'b_drt_dark')
+    pg.click('#theme-toggle'); pg.wait_for_timeout(100)
+    pg.emulate_media(color_scheme='dark'); pg.click('[data-tab="model"]'); pg.wait_for_timeout(300); shot(pg, '9_dark_model')
+    pg.click('[data-tab="nyq"]'); pg.evaluate('Y.state.selectAll()'); pg.wait_for_timeout(300); shot(pg, '9_dark_nyq')
+    b.close()
+print('\n'.join(logs) if logs else 'no console errors or warnings')
+from PIL import Image
+def montage(names, out):
+    ims = [Image.open(os.path.join(OUT, n + '.png')) for n in names]
+    w, h = ims[0].size; s = 0.5
+    M = Image.new('RGB', (int(w * s) * 2, int(h * s) * ((len(ims) + 1) // 2)), 'white')
+    for i, im in enumerate(ims):
+        M.paste(im.resize((int(w * s), int(h * s)), Image.LANCZOS), ((i % 2) * int(w * s), (i // 2) * int(h * s)))
+    M.save(os.path.join(OUT, out))
+montage(['1_single_nyq', '2_all_nyq', '3_zr', '3_d3'], 'montage_a.png')
+montage(['4_model', '5_params', '7_menu', '9_dark_nyq'], 'montage_b.png')
+montage(['0_custom_dialog', '0_zmfli_nyq', '0_hp_zr', '0_mfli_nyq'], 'montage_c.png')
+montage(['a_contrib_nyq', 'a_contrib_zi', 'a_contrib_model', 'a_sigma_zr'], 'montage_d.png')
+montage(['b_drt', 'b_search', 'b_drt_dark', 'c_drt_tau'], 'montage_e.png')
+montage(['6_masked', '5_params', 'd_log', 'a_sigma_zr'], 'montage_f.png')

@@ -1,0 +1,11 @@
+{
+  "header": "dev3221_imps_",
+  "label_length": 2,
+  "separator": "semicolon",
+  "ignore_first": 0,
+  "ignore_last": 0,
+  "column_freq": 1,
+  "column_zr": 4,
+  "column_zi": 5,
+  "negate_zi": false
+}
