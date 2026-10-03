@@ -41,8 +41,8 @@ Y.drtTab = (function () {
   function xLabel() { return S.settings.drtX === 'tau' ? 'τ /s' : 'f /Hz'; }
 
   function init() {
-    P.res = new Y.Plot2D($('#drt-res'), { xlog: true, ylog: true, ylabel: '|ΔZ| /Ω', legendMax: 3, tooltip: tipZ });
-    P.g = new Y.Plot2D($('#drt-g'), { xlog: true, ylabel: 'g', legend: false, legendMax: 12, tooltip: tipG, empty: 'Select a dataset' });
+    P.res = new Y.Plot2D($('#drt-res'), { xlog: true, ylog: true, xlabel: 'f /Hz', ylabel: '|ΔZ| /Ω', legendMax: 3, tooltip: tipZ });
+    P.g = new Y.Plot2D($('#drt-g'), { xlog: true, xlabel: 'f /Hz', ylabel: 'g', legend: false, legendMax: 12, tooltip: tipG, empty: 'Select a dataset' });
     P.z = new Y.Plot2D($('#drt-z'), { xlog: true, xlabel: 'f /Hz', ylabel: 'Zr, −Zi /Ω', legendMax: 4, tooltip: tipZ });
     var trio = [P.res, P.g, P.z];
     trio.forEach(function (a) {
@@ -56,7 +56,7 @@ Y.drtTab = (function () {
     function set(key, val) { Y.state.setSetting(key, val); syncControls(); schedule(); }
     $('#drt-method').addEventListener('change', function (e) { set('drtMethod', e.target.value); });
     $('#drt-source').addEventListener('change', function (e) { set('drtSource', e.target.value); });
-    $('#drt-x').addEventListener('change', function (e) { Y.state.setSetting('drtX', e.target.value); P.z.setOptions({ xlabel: xLabel() }); render(true); });
+    $('#drt-x').addEventListener('change', function (e) { Y.state.setSetting('drtX', e.target.value); [P.res, P.g, P.z].forEach(function (p) { p.setOptions({ xlabel: xLabel() }); }); render(true); });
     $('#drt-slider').addEventListener('input', function (e) { set(gold() ? 'drtIter' : 'drtLambda', +e.target.value); });
     $('#drt-par').addEventListener('change', function (e) {
       var v = Y.ui.parseNum(e.target.value);
@@ -67,7 +67,7 @@ Y.drtTab = (function () {
     $('#drt-all').addEventListener('click', saveSelected);
     ['selection', 'data', 'datasets'].forEach(function (ev) { Y.bus.on(ev, function () { if (visible()) schedule(); }); });
     Y.bus.on('settings', function (k) { if (k === '*') { syncControls(); if (visible()) schedule(); } });
-    P.z.setOptions({ xlabel: xLabel() });
+    [P.res, P.g, P.z].forEach(function (p) { p.setOptions({ xlabel: xLabel() }); });
     syncControls();
   }
 

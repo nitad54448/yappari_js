@@ -1,4 +1,4 @@
-/*  Commands behind the Read data / Action / Advanced menus, the Fit buttons and the command line. */
+/*  Commands behind the File / Data / Analysis menus, the Fit buttons and the command line. */
 Y.cmd = (function () {
   'use strict';
   var S = Y.state.S, ui = Y.ui, running = null;
@@ -61,7 +61,7 @@ Y.cmd = (function () {
       }
       if (def) {
         kind = 'custom';
-        if (!data.length) { ui.toast('Definition read, header "' + def.header + '". Drop it together with the data files, or use Read data, Custom format.', 'info'); return; }
+        if (!data.length) { ui.toast('Definition read, header "' + def.header + '". Drop it together with the data files, or use File, Custom format.', 'info'); return; }
       }
       items = data;
     }
@@ -303,7 +303,7 @@ Y.cmd = (function () {
     var out = list.filter(function (ds) { return ds.stats && ds.stats.chi2w != null && Object.keys(ds.p).some(function (n) {
       var L = S.model.limits[n]; return L && (ds.p[n] < L.min || ds.p[n] > L.max); }); }).length;
     ui.toast((norm ? 'Normalized ' : 'Back to the measured values for ') + plural(list.length, 'dataset') + (norm ? ': ' + Y.state.normText(norm) : '') + '.' +
-      (out ? ' Some parameters are now outside their limits (Parameters tab).' : ''), out ? 'warn' : 'ok');
+      (out ? ' Some parameters are now outside their limits (Settings).' : ''), out ? 'warn' : 'ok');
   }
 
   function simulate() {
@@ -400,7 +400,7 @@ Y.cmd = (function () {
       { key: 'calc', label: 'Model Zr, Zi', type: 'checkbox', value: !!S.model.prog },
       { key: 'sep', label: 'Separator', type: 'select', value: S.settings.sep === 'auto' ? 'tab' : S.settings.sep,
         options: [['tab', 'TAB'], ['semicolon', 'Semicolon'], ['comma', 'Comma'], ['space', 'Space']] }
-    ], 'Save', 'One block per dataset; Read data, Table with column headers reads the file back.');
+    ], 'Save', 'One block per dataset; File, Table with column headers reads the file back.');
     if (!v) return;
     var txt = Y.writers.dataText(sel(), { sep: v.sep, exp: v.exp, calc: v.calc && !!S.model.prog }, function (ds) { return Y.state.calcFor(ds); });
     Y.writers.download('yappari_data_' + Y.writers.fileStamp() + '.txt', txt);
@@ -470,7 +470,7 @@ Y.cmd = (function () {
     Y.plots.refresh(false);
     ui.toast('Labels removed from the selected datasets.', 'info');
   }
-  function showTab(t) { var b = document.querySelector('[data-tab="' + t + '"]'); if (b) b.click(); }
+  function showTab(t) { Y.app.showTab(t); }
   function drtSelected() { if (haveSel()) showTab('drt'); }
   function drtSave() { if (haveSel()) Y.drtTab.saveSelected(); }
   function zhitSelected() {
@@ -512,6 +512,7 @@ Y.cmd = (function () {
     ['label>>f', 'label the point nearest to f on the Nyquist plot (1k, 2.5M, 10m allowed)'],
     ['unlabel', 'remove the labels of the selected datasets'],
     ['contrib', 'show or hide the contributions of the parts in series'],
+    ['showfit', 'show or hide the model curve on the plots'],
     ['drt, drt_save', 'show the DRT of the selected datasets, or save it to a file'],
     ['drt_search', 'search the regularisation of the DRT'],
     ['zhit', 'Z-HIT check of the selected datasets'],
@@ -558,6 +559,7 @@ Y.cmd = (function () {
       case 'demo': demo(); break;
       case 'undo': undo(); break;
       case 'unlabel': clearLabels(); break;
+      case 'showfit': Y.state.setSetting('showFit', S.settings.showFit === false); ui.toast('Model curve ' + (S.settings.showFit !== false ? 'shown' : 'hidden') + '.', 'info'); break;
       case 'contrib': Y.state.setSetting('contrib', !S.settings.contrib); ui.toast('Contributions ' + (S.settings.contrib ? 'shown' : 'hidden') + '.', 'info'); break;
       case 'drt': drtSelected(); break;
       case 'drt_save': drtSave(); break;
@@ -571,29 +573,28 @@ Y.cmd = (function () {
   // ---------------------------------------------------------------- menus
   function init() {
     var M = {
-      read: [['3 columns: f, Zr, Zi…', function () { read('three'); }],
+      file: [['3 columns: f, Zr, Zi…', function () { read('three'); }],
              ['MFLI csv…', function () { read('mfli'); }],
              ['MFLI ZView .txt, ZView .z…', function () { read('zview'); }],
              ['VersaStudio .par…', function () { read('versa'); }],
              ['Table with column headers (EC-Lab, Gamry, saved data)…', function () { read('table'); }],
              ['Custom format, Yappari 5.1 definition…', customDialog], null,
-             ['Open project…', function () { read('project'); }], null,
+             ['Open project…', function () { read('project'); }], ['Save project', saveProject], null,
+             ['Save parameters of selected', saveParams], ['Save data of selected…', saveData],
+             ['Report of selected datasets', report], null,
              ['Load 24 demo spectra', demo]],
-      action: [['Fit selected', fitSelected], ['Global fit of selected', globalFit],
-               ['Clone parameters to all datasets', function () { cloneTo(true); }],
-               ['Clone parameters to selected datasets', function () { cloneTo(false); }], null,
-               ['Mask points in the current view', function () { inView(false); }], ['Unmask selected datasets', unmask],
-               ['Delete points in the current view…', function () { inView(true); }], ['Delete selected datasets…', deleteDatasets],
-               ['Normalize: area, resistivity or factor…', correction], null,
-               ['Simulate spectrum', simulate], null,
-               ['Show the DRT of selected datasets', drtSelected], ['Save the DRT of selected datasets…', drtSave], ['Z-HIT of selected datasets', zhitSelected],
-               ['Label a frequency on the Nyquist plot…', labelDialog], ['Clear Nyquist labels', clearLabels], null,
-               ['Report of selected datasets', report], ['Save parameters of selected', saveParams],
-               ['Save data of selected…', saveData], ['Save project', saveProject]],
-      adv: [['Add random noise…', noise], ['Negate Zi', negateZi], ['Spline to a log frequency grid…', spline],
-            ['Smooth (Savitzky–Golay)…', smooth], ['Average selected datasets', average], null,
-            ['DRT λ search…', function () { Y.drtTab.searchDialog(); }], null,
-            ['Custom format editor…', customDialog], ['Undo the last command', undo], ['Command line help', showHelp]]
+      data: [['Undo the last command', undo], null,
+             ['Mask points in the current view', function () { inView(false); }], ['Unmask selected datasets', unmask],
+             ['Delete points in the current view…', function () { inView(true); }], ['Delete selected datasets…', deleteDatasets], null,
+             ['Normalize: area, resistivity or factor…', correction], ['Negate Zi', negateZi], null,
+             ['Add random noise…', noise], ['Spline to a log frequency grid…', spline],
+             ['Smooth (Savitzky–Golay)…', smooth], ['Average selected datasets', average], null,
+             ['Simulate spectrum', simulate]],
+      analysis: [['Show the DRT of selected datasets', drtSelected], ['Save the DRT of selected datasets…', drtSave],
+                 ['DRT λ search…', function () { Y.drtTab.searchDialog(); }], null,
+                 ['Z-HIT of selected datasets', zhitSelected], null,
+                 ['Label a frequency on the Nyquist plot…', labelDialog], ['Clear Nyquist labels', clearLabels], null,
+                 ['Command line help', showHelp]]
     };
     document.querySelectorAll('[data-menu]').forEach(function (b) {
       b.addEventListener('click', function () {

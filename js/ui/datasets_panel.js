@@ -19,7 +19,7 @@ Y.datasetsPanel = (function () {
   }
   function render() {
     if (!S.datasets.length) {
-      list.innerHTML = '<div class="empty-list"><p>No datasets yet.</p><p>Use Read data, drop files on this window, or ' +
+      list.innerHTML = '<div class="empty-list"><p>No datasets yet.</p><p>Use File, drop files on this window, or ' +
         '<button type="button" class="link" data-act="demo">load 24 demo spectra</button>.</p></div>';
     } else list.innerHTML = S.datasets.map(rowHTML).join('');
     count();

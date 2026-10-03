@@ -9,25 +9,29 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="kana" lang="ja">やっぱり</span><span class="name">Yappari</span></div>
   <nav class="tabs" role="tablist" aria-label="Views">
-    <button role="tab" data-tab="nyq">Nyquist</button>
-    <button role="tab" data-tab="zr">Zr</button>
-    <button role="tab" data-tab="zi">Zi</button>
-    <button role="tab" data-tab="bode">|Z|, θ</button>
-    <button role="tab" data-tab="d3">3D</button>
-    <button role="tab" data-tab="drt">DRT</button>
-    <button role="tab" data-tab="model">Model</button>
-    <button role="tab" data-tab="params">Parameters</button>
+    <button role="tab" data-tab="eis" title="Measured and model spectra">EIS</button>
+    <button role="tab" data-tab="model" title="Equivalent circuit">Model</button>
+    <button role="tab" data-tab="drt" title="Distribution of relaxation times">DRT</button>
     <button role="tab" data-tab="log">Log</button>
     <button role="tab" data-tab="about">About</button>
   </nav>
+  <div class="menus" role="menubar" aria-label="Commands">
+    <button type="button" class="menu-btn" data-menu="file" aria-haspopup="menu" aria-expanded="false">File</button>
+    <button type="button" class="menu-btn" data-menu="data" aria-haspopup="menu" aria-expanded="false">Data</button>
+    <button type="button" class="menu-btn" data-menu="analysis" aria-haspopup="menu" aria-expanded="false">Analysis</button>
+  </div>
+  <button type="button" role="tab" data-tab="params" class="settings-btn" title="Fit, data and plot settings, parameter limits, start values"><svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M11.3 1.5l.4 2.3c.6.2 1.1.5 1.6.9l2.2-.8 1.3 2.2-1.8 1.5c.1.6.1 1.2 0 1.8l1.8 1.5-1.3 2.2-2.2-.8c-.5.4-1 .7-1.6.9l-.4 2.3H8.7l-.4-2.3c-.6-.2-1.1-.5-1.6-.9l-2.2.8-1.3-2.2L5 9.4c-.1-.6-.1-1.2 0-1.8L3.2 6.1l1.3-2.2 2.2.8c.5-.4 1-.7 1.6-.9l.4-2.3h2.6zM10 6.3a2.2 2.2 0 100 4.4 2.2 2.2 0 000-4.4z" transform="translate(0 1.5)"/></svg><span>Settings</span></button>
   <button type="button" id="theme-toggle" class="theme-switch" role="switch" aria-checked="false"><span class="track" aria-hidden="true"><i></i></span><span>Dark</span></button>
 </header>
 
 <main class="work">
   <section class="stage">
     <div class="ptools" id="ptools">
+      <div class="seg views" id="view-seg" role="tablist" aria-label="Plot">
+        <button type="button" role="tab" data-view="nyq">Nyquist</button><button type="button" role="tab" data-view="zr">Zr</button><button type="button" role="tab" data-view="zi">Zi</button><button type="button" role="tab" data-view="bode">|Z|, θ</button><button type="button" role="tab" data-view="d3">3D</button>
+      </div>
+      <span class="tool-sep" aria-hidden="true"></span>
       <button type="button" data-plot-action="auto">Autoscale</button>
       <button type="button" data-plot-action="png">Save PNG</button>
       <label class="v3d" id="v3d-wrap" hidden>View
@@ -42,7 +46,11 @@
         <button type="button" data-plot-action="unlabel">Clear labels</button>
         <label class="chk"><input type="checkbox" id="label-click"> Click labels a point</label>
       </span>
-      <label class="chk pt-group" id="pt-contrib" title="Draw each part of the series chain in its own colour"><input type="checkbox" id="contrib-toggle"> Contributions</label>
+      <span class="pt-group pt-show" id="pt-show"><span class="pt-lbl">Show</span>
+        <label class="chk pt-key" title="Measured points"><input type="checkbox" id="data-toggle"><i class="key-dots" aria-hidden="true"></i>Data</label>
+        <label class="chk pt-key" title="The model curve with the current parameters"><input type="checkbox" id="fit-toggle"><i class="key-line" aria-hidden="true"></i>Fit</label>
+        <label class="chk pt-key" id="pt-contrib" title="Each part of the series chain in its own colour, dashed"><input type="checkbox" id="contrib-toggle"><i class="key-dash" aria-hidden="true"></i>Contributions</label>
+      </span>
       <span class="phint" id="phint"></span>
       <span class="note" id="plot-note"></span>
     </div>
@@ -56,15 +64,22 @@
         <label>Method <select id="drt-method"><option value="tikhonov">Tikhonov (NNLS)</option><option value="fisk">Fisk</option><option value="gold">Gold</option></select></label>
         <label>Data <select id="drt-source"><option value="both">Zr and Zi</option><option value="im">Zi only</option><option value="re">Zr only</option></select></label>
         <label class="drt-par"><span id="drt-par-name">λ</span><input type="range" id="drt-slider" aria-label="Regularisation"><input id="drt-par" class="num" spellcheck="false" autocomplete="off" aria-label="Regularisation value"></label>
-        <label title="Used by all three plots: g(τ) is placed at f = 1/(2πτ), the spectra at τ = 1/(2πf)">Axis <select id="drt-x"><option value="f">f /Hz</option><option value="tau">τ /s</option></select></label>
-        <span class="tool-gap"></span>
-        <button type="button" id="drt-search">Search λ…</button>
-        <button type="button" id="drt-all" title="Computes the DRT of every selected dataset with these settings and saves the distributions, the rebuilt spectra and the peaks to a text file">Save DRT…</button>
       </div>
-      <div class="plot-host drt-res" id="drt-res"></div>
-      <div class="plot-host" id="drt-g"></div>
-      <div class="plot-host" id="drt-z"></div>
-      <div class="drt-peaks" id="drt-peaks"></div>
+      <div class="drt-tools">
+        <label>Show <select id="drt-view"><option value="g">g, distribution</option><option value="z">Spectrum</option><option value="res">Residuals</option><option value="peaks">Peaks</option></select></label>
+        <label title="Used by all three plots: g(τ) is placed at f = 1/(2πτ), the spectra at τ = 1/(2πf)">Axis <select id="drt-x"><option value="f">f /Hz</option><option value="tau">τ /s</option></select></label>
+        <button type="button" data-plot-action="auto" title="Distributions of the selected datasets; spectra, residuals and peaks of the first one. Drag to zoom, double-click to reset.">Autoscale</button>
+        <button type="button" id="drt-search">Search λ…</button>
+        <span class="tool-gap"></span>
+        <button type="button" id="drt-all" title="Computes the DRT of every selected dataset with these settings and saves the distributions, the rebuilt spectra and the peaks to a text file">Save DRT…</button>
+        <button type="button" data-plot-action="png" title="Saves the open plot">Save PNG</button>
+      </div>
+      <div class="drt-views" id="drt-views">
+        <div class="drt-view" data-sec="g"><div class="plot-host" id="drt-g"></div></div>
+        <div class="drt-view" data-sec="z"><div class="plot-host" id="drt-z"></div></div>
+        <div class="drt-view" data-sec="res"><div class="plot-host" id="drt-res"></div></div>
+        <div class="drt-view" data-sec="peaks"><div class="drt-peaks" id="drt-peaks"></div></div>
+      </div>
     </div>
 
     <div class="pane model-pane" id="pane-model">
@@ -120,16 +135,16 @@
         <p>Yet Another Program for Analysis and Research in Impedance. One equivalent circuit is fitted to one or to thousands of impedance spectra. Browser version of Yappari 5.1 (LabVIEW) by Nita Dragoe, Université Paris-Saclay, ICMMO.</p>
         <h2>Working with it</h2>
         <ol>
-          <li>Read data, or drop files on the window. New datasets appear at the top of the list.</li>
+          <li>File, read data, or drop files on the window. New datasets appear at the top of the list.</li>
           <li>Build the circuit in the Model tab by clicking elements, or type a circuit code.</li>
-          <li>Select a dataset, set start values (mouse wheel over a parameter), tick the parameters to fit, press Fit selected.</li>
-          <li>For many spectra: Action, Clone parameters to all; select all with Ctrl+A in the list; Fit selected.</li>
-          <li>Save parameters, data, a report or the whole project from the Action menu.</li>
+          <li>Select a dataset, set start values (mouse wheel over a parameter), tick the parameters to fit, then Fit selected in the Fit panel (or F9). Switch the mode to Global for one fit with shared parameters.</li>
+          <li>For many spectra: in Parameters, copy the values to all datasets; select all with Ctrl+A in the list; Fit selected.</li>
+          <li>Save parameters, data, a report or the whole project from the File menu.</li>
         </ol>
         <h2>Circuit code</h2>
         <p>Elements written next to each other are in series. Round brackets put their content in parallel, square brackets put their content in series inside a parallel group. <code>R(RQ)(Q[RW])</code> is Rs + (R‖Q) + (Q‖(R + W)). Elements: R, C, L, Q (constant phase element), W, Wo, Ws (Warburg), G (Gerischer), HN (Havriliak–Negami). Numbers name the elements (R1, Q2) and are added for you.</p>
         <h2>Checks and relaxation times</h2>
-        <p>The DRT tab shows the distribution of relaxation times of the selected datasets (Tikhonov with non-negativity, Fisk or Gold; R∞ and Rpol from the data), with peak estimates of R and C. Action, Z-HIT checks a spectrum: |Z| rebuilt from the phase should match the measured |Z|. Contributions colours each part of the series chain, on the plots and in the circuit drawing.</p>
+        <p>The DRT tab shows the distribution of relaxation times of the selected datasets (Tikhonov with non-negativity, Fisk or Gold; R∞ and Rpol from the data), with peak estimates of R and C. Analysis, Z-HIT checks a spectrum: |Z| rebuilt from the phase should match the measured |Z|. Contributions colours each part of the series chain, on the plots and in the circuit drawing.</p>
         <h2>Mouse and keys</h2>
         <table class="grid">
           <tr><td>Plots</td><td>drag to zoom, shift-drag or right-drag to pan, wheel to zoom, double-click to autoscale</td></tr>
@@ -139,37 +154,54 @@
           <tr><td>Drawing</td><td>click to select, Delete to remove, Ctrl+Z to undo, Esc to deselect</td></tr>
         </table>
         <h2>Citing</h2>
-        <p>N. Dragoe, Materials Lab 2024, 3, 230031, <a href="https://doi.org/10.54227/mlab.20230031" target="_blank" rel="noopener">doi.org/10.54227/mlab.20230031</a>. Documentation and the LabVIEW version: <a href="https://nitad54448.github.io/yappari-5-1/" target="_blank" rel="noopener">nitad54448.github.io/yappari-5-1</a>.</p>
+        <p>N. Dragoe, Materials Lab 2024, 3, 230031, <a href="https://doi.org/10.54227/mlab.20230031" target="_blank" rel="noopener">doi.org/10.54227/mlab.20230031</a>. Documentation on the github repository, you can also use an older but faster version in LabVIEW: <a href="https://nitad54448.github.io/yappari-5-1/" target="_blank" rel="noopener">nitad54448.github.io/yappari-5-1</a>.</p>
       </article>
     </div>
   </section>
 
   <aside class="side">
-    <div class="menus">
-      <button type="button" class="menu-btn" data-menu="read" aria-haspopup="menu" aria-expanded="false">Read data</button>
-      <button type="button" class="menu-btn" data-menu="action" aria-haspopup="menu" aria-expanded="false">Action</button>
-      <button type="button" class="menu-btn" data-menu="adv" aria-haspopup="menu" aria-expanded="false">Advanced</button>
-    </div>
-    <section class="side-params" aria-label="Parameters">
-      <div class="side-h"><h2>Parameters</h2><span id="param-ds" class="sub"></span></div>
-      <div id="param-list" class="param-list"></div>
-      <div id="param-stats" class="param-stats"></div>
-    </section>
-    <section class="side-data" aria-label="Datasets">
-      <div class="side-h"><h2>Datasets</h2><span id="ds-count" class="sub"></span></div>
+    <div class="side-grip" id="side-grip" role="separator" aria-orientation="vertical" aria-label="Resize the side panel" tabindex="0" title="Drag to resize, double-click to reset"></div>
+    <nav class="side-tabs" role="tablist" aria-label="Side panel">
+      <button type="button" role="tab" data-side="datasets" aria-controls="sp-datasets">Datasets</button><button type="button" role="tab" data-side="params" aria-controls="sp-params">Parameters</button><button type="button" role="tab" data-side="fit" aria-controls="sp-fit">Fit</button>
+    </nav>
+    <section class="side-panel side-data" id="sp-datasets" role="tabpanel" aria-label="Datasets">
+      <div class="side-h"><span id="ds-count" class="sub"></span></div>
       <div id="ds-list" class="ds-list" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="Datasets"></div>
     </section>
-    <div class="fitbar">
-      <button type="button" id="btn-fit" class="primary">Fit selected</button>
-      <button type="button" id="btn-stop" hidden>Stop</button>
-      <div class="progress" id="fit-progress"><div class="track"><i></i></div><span></span></div>
-    </div>
+    <section class="side-panel side-params" id="sp-params" role="tabpanel" aria-label="Parameters">
+      <div class="side-h"><span class="sub">Values of</span><span id="param-ds" class="sub strong"></span></div>
+      <div id="param-list" class="param-list"></div>
+      <div id="param-stats" class="param-stats"></div>
+      <div class="clone-bar">
+        <span class="sub">Copy these values to</span>
+        <button type="button" id="clone-all" title="Copy the values and fit flags of the first selected dataset to every dataset">All datasets</button>
+        <button type="button" id="clone-sel" title="Copy the values and fit flags of the first selected dataset to the other selected datasets">Selected datasets</button>
+      </div>
+    </section>
+    <section class="side-panel fitbar" id="sp-fit" role="tabpanel" aria-label="Fit">
+      <p class="fit-target" id="fit-target"></p>
+      <div class="fit-row"><span class="fit-lbl">Mode</span>
+        <div class="seg" id="fit-mode" role="group" aria-label="Fit mode">
+          <button type="button" data-fitmode="single" aria-pressed="true" title="Each selected dataset gets its own fit">Individual</button><button type="button" data-fitmode="global" aria-pressed="false" title="One fit of all selected datasets with shared parameters (untick shared in Settings for per-dataset values)">Global</button>
+        </div>
+      </div>
+      <p class="hint fit-mode-hint" id="fit-mode-hint"></p>
+      <label class="fit-row"><span class="fit-lbl">Method</span><select id="fit-method"><option value="TRDL">Trust-region dogleg, bounded</option><option value="LMB">Levenberg–Marquardt, bounded</option><option value="LM">Levenberg–Marquardt, no bounds</option><option value="NM">Nelder–Mead, bounded</option></select></label>
+      <label class="fit-row"><span class="fit-lbl">Weights</span><select id="fit-weight"><option value="mod">1/|Z|</option><option value="mod2">1/|Z|²</option><option value="unit">1 (no weighting)</option></select></label>
+      <p class="hint">Iterations, tolerance and parameter limits are in Settings. F9 fits from anywhere.</p>
+      <div class="fit-go">
+        <button type="button" id="btn-fit" class="primary">Fit selected</button>
+        <button type="button" id="btn-stop" hidden>Stop</button>
+      </div>
+    </section>
   </aside>
 </main>
 
 <footer class="status">
+  <button type="button" class="cmd-help" id="cmd-help" title="Command line help" aria-label="Command line help">?</button>
   <label class="cmd"><span aria-hidden="true">›</span><input id="cmdline" placeholder="Command, e.g. rndz>>1, undo, help" spellcheck="false" autocomplete="off" aria-label="Command line"></label>
   <div id="status-msg" class="msg" role="status" aria-live="polite"></div>
+  <div class="progress" id="fit-progress" hidden><div class="track"><i></i></div><span></span></div>
 </footer>
 
 <dialog id="dlg"></dialog>
