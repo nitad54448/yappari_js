@@ -29,9 +29,11 @@ Y.history = (function () {
     if (b) b.remove();
     if (pending === pt.id) pending = null;
   }
-  function take(label) {
+  // opts.settings: also keep the settings (for actions that replace them, such as opening a project)
+  function take(label, opts) {
     var recs = S.datasets.map(record);
     var pt = { id: nextId++, label: label, time: new Date(), cdc: S.model.cdc, limits: JSON.parse(JSON.stringify(S.model.limits)),
+               settings: opts && opts.settings ? JSON.parse(JSON.stringify(S.settings)) : null,
                shared: Object.assign({}, S.model.shared), recs: recs, sel: Array.from(S.sel), simCount: S.simCount,
                bytes: recs.reduce(function (a, r) { return a + r.bytes; }, 0) };
     points.push(pt); bytes += pt.bytes; pending = pt.id;
@@ -43,6 +45,7 @@ Y.history = (function () {
   function takePending() { var p = pending; pending = null; return p; }
 
   function apply(pt) {
+    if (pt.settings) Y.state.replaceSettings(JSON.parse(JSON.stringify(pt.settings)));
     if (pt.cdc !== S.model.cdc) Y.state.setModel(pt.cdc ? Y.circuit.parse(pt.cdc) : null, { limits: pt.limits, shared: pt.shared, quiet: true });
     else { S.model.limits = JSON.parse(JSON.stringify(pt.limits)); S.model.shared = Object.assign({}, pt.shared); }
     S.datasets = pt.recs.map(function (r) { return Y.state.fromRecord(r); });
@@ -58,7 +61,7 @@ Y.history = (function () {
     var pt = points.filter(function (p) { return p.id === id; })[0];
     if (!pt) { Y.ui.toast('That restore point is no longer kept in memory.', 'warn'); return; }
     if (S.busy) { Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }
-    take('restoring the state before ' + pt.label);
+    take('restoring the state before ' + pt.label, { settings: !!pt.settings });
     apply(pt);
     Y.ui.toast('Restored the state before ' + pt.label + ', as it was at ' + when(pt) + '.', 'ok');
   }

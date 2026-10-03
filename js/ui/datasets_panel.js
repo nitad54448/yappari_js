@@ -10,8 +10,8 @@ Y.datasetsPanel = (function () {
 
   function rowHTML(d) {
     var st = d.stats, on = S.sel.has(d.id);
-    var cls = st ? (st.chi2w == null || st.ok === false ? 'bad' : (/iteration limit/.test(st.msg || '') ? 'warn' : 'ok')) : '';
-    var tip = st ? (st.chi2w == null ? 'fit failed: ' + (st.msg || '') : 'χ²red ' + fmt(st.chi2red) + ', R² ' + (isFinite(st.r2) ? st.r2.toFixed(5) : '—')) : 'not fitted';
+    var cls = st ? (st.chi2w == null || st.ok === false ? 'bad' : Y.fit.status(st.msg)) : '';
+    var tip = st ? (st.chi2w == null ? 'fit failed: ' + (st.msg || '') : 'χ²red ' + fmt(st.chi2red) + ', R² ' + (Number.isFinite(st.r2) ? st.r2.toFixed(5) : '—')) : 'not fitted';
     return '<div class="ds' + (on ? ' on' : '') + '" data-id="' + d.id + '" draggable="true" role="option" aria-selected="' + on + '">' +
       '<i class="sw" style="background:' + Y.plots.color(d) + '"></i><span class="nm" title="' + esc(d.name) + ', ' + d.f.length + ' points">' + esc(d.name) + '</span>' +
       (d.norm ? '<small class="du" title="Normalized: ' + esc(Y.state.normText(d.norm)) + '">' + (d.norm.type === 'factor' ? '×' + (+d.norm.k.toPrecision(4)) : Y.state.zUnit(d)) + '</small>' : '') +

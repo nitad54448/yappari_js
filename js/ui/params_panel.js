@@ -36,7 +36,7 @@ Y.paramsPanel = (function () {
     head.title = S.sel.size > 1 ? 'Values of the first selected dataset. Changes apply to all ' + S.sel.size + ' selected datasets.' : '';
     if (!prog) { host.innerHTML = '<p class="hint">No circuit yet. Build one in the Model tab.</p>'; renderStats(); return; }
     host.innerHTML = prog.params.map(function (pp) {
-      var E = Y.elements[pp.kind], dis = ds ? '' : ' disabled';
+      var E = Y.elements[pp.kind], dis = ds && !S.busy ? '' : ' disabled';
       return '<div class="prow" data-name="' + pp.name + '"><span class="pn" title="' + esc(E.title + ', ' + pp.label + (pp.unit ? ' /' + pp.unit : '')) + '">' + pp.name + '</span>' +
         '<input class="pv" aria-label="' + pp.name + '" spellcheck="false" autocomplete="off"' + dis + '>' +
         '<span class="pu" title="' + esc(pp.unit) + '">' + esc(pp.unit) + '</span><span class="ps"></span>' +
@@ -59,7 +59,7 @@ Y.paramsPanel = (function () {
       row.classList.toggle('fixed', !fit);
       var se = row.querySelector('.ps'), st = ds && ds.stats;
       if (st && st.bound && st.bound[n]) { se.textContent = 'limit'; se.title = 'At its limit, no standard error'; se.className = 'ps lim'; }
-      else if (st && st.se && st.se[n] != null) { se.textContent = st.se[n] >= 100 ? '>100%' : '±' + fmtPct(st.se[n]); se.title = 'Standard error, % of the value'; se.className = 'ps'; }
+      else if (st && st.se && Number.isFinite(st.se[n])) { se.textContent = st.se[n] >= 100 ? '>100%' : '±' + fmtPct(st.se[n]); se.title = 'Standard error, % of the value'; se.className = 'ps'; }
       else { se.textContent = ''; se.title = ''; se.className = 'ps'; }
     });
     renderStats();
@@ -70,10 +70,10 @@ Y.paramsPanel = (function () {
     if (!ds || !S.model.prog) { host.innerHTML = ''; return; }
     if (!st) { host.innerHTML = '<p class="hint">Not fitted with these values.</p>'; return; }
     if (st.chi2w == null) { host.innerHTML = '<p class="hint err">Fit failed: ' + esc(st.msg || '') + '</p>'; return; }
-    var msg = st.msg || '', short = /^converged/.test(msg) ? 'converged' : /iteration limit/.test(msg) ? 'iteration limit' : msg;
+    var msg = st.msg || '', short = /^converged/.test(msg) ? 'converged' : /iteration limit/.test(msg) ? 'iteration limit' : /^stopped/.test(msg) ? 'stalled, not a minimum' : msg;
     var wname = { mod: '1/|Z|', mod2: '1/|Z|²', unit: '1', sigma: '1/σ², ' + (st.sigma || 'measured') }[st.weight] || st.weight || '';
     host.innerHTML = '<dl><dt>χ²<sub>w</sub></dt><dd>' + fmtStat(st.chi2w) + '</dd><dt>χ²<sub>red</sub></dt><dd>' + fmtStat(st.chi2red) +
-      '</dd><dt>R²</dt><dd>' + (isFinite(st.r2) ? st.r2.toFixed(6) : '—') + '</dd><dt>Weights</dt><dd>' + esc(wname) +
+      '</dd><dt>R²</dt><dd>' + (Number.isFinite(st.r2) ? st.r2.toFixed(6) : '—') + '</dd><dt>Weights</dt><dd>' + esc(wname) +
       '</dd><dt>Fit</dt><dd title="' + esc(msg) + '">' + (st.global ? 'global, ' : '') + (st.iter != null ? st.iter + ' it, ' : '') + esc(short) +
       (short === 'converged' ? ' <span class="why">(' + esc(msg.replace(/^converged: /, '')) + ')</span>' : '') + '</dd></dl>';
   }
@@ -81,6 +81,7 @@ Y.paramsPanel = (function () {
   function commitInput(inp) {
     var row = inp.closest('.prow'), n = row.getAttribute('data-name'), ds = Y.state.first();
     if (!ds) return;
+    if (S.busy) { inp.value = fmtVal(ds.p[n]); return; }  // a running fit owns the values
     if (inp.value === fmtVal(ds.p[n])) return;            // unchanged: keep the fit statistics
     var v = Y.ui.parseNum(inp.value);
     if (!isFinite(v)) { inp.value = fmtVal(ds.p[n]); Y.ui.toast('Not a number: ' + n + ' unchanged.', 'warn'); return; }
@@ -117,7 +118,10 @@ Y.paramsPanel = (function () {
       step(row.getAttribute('data-name'), e.deltaY < 0 ? 1 : -1, e);
     }, { passive: false });
     host.addEventListener('change', function (e) {
-      if (e.target.classList.contains('pf')) Y.state.setFit(e.target.closest('.prow').getAttribute('data-name'), e.target.checked);
+      if (!e.target.classList.contains('pf')) return;
+      var n = e.target.closest('.prow').getAttribute('data-name'), ds = Y.state.first();
+      if (S.busy) { e.target.checked = !!(ds && ds.fit[n]); Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }
+      Y.state.setFit(n, e.target.checked);
     });
   }
 
@@ -286,6 +290,12 @@ Y.paramsPanel = (function () {
     Y.bus.on('stats', renderValues);
     Y.bus.on('data', renderValues);
     Y.bus.on('settings', syncSettings);
+    // values and fit flags are locked while a fit runs: results would overwrite edits made meanwhile
+    Y.bus.on('busy', function (b) {
+      if (b && editing) { var a = document.activeElement; if (a && a.blur) a.blur(); }
+      var on = !!Y.state.first() && !b;
+      document.querySelectorAll('#param-list .pv, #param-list .pf').forEach(function (el) { el.disabled = !on; });
+    });
     renderList(); renderLimits();
   }
 

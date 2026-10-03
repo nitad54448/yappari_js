@@ -65,10 +65,11 @@ Y.cmd = (function () {
       }
       items = data;
     }
-    var all = [], nFiles = 0;
+    var all = [], nFiles = 0, skipped = [];
     items.forEach(function (it) {
       try {
         var got = kind === 'custom' ? Y.readers.custom(it.text, it.name, def) : READ[kind](it.text, it.name);
+        if (got.skipped) skipped.push(it.name + ' (' + got.skipped + ')');
         all = all.concat(got);
         nFiles++;
       } catch (e) { ui.toast(e.message, 'err'); }
@@ -79,6 +80,7 @@ Y.cmd = (function () {
       var pts = all.reduce(function (a, d) { return a + d.f.length; }, 0);
       ui.toast('Read ' + plural(all.length, 'dataset') + ' (' + pts + ' points) from ' + plural(nFiles, 'file') + ': ' + listNames(all) + '.', 'ok');
     }
+    if (skipped.length) ui.toast('Incomplete rows (a missing or non-numeric value) were skipped: ' + skipped.join(', ') + '.', 'warn');
   }
 
   async function read(kind) {
@@ -87,10 +89,13 @@ Y.cmd = (function () {
   }
 
   async function openProject(text) {
+    if (!idle()) return;
     var doc;
     try { doc = JSON.parse(text); } catch (e) { throw new Error('The project file is not valid JSON.'); }
+    var pj = Y.state.prepareProject(doc);                 // throws on a bad file; nothing has changed yet
     if (S.datasets.length && !(await ui.confirm('Opening a project replaces the circuit and the ' + plural(S.datasets.length, 'dataset') + ' in memory.', 'Open project', false, 'Open project'))) return;
-    Y.state.loadProject(doc);
+    snapshot('opening a project', { settings: true });
+    Y.state.commitProject(pj);
     ui.toast('Opened a project with ' + plural(S.datasets.length, 'dataset') + (S.model.cdc ? ' and the circuit ' + S.model.cdc : '') + '.', 'ok');
   }
 
@@ -176,36 +181,47 @@ Y.cmd = (function () {
     var b = Y.state.bounds(), cdc = S.model.cdc, jobs = list.map(function (ds) { return Y.state.jobFor(ds, b); });
     var nSig = jobs.filter(function (j) { return j.sr; }).length;
     snapshot('fit of ' + plural(list.length, 'dataset'));
-    var t0 = performance.now(), last = 0, nOk = 0, nMax = 0, nBad = 0;
+    var t0 = performance.now(), last = 0, nOk = 0, nMax = 0, nStall = 0, nBad = 0, results;
     Y.state.setBusy(true);
     ui.progress(0, jobs.length);
-    running = Y.pool.fitMany(jobs, function (r, ji) {
-      if (S.model.cdc !== cdc) return;
-      var ds = Y.state.byId(r.id);
-      if (!ds) return;
-      if (r.p) Y.state.applyResult(ds, r, jobs[ji].sr ? { weight: 'sigma', sigma: jobs[ji].sigma } : null); else ds.stats = { ok: false, msg: r.msg };
-      if (!r.ok) nBad++; else if (/iteration limit/.test(r.msg)) nMax++; else nOk++;
-      var now = performance.now();
-      if (now - last > 300) { last = now; Y.bus.emit('stats'); }
-    }, function (done, total) { ui.progress(done, total); });
-    var results = await running.promise;
-    running = null;
-    Y.state.setBusy(false);
-    ui.progress(0, 0);
-    Y.bus.emit('stats');
+    try {
+      running = Y.pool.fitMany(jobs, function (r, ji) {
+        if (S.model.cdc !== cdc) return;
+        var ds = Y.state.byId(r.id);
+        if (!ds) return;
+        var meta = Y.state.jobMeta(jobs[ji]);
+        if (jobs[ji].sr) { meta.weight = 'sigma'; meta.sigma = jobs[ji].sigma; }
+        if (r.p) Y.state.applyResult(ds, r, meta); else ds.stats = { ok: false, msg: r.msg };
+        if (!r.ok) nBad++; else if (/iteration limit/.test(r.msg)) nMax++; else if (Y.fit.status(r.msg) === 'warn') nStall++; else nOk++;
+        var now = performance.now();
+        if (now - last > 300) { last = now; Y.bus.emit('stats'); }
+      }, function (done, total) { ui.progress(done, total); });
+      results = await running.promise;
+    } finally {
+      running = null;
+      Y.state.setBusy(false);
+      ui.progress(0, 0);
+      Y.bus.emit('stats');
+    }
     var n = results.filter(Boolean).length, dt = ((performance.now() - t0) / 1000).toFixed(2);
     if (list.length === 1 && results[0] && results[0].ok) {
       var r = results[0];
-      ui.toast('Fit of ' + list[0].name + ': χ²red ' + fmt(r.chi2red) + ', R² ' + (isFinite(r.r2) ? r.r2.toFixed(6) : '—') + ', ' +
-        r.iter + ' iterations, ' + r.msg + (nSig ? ', weights 1/σ² (' + jobs[0].sigma + ')' : '') + '.', /iteration limit/.test(r.msg) ? 'warn' : 'ok');
+      ui.toast('Fit of ' + list[0].name + ': χ²red ' + fmt(r.chi2red) + ', R² ' + (Number.isFinite(r.r2) ? r.r2.toFixed(6) : '—') + ', ' +
+        r.iter + ' iterations, ' + r.msg + (nSig ? ', weights 1/σ² (' + jobs[0].sigma + ')' : '') + '.', Y.fit.status(r.msg));
     } else {
       ui.toast('Fitted ' + n + ' of ' + plural(list.length, 'dataset') + ' in ' + dt + ' s: ' + nOk + ' converged' +
-        (nMax ? ', ' + nMax + ' stopped at the iteration limit' : '') + (nBad ? ', ' + nBad + ' failed' : '') +
-        (S.settings.useSigma ? '; measured σ used for ' + nSig + ' of them' : '') + '.', nBad || nMax ? 'warn' : 'ok');
+        (nMax ? ', ' + nMax + ' stopped at the iteration limit' : '') + (nStall ? ', ' + nStall + ' stalled before a minimum' : '') +
+        (nBad ? ', ' + nBad + ' failed' : '') +
+        (S.settings.useSigma ? '; measured σ used for ' + nSig + ' of them' : '') + '.', nBad || nMax || nStall ? 'warn' : 'ok');
     }
   }
 
-  function stop() { if (running) { running.cancel(); ui.toast('Stopping. Datasets already handed to the workers finish first.', 'info'); } }
+  function stop() {
+    if (!running) return;
+    if (running.global) {
+      if (!running.cancel()) ui.toast('This global fit runs on the main thread and cannot be stopped.', 'warn');
+    } else { running.cancel(); ui.toast('Stopping. Datasets already handed to the workers finish first.', 'info'); }
+  }
 
   async function globalFit() {
     if (!idle() || !haveModel() || !haveSel(2)) return;
@@ -220,21 +236,29 @@ Y.cmd = (function () {
     Y.state.setBusy(true);
     ui.progress(0, -1);
     ui.toast('Global fit of ' + plural(list.length, 'dataset') + ' running…', 'info');
-    var res = await Y.pool.globalFit(job);
-    Y.state.setBusy(false);
-    ui.progress(0, 0);
+    var res;
+    try {
+      running = Y.pool.globalFit(job);
+      res = await running.promise;
+    } finally {
+      running = null;
+      Y.state.setBusy(false);
+      ui.progress(0, 0);
+    }
+    if (res.cancelled) { ui.toast('Global fit stopped; the parameters are unchanged.', 'info'); return; }
     if (!res.ok) { ui.toast('Global fit failed: ' + res.msg, 'err'); return; }
     res.sets.forEach(function (r) {
       var ds = Y.state.byId(r.id);
       if (!ds) return;
-      names.forEach(function (n) { ds.fit[n] = first.fit[n]; });
+      names.forEach(function (n, j) { ds.fit[n] = !!job.fit[j]; });   // the flags that were fitted, not later edits
       var set = job.sets.filter(function (x) { return x.id === r.id; })[0];
-      Y.state.applyResult(ds, Object.assign({ iter: res.iter, msg: res.msg, ok: true }, r),
-        set && set.sr ? { global: true, globalChi2red: res.chi2red, weight: 'sigma', sigma: set.sigma } : { global: true, globalChi2red: res.chi2red });
+      var meta = Object.assign(Y.state.jobMeta(job), { global: true, globalChi2red: res.chi2red });
+      if (set && set.sr) { meta.weight = 'sigma'; meta.sigma = set.sigma; }
+      Y.state.applyResult(ds, Object.assign({ iter: res.iter, msg: res.msg, ok: true }, r), meta);
     });
     Y.bus.emit('stats'); Y.bus.emit('params', {});
     ui.toast('Global fit of ' + plural(list.length, 'dataset') + ': ' + res.nShared + ' shared and ' + res.nLocal + ' local parameters, χ²red ' +
-      fmt(res.chi2red) + ', ' + res.iter + ' iterations, ' + res.msg + '. Fit flags of ' + first.name + ' used for all.', /iteration limit/.test(res.msg) ? 'warn' : 'ok');
+      fmt(res.chi2red) + ', ' + res.iter + ' iterations, ' + res.msg + '. Fit flags of ' + first.name + ' used for all.', Y.fit.status(res.msg));
   }
 
   function cloneTo(all) {
@@ -389,7 +413,7 @@ Y.cmd = (function () {
   // ---------------------------------------------------------------- saving
   function saveParams() {
     if (!haveModel() || !haveSel()) return;
-    var txt = Y.writers.paramsText(sel(), Y.state.names(), { cdc: S.model.cdc, method: Y.fit.methods[S.settings.method], weight: Y.fit.weightModes[S.settings.weight] });
+    var txt = Y.writers.paramsText(sel(), Y.state.names(), Object.assign({ cdc: S.model.cdc }, Y.state.fitSummary(sel())));
     Y.writers.download('yappari_parameters_' + Y.writers.fileStamp() + '.txt', txt);
     ui.toast('Saved the parameters of ' + plural(S.sel.size, 'dataset') + '.', 'ok');
   }
@@ -434,7 +458,7 @@ Y.cmd = (function () {
   // ---------------------------------------------------------------- history (js/history.js)
   // A restore point is taken before every command or action that changes datasets: "undo" goes back one step,
   // and the Log has a "Restore before" button on the line of each action still kept in memory.
-  function snapshot(label) { Y.history.take(label); }
+  function snapshot(label, opts) { Y.history.take(label, opts); }
   function undo() { if (idle()) Y.history.undo(); }
 
   // ---------------------------------------------------------------- frequency labels, DRT, Z-HIT

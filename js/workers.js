@@ -3,7 +3,7 @@
  *  If workers cannot be created, jobs run on the main thread in small time slices.
  *
  *  Y.pool.fitMany(jobs, onResult, onProgress) -> { promise, cancel }
- *  Y.pool.globalFit(job) -> promise
+ *  Y.pool.globalFit(job) -> { promise, cancel }
  */
 Y.pool = (function () {
   'use strict';
@@ -92,15 +92,37 @@ Y.pool = (function () {
     return { promise: promise, cancel: function () { state.cancelled = true; } };
   }
 
+  // A global fit is one long job: Stop terminates its worker (a fresh one replaces it) and the promise
+  // resolves with { ok: false, cancelled: true }. On the main thread (no workers) it cannot be stopped.
   function globalFit(job) {
-    return new Promise(function (resolve) {
+    var settle = null, wk = null, finished = false;
+    function finish(r) { if (finished) return; finished = true; if (wk) wk.busy = false; settle(r); }
+    var promise = new Promise(function (resolve) {
+      settle = resolve;
       init();
-      var wk = workers[0];
-      if (broken || !wk) { setTimeout(function () { resolve(Y.globalFit.run(job)); }, 0); return; }
-      wk.w.onmessage = function (e) { resolve(e.data.results[0]); };
-      wk.w.onerror = function (ev) { ev.preventDefault(); broken = true; terminateAll(); resolve(Y.globalFit.run(job)); };
+      wk = workers[0] || null;
+      if (broken || !wk) { wk = null; setTimeout(function () { if (!finished) finish(Y.globalFit.run(job)); }, 0); return; }
+      wk.busy = true;
+      wk.w.onmessage = function (e) { finish(e.data.results[0]); };
+      wk.w.onerror = function (ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (finished) return;
+        broken = true; terminateAll(); wk = null;
+        finish(Y.globalFit.run(job));
+      };
       wk.w.postMessage({ type: 'global', job: job });
     });
+    function cancel() {
+      if (finished || !wk) return false;
+      try { wk.w.terminate(); } catch (e) { /* */ }
+      var at = workers.indexOf(wk);
+      if (at >= 0) {
+        try { wk.w = new Worker(url); } catch (e) { workers.splice(at, 1); }
+      }
+      finish({ ok: false, cancelled: true, msg: 'stopped by the user' });
+      return true;
+    }
+    return { promise: promise, cancel: cancel, global: true };
   }
 
   return { fitMany: fitMany, globalFit: globalFit, size: size, usingWorkers: function () { init(); return !broken && workers.length > 0; } };

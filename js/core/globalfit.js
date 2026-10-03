@@ -80,21 +80,9 @@ Y.defineCore('globalfit', function (Y) {
         }
       }
 
-      var f = total(X, R);
-      if (!(f < Infinity)) throw new Error('the model gives non-finite values at the start values');
-      var mu = -1, nu = 2, it, conv = 0, needJ = true, msg = 'iteration limit reached';
-      var Xn = new Float64Array(nX), st = new Float64Array(nX), maxIter = Math.max(1, job.maxIter | 0), tol = job.tol > 0 ? job.tol : 1e-12;
-      for (it = 0; it < maxIter; it++) {
-        if (needJ) {
-          blocks(false); needJ = false;
-          if (mu < 0) {
-            var md = 0;
-            for (a = 0; a < nS; a++) md = Math.max(md, A[a * nS + a]);
-            for (i = 0; i < nd; i++) for (b = 0; b < nL; b++) md = Math.max(md, D[i][b * nL + b]);
-            mu = 1e-3 * (md || 1);
-          }
-        }
-        // damped Schur system
+      // damped step (Schur complement on the shared block) from X into Xn; false when the system is singular
+      function step(mu) {
+        var a, b, c, i;
         var M = Float64Array.from(A), rhs = new Float64Array(nS), chol = [], zg = [], ok = true;
         for (a = 0; a < nS; a++) { rhs[a] = -gS[a]; M[a * nS + a] += mu * Math.max(A[a * nS + a], 1e-300); }
         for (i = 0; i < nd && nL; i++) {
@@ -113,7 +101,7 @@ Y.defineCore('globalfit', function (Y) {
           for (a = 0; a < nS; a++) { var t3 = 0; for (b = 0; b < nL; b++) t3 += B[i][a * nL + b] * zg[i][b]; rhs[a] += t3; }
         }
         var dS = ok ? (nS ? LA.solveSPD(M, rhs, nS) : new Float64Array(0)) : null;
-        if (!dS) { mu *= nu; nu *= 2; if (mu > 1e30) { msg = 'singular system'; break; } continue; }
+        if (!dS) return false;
         Xn.set(X);
         for (a = 0; a < nS; a++) Xn[a] = X[a] + dS[a];
         for (i = 0; i < nd && nL; i++) {
@@ -123,6 +111,19 @@ Y.defineCore('globalfit', function (Y) {
           for (b = 0; b < nL; b++) Xn[nS + i * nL + b] = X[nS + i * nL + b] + dl[b];
         }
         if (bounded) for (a = 0; a < nX; a++) Xn[a] = Math.min(hi[a], Math.max(lo[a], Xn[a]));
+        return true;
+      }
+
+      var f = total(X, R);
+      if (!(f < Infinity)) throw new Error('the model gives non-finite values at the start values');
+      var mu = -1, nu = 2, it, conv = 0, needJ = true, msg = 'iteration limit reached';
+      var Xn = new Float64Array(nX), st = new Float64Array(nX), maxIter = Math.max(1, job.maxIter | 0), tol = job.tol > 0 ? job.tol : 1e-12;
+      for (it = 0; it < maxIter; it++) {
+        if (needJ) {
+          blocks(false); needJ = false;
+          if (mu < 0) mu = 1e-3;          // dimensionless: the damping is mu × the diagonal of JᵀJ
+        }
+        if (!step(mu)) { mu *= nu; nu *= 2; if (mu > 1e30) { msg = 'singular system'; break; } continue; }
         for (a = 0; a < nX; a++) st[a] = Xn[a] - X[a];
         // predicted decrease with the undamped blocks
         var gs = 0, sAs = 0;
@@ -150,6 +151,16 @@ Y.defineCore('globalfit', function (Y) {
         }
       }
       f = total(X, R);
+      // a stop that looks like convergence is checked with one nearly undamped step (see Y.fit.stalled)
+      if (/^converged/.test(msg) && f > 0) {
+        var scale = 0;
+        probs.forEach(function (P) { for (var k = 0; k < P.n; k++) { var u = P.swr[k] * P.zr[k], w2 = P.swi[k] * P.zi[k]; scale += u * u + w2 * w2; } });
+        if (f > 1e-16 * scale) {
+          blocks(true);
+          if (step(1e-9) && total(Xn, Rn) < f * (1 - Math.max(1e-6, 100 * tol))) msg = Y.fit.STALL_MSG;
+          f = total(X, R);
+        }
+      }
 
       // statistics
       var nPts = 0;

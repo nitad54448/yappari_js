@@ -27,10 +27,17 @@ Y.readers = (function () {
     return function (l) { return l.trim().split(/\s+/); };
   }
 
+  // Empty fields are kept (as NaN) for tab, comma and semicolon, so a missing value cannot shift the
+  // columns after it; only trailing empty fields are dropped. Runs of spaces are one separator.
   function numericFields(line, sep) {
-    return splitter(sep)(line).filter(function (x) { return x.trim() !== ''; })
-      .map(function (x) { return num(x, sep !== 'comma'); });
+    var fl = splitter(sep)(line);
+    while (fl.length && !fl[fl.length - 1].trim()) fl.pop();
+    return fl.map(function (x) { return num(x, sep !== 'comma'); });
   }
+  // a line that looks like a data row (starts with a number, >= 3 fields) but lacks a usable f, Zr or Zi
+  // (fields counted before trailing empty ones are dropped, so "2,20," counts)
+  function incomplete(line, sep) { return /^[-+.]?\d/.test(line.trim()) && splitter(sep)(line).length >= 3; }
+  function goodRow(v) { return v.length >= 3 && v[0] > 0 && isFinite(v[0]) && isFinite(v[1]) && isFinite(v[2]); }
 
   // the separator that gives >= 3 numeric fields on most data-like lines
   function detectSeparator(L) {
@@ -39,7 +46,9 @@ Y.readers = (function () {
       var t = L[i].trim();
       if (!/^[-+.]?\d/.test(t)) continue;
       seen++;
+      var hasTab = L[i].indexOf('\t') >= 0;
       cands.forEach(function (c, j) {
+        if (c === 'space' && hasTab) return;                // whitespace splitting would merge empty tab fields
         var v = numericFields(L[i], c);
         if (v.length >= 3 && isFinite(v[0]) && isFinite(v[1]) && isFinite(v[2])) score[j]++;
       });
@@ -61,14 +70,17 @@ Y.readers = (function () {
   // ---------------------------------------------------------------- 3 columns: f, Zr, Zi (one dataset per file)
   function threeColumns(text, fileName, sep) {
     if (looksZView(text)) return zview(text, fileName);   // ZView layout: f, then Z' and Z'' in columns 5 and 6
-    var L = lines(text), s = (!sep || sep === 'auto') ? detectSeparator(L) : sep, f = [], zr = [], zi = [];
+    var L = lines(text), s = (!sep || sep === 'auto') ? detectSeparator(L) : sep, f = [], zr = [], zi = [], skipped = 0;
     L.forEach(function (line) {
       if (!line.trim()) return;
       var v = numericFields(line, s);
-      if (v.length >= 3 && v[0] > 0 && isFinite(v[0]) && isFinite(v[1]) && isFinite(v[2])) { f.push(v[0]); zr.push(v[1]); zi.push(v[2]); }
+      if (goodRow(v)) { f.push(v[0]); zr.push(v[1]); zi.push(v[2]); }
+      else if (incomplete(line, s)) skipped++;
     });
     if (!f.length) throw new Error(baseName(fileName) + ': no rows with three numbers (separator ' + SEP_LABEL[s] + ')');
-    return [pack(baseName(fileName), f, zr, zi)];
+    var out = [pack(baseName(fileName), f, zr, zi)];
+    out.skipped = skipped;
+    return out;
   }
 
   // ---------------------------------------------------------------- tables with a column header
@@ -121,7 +133,7 @@ Y.readers = (function () {
   }
   function headerTable(text, fileName) {
     if (isMfliCsv(text)) return mfliCsv(text, fileName);
-    var L = lines(text), out = [], base = baseName(fileName), i = 0, pendingName = null, pendingNorm = null, count = 0;
+    var L = lines(text), out = [], base = baseName(fileName), i = 0, pendingName = null, pendingNorm = null, count = 0, skipped = 0;
     while (i < L.length) {
       var nm = nameLine(L[i].trim());
       if (nm) { pendingName = nm; i++; continue; }
@@ -144,6 +156,7 @@ Y.readers = (function () {
           fv = num(fields[h.cf], dc); rv = num(fields[h.cr], dc); iv = num(fields[h.ci], dc);
           ok = fv > 0 && isFinite(fv) && isFinite(rv) && isFinite(iv);
         }
+        if (!ok && /^[-+.]?\d/.test(t) && fields.length >= 3) skipped++;
         if (ok) {
           rows.push([fv, rv, h.neg ? -iv : iv, h.cc >= 0 ? String(fields[h.cc]).trim() : '',
                      h.sr >= 0 && fields.length > h.sr ? num(fields[h.sr], dc) : NaN, h.si >= 0 && fields.length > h.si ? num(fields[h.si], dc) : NaN]);
@@ -170,6 +183,7 @@ Y.readers = (function () {
       i = j;
     }
     if (!out.length) throw new Error(base + ': no column header with frequency, real and imaginary impedance found');
+    out.skipped = skipped;
     return out;
   }
 
@@ -230,14 +244,17 @@ Y.readers = (function () {
       var t = line.trim();
       if (!t) return;
       var v = numericFields(line, s);
-      if (v.length >= 3 && v[0] > 0 && isFinite(v[0]) && isFinite(v[1]) && isFinite(v[2])) {
-        if (!cur) { cur = { f: [], zr: [], zi: [] }; blocks.push(cur); }
+      if (goodRow(v)) {
+        if (!cur) { cur = { f: [], zr: [], zi: [], skipped: 0 }; blocks.push(cur); }
         cur.f.push(v[0]); cur.zr.push(v[1]); cur.zi.push(v[2]);
-      } else if (/[A-Za-z]/.test(t)) cur = null;
+      } else if (cur && incomplete(line, s)) cur.skipped++;          // inside a run: the row is dropped, the run goes on
+      else if (/[A-Za-z]/.test(t)) cur = null;
     });
     var good = blocks.filter(function (b) { return b.f.length >= 2; });
     if (!good.length) throw new Error(base + ': no rows with three numbers');
-    return good.map(function (b, k) { return pack(good.length > 1 ? base + '_' + k : base, b.f, b.zr, b.zi); });
+    var out = good.map(function (b, k) { return pack(good.length > 1 ? base + '_' + k : base, b.f, b.zr, b.zi); });
+    out.skipped = good.reduce(function (a, b) { return a + b.skipped; }, 0);
+    return out;
   }
 
   // ---------------------------------------------------------------- ZView (.z) and MFLI ZView (.txt)
@@ -312,7 +329,7 @@ Y.readers = (function () {
   // lines are all data: a dataset cut short (end of file) keeps all its points.
   function custom(text, fileName, def) {
     if (!def || !def.header) throw new Error('the definition needs a header text that separates the datasets');
-    var src = String(text), header = String(def.header), parts = src.split(header), base = baseName(fileName), out = [];
+    var src = String(text), header = String(def.header), parts = src.split(header), base = baseName(fileName), out = [], skipped = 0;
     if (parts.length < 2 && header.trim() && header.trim() !== header) { header = header.trim(); parts = src.split(header); }
     parts.shift();
     if (!parts.length) throw new Error(base + ': header "' + def.header + '" not found');
@@ -337,10 +354,12 @@ Y.readers = (function () {
         if (!line.trim()) return;
         var r = row(line);
         if (r) { f.push(r[0]); zr.push(r[1]); zi.push(r[2]); }
+        else if (/^[-+.]?\d/.test(line.trim()) && split(line).length > Math.max(cf, cr, ci)) skipped++;
       });
       if (f.length) out.push(pack(base + '_' + (label || idx), f, zr, zi));
     });
     if (!out.length) throw new Error(base + ': the header was found but no numeric rows in columns ' + (cf + 1) + ', ' + (cr + 1) + ', ' + (ci + 1));
+    out.skipped = skipped;
     return out;
   }
 
