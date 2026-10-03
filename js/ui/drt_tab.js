@@ -35,7 +35,7 @@ Y.drtTab = (function () {
   }
   function tipZ(s, i) {
     var f = s.fq ? s.fq[i] : s.x[i];
-    return esc(s.name || '') + '<br>f = ' + Y.plots.fmtF(f, 4) + ', τ = 1/(2πf) = ' + fmt(1 / (2 * Math.PI * f)) + ' s<br>' + fmt(s.y[i]) + ' Ω';
+    return esc(s.name || '') + '<br>f = ' + Y.plots.fmtF(f, 4) + ', τ = 1/(2πf) = ' + fmt(1 / (2 * Math.PI * f)) + ' s<br>' + fmt(s.y[i]) + ' ' + (current ? Y.state.zUnit(current.ds) : 'Ω');
   }
   // the three plots share one axis: frequency (g placed at f = 1/(2πτ)) or time constant (spectra at τ = 1/(2πf))
   function xLabel() { return S.settings.drtX === 'tau' ? 'τ /s' : 'f /Hz'; }
@@ -101,6 +101,8 @@ Y.drtTab = (function () {
     if (!current) return;
     var r = current.r, xf = S.settings.drtX !== 'tau', multi = current.all.length > 1, name = current.ds.name;
     var xs = xf ? r.f : Float64Array.from(r.f, function (f) { return 1 / (2 * Math.PI * f); });
+    var u = Y.state.zUnit(current.ds);
+    P.res.o.ylabel = '|ΔZ| /' + u; P.z.o.ylabel = 'Zr, −Zi /' + u;
     if (auto) [P.res, P.g, P.z].forEach(function (p) { p.auto = true; });
     P.g.o.legend = multi;
     P.g.setSeries(current.all.map(function (it) {
@@ -120,9 +122,9 @@ Y.drtTab = (function () {
     }).join('');
     var others = multi ? ' The distributions of ' + (current.all.length - 1) + ' other selected datasets are drawn in their colours' +
       (current.left > 0 ? ' (' + current.left + ' more not drawn)' : '') + '.' : (gold() && S.sel.size > 1 ? ' Gold is slow: only the first selected dataset is drawn.' : '');
-    $('#drt-peaks').innerHTML = '<table class="grid compact"><thead><tr><th>Peaks of ' + esc(name) + '</th><th>1/(2πτ) /Hz</th><th>τ /s</th><th>R /Ω</th><th>C = τ/R /F</th><th>of Rpol</th></tr></thead><tbody>' +
-      (rows || '<tr><td colspan="6">No peak</td></tr>') + '</tbody></table><p class="hint">' + esc(name) + ': R∞ = ' + fmt(r.rinf) + ' Ω and Rpol = ' + fmt(r.rpol) +
-      ' Ω from the data, ∫g dlnτ = ' + r.area.toFixed(3) + ', misfit ' + (100 * r.err).toFixed(2) + ' % rms, ' + r.f.length + ' points, ' + r.tau.length + ' τ values, ' +
+    $('#drt-peaks').innerHTML = '<table class="grid compact"><thead><tr><th>Peaks of ' + esc(name) + '</th><th>1/(2πτ) /Hz</th><th>τ /s</th><th>R /' + u + '</th><th>C = τ/R /' + Y.state.unitFor('F', current.ds) + '</th><th>of Rpol</th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="6">No peak</td></tr>') + '</tbody></table><p class="hint">' + esc(name) + ': R∞ = ' + fmt(r.rinf) + ' ' + u + ' and Rpol = ' + fmt(r.rpol) +
+      ' ' + u + ' from the data, ∫g dlnτ = ' + r.area.toFixed(3) + ', misfit ' + (100 * r.err).toFixed(2) + ' % rms, ' + r.f.length + ' points, ' + r.tau.length + ' τ values, ' +
       Math.round(current.ms) + ' ms. R and C of each peak are estimates, useful as start values.' + others + '</p>';
   }
 
@@ -141,7 +143,7 @@ Y.drtTab = (function () {
     (function chunk() {
       var t = performance.now();
       while (i < list.length && performance.now() - t < 40) {
-        try { list[i].drt = Y.drt.compute(list[i], o); items.push({ name: list[i].name, r: list[i].drt }); }
+        try { list[i].drt = Y.drt.compute(list[i], o); items.push({ name: list[i].name, r: list[i].drt, norm: list[i].norm }); }
         catch (e) { bad++; Y.ui.log(list[i].name + ': ' + e.message, 'warn'); }
         i++;
       }

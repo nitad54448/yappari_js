@@ -52,7 +52,8 @@ Y.paramsPanel = (function () {
       var n = row.getAttribute('data-name'), pp = info(n);
       if (!pp) return;
       var d = Y.paramDefault(pp.kind, pp.pi), v = ds ? ds.p[n] : d.def, fit = ds ? ds.fit[n] : d.fit;
-      var inp = row.querySelector('.pv');
+      var inp = row.querySelector('.pv'), pu = row.querySelector('.pu'), uu = Y.state.unitFor(pp.unit, ds);
+      if (pu.textContent !== uu) { pu.textContent = uu; pu.title = uu; }
       if (editing !== n) inp.value = fmtVal(v);
       row.querySelector('.pf').checked = !!fit;
       row.classList.toggle('fixed', !fit);
@@ -141,7 +142,7 @@ Y.paramsPanel = (function () {
     { legend: 'Plots', fields: [
       { key: 'maxPlots', label: 'Datasets drawn at most', type: 'int', min: 1, hint: 'Larger selections are thinned out evenly for drawing; fits use all of them.' },
       { key: 'nyqEqual', label: 'Same scale on both Nyquist axes', type: 'check' },
-      { key: 'resid', label: 'Residuals', type: 'select', options: [['abs', 'Absolute, Ω'], ['rel', 'Relative, % of |Z|']] },
+      { key: 'resid', label: 'Residuals', type: 'select', options: [['abs', 'Absolute, in the unit of Z'], ['rel', 'Relative, % of |Z|']] },
       { key: 'phase', label: 'Phase unit', type: 'select', options: [['deg', 'Degrees'], ['rad', 'Radians']] }] }
   ];
   function spec(k) { for (var i = 0; i < GROUPS.length; i++) for (var j = 0; j < GROUPS[i].fields.length; j++) if (GROUPS[i].fields[j].key === k) return GROUPS[i].fields[j]; return {}; }
@@ -188,7 +189,7 @@ Y.paramsPanel = (function () {
       '<th title="Global fit: one value for all datasets (ticked) or one value per dataset">Shared in global fit</th></tr></thead><tbody>' +
       prog.params.map(function (pp) {
         var L = S.model.limits[pp.name];
-        return '<tr data-name="' + pp.name + '"><td>' + pp.name + ' <small>' + esc(pp.unit) + '</small></td>' +
+        return '<tr data-name="' + pp.name + '"><td>' + pp.name + ' <small>' + esc(Y.state.unitFor(pp.unit, Y.state.first())) + '</small></td>' +
           '<td><input data-lim="min" value="' + fmtVal(L.min) + '" inputmode="decimal"></td>' +
           '<td><input data-lim="max" value="' + fmtVal(L.max) + '" inputmode="decimal"></td>' +
           '<td><input type="checkbox" data-shared' + (S.model.shared[pp.name] ? ' checked' : '') + '></td></tr>';

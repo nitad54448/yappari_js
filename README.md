@@ -98,6 +98,20 @@ point at the status, and in the Log):
 
 All are equally good minima. Only `iteration limit reached` (amber dot in the list) means the fit did not finish.
 
+### Normalization
+
+Action → *Normalize* sets, for the selected datasets: none (as measured, Ω), a correction factor (unit unchanged),
+the electrode area (Z × A, Ω·cm²) or a resistivity (Z × A / L, Ω·cm). A new choice replaces the previous one, and
+*None* brings back the measured values. Fitted parameters are converted at the same time (R and L multiplied, C and
+Q divided, n, α, β and τ unchanged), so the fit still matches and needs no new run. Plots, tooltips, parameters,
+DRT, report and saved files show the unit; the dataset list shows it next to the name. Save data writes a
+`#normalization` line that Read data takes back.
+
+### Contributions
+
+The parts of the series chain are drawn for the first plotted dataset. Clicking a part in the legend hides it (on
+the Nyquist plot its colour leaves the model curve too); hiding the dataset hides its parts.
+
 ### Masked points
 
 Masked points stay on the plots, hollow and pale, and do not count for autoscale; fits, DRT, Z-HIT and saved data

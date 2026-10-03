@@ -282,16 +282,28 @@ Y.cmd = (function () {
     ui.toast('Deleted ' + plural(n, 'dataset') + '.', 'info');
   }
 
+  // Normalization of Z, per dataset: none, a correction factor, electrode area (Ω·cm²) or resistivity (Ω·cm)
   async function correction() {
     if (!idle() || !haveSel()) return;
-    var v = await ui.prompt('Apply a correction factor', [{ key: 'k', label: 'Multiply Zr and Zi by', type: 'number', value: 1,
-      hint: 'For example S/L to get a resistivity, or the electrode area to get Ω·cm².' }], 'Apply');
+    var list = sel(), n0 = list[0].norm || { type: 'none' };
+    var v = await ui.prompt('Normalize the impedance', [
+      { key: 'type', label: 'Normalization', type: 'select', value: n0.type,
+        options: [['none', 'None: as measured (Ω)'], ['factor', 'Correction factor (unit unchanged)'], ['area', 'Electrode area: Z × A (Ω·cm²)'], ['resist', 'Resistivity: Z × A / L (Ω·cm)']] },
+      { key: 'k', label: 'Factor k', type: 'number', value: n0.type === 'factor' ? n0.k : 1, when: 'type:factor', hint: 'Z = measured Z × k' },
+      { key: 'A', label: 'Electrode area A /cm²', type: 'number', value: n0.A || 1, when: 'type:area,resist' },
+      { key: 'L', label: 'Thickness L /cm', type: 'number', value: n0.L || 0.1, when: 'type:resist', hint: 'Sample thickness between the electrodes' }],
+      'Apply', 'For the ' + plural(list.length, 'selected dataset') + '. An earlier normalization is undone first, and the parameters are converted so the fit still matches: R in Ω·cm², C and Q per cm², and so on.');
     if (!v) return;
-    var list = sel();
-    snapshot('correction factor');
-    list.forEach(function (ds) { Y.dataops.scaleZ(ds, v.k); });
-    changed(list);
-    ui.toast('Multiplied Zr and Zi of ' + plural(list.length, 'dataset') + ' by ' + v.k + '.', 'ok');
+    var norm = v.type === 'none' ? null : v.type === 'factor' ? { type: 'factor', k: v.k } :
+      v.type === 'area' ? { type: 'area', k: v.A, A: v.A } : { type: 'resist', k: v.A / v.L, A: v.A, L: v.L };
+    if (norm && !(norm.k > 0 && isFinite(norm.k))) { ui.toast('The factor, the area and the thickness must be positive.', 'err'); return; }
+    snapshot('normalization');
+    list.forEach(function (ds) { Y.state.normalize(ds, norm); });
+    Y.bus.emit('data'); Y.bus.emit('params', {}); Y.bus.emit('stats');
+    var out = list.filter(function (ds) { return ds.stats && ds.stats.chi2w != null && Object.keys(ds.p).some(function (n) {
+      var L = S.model.limits[n]; return L && (ds.p[n] < L.min || ds.p[n] > L.max); }); }).length;
+    ui.toast((norm ? 'Normalized ' : 'Back to the measured values for ') + plural(list.length, 'dataset') + (norm ? ': ' + Y.state.normText(norm) : '') + '.' +
+      (out ? ' Some parameters are now outside their limits (Parameters tab).' : ''), out ? 'warn' : 'ok');
   }
 
   function simulate() {
@@ -302,7 +314,7 @@ Y.cmd = (function () {
     snapshot('simulate');
     S.simCount++;
     Y.state.addDatasets([{ name: 'sim_' + S.simCount, f: f, zr: z.re, zi: z.im,
-                           p: src ? Object.assign({}, src.p) : undefined, fit: src ? Object.assign({}, src.fit) : undefined }]);
+                           p: src ? Object.assign({}, src.p) : undefined, fit: src ? Object.assign({}, src.fit) : undefined, norm: src ? src.norm : null }]);
     ui.toast('Simulated sim_' + S.simCount + ': ' + f.length + ' points from ' + Y.plots.fmtF(st.simStart) + ' to ' + Y.plots.fmtF(st.simEnd) +
       (src ? ', parameters of ' + src.name : ', default parameters') + '.', 'ok');
   }
@@ -338,7 +350,7 @@ Y.cmd = (function () {
     try {
       sel().forEach(function (ds) {
         var r = fn(ds);
-        out.push({ name: prefix + ds.name, f: r.f, zr: r.zr, zi: r.zi, p: Object.assign({}, ds.p), fit: Object.assign({}, ds.fit) });
+        out.push({ name: prefix + ds.name, f: r.f, zr: r.zr, zi: r.zi, p: Object.assign({}, ds.p), fit: Object.assign({}, ds.fit), norm: ds.norm });
       });
     } catch (e) { ui.toast(e.message, 'err'); return; }
     snapshot(label);
@@ -364,9 +376,12 @@ Y.cmd = (function () {
     if (!idle() || !haveSel(2)) return;
     var list = sel();
     try {
+      var k0 = list[0].norm ? list[0].norm.k : 1;
+      if (list.some(function (d) { return (d.norm ? d.norm.k : 1) !== k0 || Y.state.zUnit(d) !== Y.state.zUnit(list[0]); }))
+        throw new Error('Normalize the datasets the same way before averaging them.');
       var r = Y.dataops.average(list);
       snapshot('average');
-      Y.state.addDatasets([{ name: 'average', f: r.f, zr: r.zr, zi: r.zi, p: Object.assign({}, list[0].p), fit: Object.assign({}, list[0].fit) }]);
+      Y.state.addDatasets([{ name: 'average', f: r.f, zr: r.zr, zi: r.zi, p: Object.assign({}, list[0].p), fit: Object.assign({}, list[0].fit), norm: list[0].norm }]);
       ui.toast('Averaged ' + plural(list.length, 'dataset') + ' into "average".', 'ok');
     } catch (e) { ui.toast(e.message, 'err'); }
   }
@@ -464,7 +479,7 @@ Y.cmd = (function () {
     src.forEach(function (ds) {
       try {
         var r = Y.drt.zhit(ds);
-        out.push({ name: 'zh_' + ds.name, f: r.f, zr: r.zr, zi: r.zi, p: Object.assign({}, ds.p), fit: Object.assign({}, ds.fit) });
+        out.push({ name: 'zh_' + ds.name, f: r.f, zr: r.zr, zi: r.zi, p: Object.assign({}, ds.p), fit: Object.assign({}, ds.fit), norm: ds.norm });
         lines.push(ds.name + ': ' + (100 * r.rms).toFixed(2) + ' % rms, at most ' + (100 * r.max).toFixed(1) + ' % at ' + Y.plots.fmtF(r.fmax, 3) +
           (r.gap ? ', each side of the gap from ' + Y.plots.fmtF(r.gap.f0, 3) + ' to ' + Y.plots.fmtF(r.gap.f1, 3) + ' (masked points) checked on its own' : ''));
       } catch (e) { ui.toast(ds.name + ': ' + e.message, 'err'); }
@@ -569,7 +584,7 @@ Y.cmd = (function () {
                ['Clone parameters to selected datasets', function () { cloneTo(false); }], null,
                ['Mask points in the current view', function () { inView(false); }], ['Unmask selected datasets', unmask],
                ['Delete points in the current view…', function () { inView(true); }], ['Delete selected datasets…', deleteDatasets],
-               ['Apply correction factor…', correction], null,
+               ['Normalize: area, resistivity or factor…', correction], null,
                ['Simulate spectrum', simulate], null,
                ['Show the DRT of selected datasets', drtSelected], ['Save the DRT of selected datasets…', drtSave], ['Z-HIT of selected datasets', zhitSelected],
                ['Label a frequency on the Nyquist plot…', labelDialog], ['Clear Nyquist labels', clearLabels], null,

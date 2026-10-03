@@ -67,7 +67,7 @@ Y.ui = (function () {
 
   // fields: [{key, label, type: number|text|select|checkbox, value, options [[v, label]], hint}]
   function fieldHTML(f) {
-    var id = 'f_' + f.key, v = f.value == null ? '' : f.value, ctl;
+    var id = 'f_' + f.key, v = f.value == null ? '' : f.value, ctl, w = f.when ? ' data-when="' + esc(f.when) + '"' : '';
     if (f.type === 'select') {
       ctl = '<select id="' + id + '" data-key="' + f.key + '">' + f.options.map(function (o) {
         return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(v) ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
@@ -77,13 +77,13 @@ Y.ui = (function () {
     } else {
       ctl = '<input id="' + id + '" data-key="' + f.key + '" value="' + esc(v) + '"' + (f.type === 'number' ? ' inputmode="decimal"' : '') + ' autocomplete="off" spellcheck="false">';
     }
-    return '<label for="' + id + '">' + esc(f.label) + '</label><div>' + ctl + (f.hint ? '<small>' + esc(f.hint) + '</small>' : '') + '</div>';
+    return '<label for="' + id + '"' + w + '>' + esc(f.label) + '</label><div' + w + '>' + ctl + (f.hint ? '<small>' + esc(f.hint) + '</small>' : '') + '</div>';
   }
   function collect(body, fields) {
     var out = {}, bad = false;
     fields.forEach(function (f) {
       var e = body.querySelector('[data-key="' + f.key + '"]');
-      if (!e) return;
+      if (!e || e.closest('[hidden]')) return;
       if (f.type === 'checkbox') out[f.key] = e.checked;
       else if (f.type === 'number') {
         var v = parseNum(e.value);
@@ -94,11 +94,18 @@ Y.ui = (function () {
     });
     return bad ? null : out;
   }
+  function showWhen(body) {
+    body.querySelectorAll('[data-when]').forEach(function (el) {
+      var w = el.getAttribute('data-when').split(':'), ctl = body.querySelector('[data-key="' + w[0] + '"]');
+      el.hidden = !!ctl && w[1].split(',').indexOf(ctl.value) < 0;
+    });
+  }
   function prompt(title, fields, okLabel, intro) {
     var result = null;
     return modal({
       title: title,
       body: (intro ? '<p class="intro">' + intro + '</p>' : '') + '<div class="form-grid">' + fields.map(fieldHTML).join('') + '</div>',
+      onOpen: function (body) { showWhen(body); body.addEventListener('change', function () { showWhen(body); }); },
       buttons: [{ label: 'Cancel', value: null },
                 { label: okLabel || 'OK', primary: true, onClick: function (body) { result = collect(body, fields); return !!result; },
                   value: function () { return result; } }]

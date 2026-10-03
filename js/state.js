@@ -112,7 +112,7 @@ Y.state = (function () {
     var ds = { id: S.nextId++, name: raw.name || 'data', f: Float64Array.from(raw.f), zr: Float64Array.from(raw.zr),
                zi: Float64Array.from(raw.zi), mask: raw.mask ? Uint8Array.from(raw.mask) : new Uint8Array(n),
                sr: raw.sr ? Float64Array.from(raw.sr, nanIfNull) : null, si: raw.si ? Float64Array.from(raw.si, nanIfNull) : null,
-               notes: raw.notes ? raw.notes.slice() : [],
+               notes: raw.notes ? raw.notes.slice() : [], norm: raw.norm && raw.norm.k > 0 ? Object.assign({}, raw.norm) : null,
                p: raw.p ? Object.assign({}, raw.p) : {}, fit: raw.fit ? Object.assign({}, raw.fit) : {},
                stats: raw.stats || null, calc: null, curve: null, ver: -1 };
     remap(ds);
@@ -302,9 +302,62 @@ Y.state = (function () {
     selectIds(S.datasets.length ? [S.datasets[0].id] : []);
   }
 
+  // ---------------------------------------------------------------- normalization of Z (per dataset)
+  // ds.norm: null (as measured, Ω), {type: 'factor', k} (unit unchanged), {type: 'area', k: A, A} (Ω·cm²) or
+  // {type: 'resist', k: A/L, A, L} (Ω·cm). Z, its standard deviations and the parameters are in these units.
+  var ZUNIT = { area: 'Ω·cm²', resist: 'Ω·cm' };
+  function zUnit(ds) { return (ds && ds.norm && ZUNIT[ds.norm.type]) || 'Ω'; }
+  function zUnitOf(list) {                                  // null when the datasets have different units
+    var u = list.length ? zUnit(list[0]) : 'Ω';
+    return list.every(function (d) { return zUnit(d) === u; }) ? u : null;
+  }
+  // a parameter unit (as listed in elements.js) in the units of this dataset
+  function unitFor(u, ds) {
+    var t = ds && ds.norm && ds.norm.type, L = t === 'area' ? 'cm²' : t === 'resist' ? 'cm' : '';
+    if (!L || !u) return u;
+    if (u.indexOf('Ω') >= 0) return u.replace('Ω', 'Ω·' + L);
+    if (/^H/.test(u)) return u.replace(/^H/, 'H·' + L);
+    if (/^F/.test(u)) return u + '·' + (L === 'cm²' ? 'cm⁻²' : 'cm⁻¹');
+    return u;
+  }
+  function baseUnit(name) {
+    var pp = S.model.prog && S.model.prog.params.filter(function (q) { return q.name === name; })[0];
+    if (pp) return pp.unit || '';
+    var m = /^([A-Za-z]+?)(\d+)(_\w+)?$/.exec(name), E = m && Y.elements[m[1]];
+    var q = E && E.params.filter(function (x) { return x.suffix === (m[3] || ''); })[0];
+    return q ? q.unit : '';
+  }
+  function paramUnit(name, ds) { return unitFor(baseUnit(name), ds); }
+  function num4(v) { return String(+(+v).toPrecision(4)); }
+  function normText(norm) {
+    if (!norm) return 'as measured (Ω)';
+    if (norm.type === 'area') return 'Z × A with A = ' + num4(norm.A) + ' cm² (Ω·cm²)';
+    if (norm.type === 'resist') return 'Z × A / L with A = ' + num4(norm.A) + ' cm², L = ' + num4(norm.L) + ' cm (Ω·cm)';
+    return 'Z × ' + num4(norm.k) + ' (correction factor, unit unchanged)';
+  }
+  // Z = measured Z × k. A new normalization replaces the previous one; parameters (and the remembered values of
+  // removed elements) are converted so the model still matches: Ω and H × r, F ÷ r, the others unchanged.
+  function normalize(ds, norm) {
+    var r = (norm ? norm.k : 1) / (ds.norm ? ds.norm.k : 1);
+    if (!(r > 0) || !isFinite(r)) throw new Error('the factor must be positive');
+    if (r !== 1) {
+      Y.dataops.scaleZ(ds, r);
+      [ds.p, ds.mem].forEach(function (m) {
+        if (m) Object.keys(m).forEach(function (n) { var u = baseUnit(n); if (/Ω|^H/.test(u)) m[n] *= r; else if (/^F/.test(u)) m[n] /= r; });
+      });
+      if (ds.stats && ds.stats.chi2w != null) {               // 1/|Z|² and 1/σ² weights leave χ² unchanged
+        var w = ds.stats.weight, c = w === 'unit' ? r * r : w === 'mod' ? r : 1;
+        ds.stats = Object.assign({}, ds.stats, { chi2w: ds.stats.chi2w * c, chi2red: ds.stats.chi2red * c },
+                                 ds.stats.globalChi2red != null ? { globalChi2red: ds.stats.globalChi2red * c } : {});
+      }
+    }
+    ds.norm = norm ? Object.assign({}, norm) : null;
+    invalidate(ds);
+  }
+
   // dataset rebuilt from a history record (arrays copied, so the record stays intact)
   function fromRecord(r) {
-    return { id: r.id, name: r.name, f: Float64Array.from(r.f), zr: Float64Array.from(r.zr), zi: Float64Array.from(r.zi), mask: Uint8Array.from(r.mask),
+    return { id: r.id, name: r.name, norm: r.norm ? Object.assign({}, r.norm) : null, f: Float64Array.from(r.f), zr: Float64Array.from(r.zr), zi: Float64Array.from(r.zi), mask: Uint8Array.from(r.mask),
              sr: r.sr ? Float64Array.from(r.sr) : null, si: r.si ? Float64Array.from(r.si) : null, notes: r.notes.slice(),
              p: Object.assign({}, r.p), fit: Object.assign({}, r.fit), mem: r.mem ? Object.assign({}, r.mem) : undefined,
              stats: r.stats, calc: null, curve: null, ver: -1 };
@@ -321,6 +374,7 @@ Y.state = (function () {
     selectIds: selectIds, toggle: toggle, range: range, selectAll: selectAll, selected: selected, first: first,
     vector: vector, setParam: setParam, setFit: setFit, copyParams: copyParams, applyResult: applyResult,
     invalidate: invalidate, invalidateAll: invalidateAll, calcFor: calcFor, curveFor: curveFor,
-    bounds: bounds, unmasked: unmasked, fitData: fitData, sigmaFor: sigmaFor, jobFor: jobFor, loadProject: loadProject, setBusy: setBusy, fromRecord: fromRecord
+    bounds: bounds, unmasked: unmasked, fitData: fitData, sigmaFor: sigmaFor, jobFor: jobFor, loadProject: loadProject, setBusy: setBusy, fromRecord: fromRecord,
+    zUnit: zUnit, zUnitOf: zUnitOf, unitFor: unitFor, paramUnit: paramUnit, normText: normText, normalize: normalize
   };
 })();

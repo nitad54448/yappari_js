@@ -111,12 +111,22 @@ Y.readers = (function () {
   // Every header line (frequency + real + imaginary columns) starts a dataset that runs to the next header;
   // text lines in between are skipped. A "chunk" column (Zurich Instruments LabOne) splits sweeps into datasets.
   // A line "#dataset name" just above a header names the dataset (format written by Save data).
+  // "#normalization area k=... A=... unit=..." written by Save data under "#dataset name"
+  function normLine(t) {
+    var m = /^#\s*normali[sz]ation\s+(factor|area|resist)\b(.*)$/i.exec(t);
+    if (!m) return null;
+    var o = { type: m[1].toLowerCase() };
+    m[2].replace(/\b(k|A|L)\s*=\s*([-+0-9.eE]+)/g, function (_, key, v) { o[key] = parseFloat(v); });
+    return o.k > 0 ? o : null;
+  }
   function headerTable(text, fileName) {
     if (isMfliCsv(text)) return mfliCsv(text, fileName);
-    var L = lines(text), out = [], base = baseName(fileName), i = 0, pendingName = null, count = 0;
+    var L = lines(text), out = [], base = baseName(fileName), i = 0, pendingName = null, pendingNorm = null, count = 0;
     while (i < L.length) {
       var nm = nameLine(L[i].trim());
       if (nm) { pendingName = nm; i++; continue; }
+      var nz = normLine(L[i].trim());
+      if (nz) { pendingNorm = nz; i++; continue; }
       var h = parseHeader(L[i]);
       if (!h) { i++; continue; }
       var j, sep = h.sep;
@@ -149,12 +159,14 @@ Y.readers = (function () {
         });
         groups.forEach(function (g) {
           var name = pendingName && groups.length === 1 ? pendingName : base + '_' + count;
-          out.push(pack(name, g.map(function (r) { return r[0]; }), g.map(function (r) { return r[1]; }), g.map(function (r) { return r[2]; }),
-                        g.map(function (r) { return r[4]; }), g.map(function (r) { return r[5]; })));
+          var o = pack(name, g.map(function (r) { return r[0]; }), g.map(function (r) { return r[1]; }), g.map(function (r) { return r[2]; }),
+                        g.map(function (r) { return r[4]; }), g.map(function (r) { return r[5]; }));
+          if (pendingNorm && groups.length === 1) o.norm = pendingNorm;
+          out.push(o);
           count++;
         });
       }
-      pendingName = null;
+      pendingName = null; pendingNorm = null;
       i = j;
     }
     if (!out.length) throw new Error(base + ': no column header with frequency, real and imaginary impedance found');

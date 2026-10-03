@@ -10,7 +10,7 @@ Y.history = (function () {
 
   function record(d) {
     var r = { id: d.id, name: d.name, f: Float64Array.from(d.f), zr: Float64Array.from(d.zr), zi: Float64Array.from(d.zi), mask: Uint8Array.from(d.mask),
-              sr: d.sr ? Float64Array.from(d.sr) : null, si: d.si ? Float64Array.from(d.si) : null, notes: (d.notes || []).slice(),
+              sr: d.sr ? Float64Array.from(d.sr) : null, si: d.si ? Float64Array.from(d.si) : null, notes: (d.notes || []).slice(), norm: d.norm ? Object.assign({}, d.norm) : null,
               p: Object.assign({}, d.p), fit: Object.assign({}, d.fit), mem: d.mem ? Object.assign({}, d.mem) : null, stats: d.stats };
     r.bytes = 3 * r.f.byteLength + r.mask.byteLength + (r.sr ? 2 * r.sr.byteLength : 0) + 400 + 80 * Object.keys(r.p).length;
     return r;

@@ -34,7 +34,7 @@ Y.report = (function () {
     var st = ds.stats, names = Y.state.names(), img = Y.plots.imagesFor(ds, 560, 360);
     var rows = names.map(function (n) {
       var se = st && st.se ? st.se[n] : null, b = st && st.bound && st.bound[n];
-      return '<tr><td>' + n + '</td><td>' + fmt(ds.p[n]) + '</td><td>' + (ds.fit[n] ? (b ? 'at its limit' : (se != null ? '± ' + (+se.toPrecision(3)) + ' %' : '')) : 'fixed') + '</td></tr>';
+      return '<tr><td>' + n + '</td><td>' + fmt(ds.p[n]) + ' ' + esc(Y.state.paramUnit(n, ds)) + '</td><td>' + (ds.fit[n] ? (b ? 'at its limit' : (se != null ? '± ' + (+se.toPrecision(3)) + ' %' : '')) : 'fixed') + '</td></tr>';
     }).join('');
     var stats = st && st.chi2w != null ?
       '<table><tr><th>χ²w</th><td>' + fmt(st.chi2w) + '</td><th>χ²red</th><td>' + fmt(st.chi2red) + '</td><th>R²</th><td>' +
@@ -43,7 +43,7 @@ Y.report = (function () {
       '<p class="muted">Not fitted with these values.</p>';
     var pics = ['nyq', 'zr', 'zi', 'mod', 'ph', 'res'].filter(function (k) { return img[k]; })
       .map(function (k) { return '<img alt="" src="' + img[k] + '">'; }).join('');
-    return '<section><h2>' + esc(ds.name) + '</h2>' + stats + '<table><tr><th>Parameter</th><th>Value</th><th>Standard error</th></tr>' + rows +
+    return '<section><h2>' + esc(ds.name) + '</h2>' + (ds.norm ? '<p class="muted">Normalized: ' + esc(Y.state.normText(ds.norm)) + '.</p>' : '') + stats + '<table><tr><th>Parameter</th><th>Value</th><th>Standard error</th></tr>' + rows +
       '</table><div class="imgs">' + pics + '</div></section>';
   }
 

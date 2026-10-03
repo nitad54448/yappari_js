@@ -26,10 +26,10 @@ Y.plots = (function () {
   function phaseLabel() { return S.settings.phase === 'rad' ? 'θ /rad' : 'θ /°'; }
 
   function tooltip(s, i) {
-    var ds = s.ds, k = s.idx[i], zr = ds.zr[k], zi = ds.zi[k], c = Y.state.calcFor(ds);
+    var ds = s.ds, k = s.idx[i], zr = ds.zr[k], zi = ds.zi[k], c = Y.state.calcFor(ds), u = Y.state.zUnit(ds);
     var th = Math.atan2(zi, zr) * 180 / Math.PI * phaseScale();
-    var h = '<b>' + esc(ds.name) + '</b>' + (s.masked ? ' <i>masked</i>' : '') + '<br>f = ' + fmtF(ds.f[k]) + '<br>Zr = ' + fmtZ(zr) + ' Ω, Zi = ' + fmtZ(zi) + ' Ω' +
-            '<br>|Z| = ' + fmtZ(Math.hypot(zr, zi)) + ' Ω, θ = ' + (+th.toPrecision(4)) + (S.settings.phase === 'rad' ? ' rad' : '°');
+    var h = '<b>' + esc(ds.name) + '</b>' + (s.masked ? ' <i>masked</i>' : '') + '<br>f = ' + fmtF(ds.f[k]) + '<br>Zr = ' + fmtZ(zr) + ' ' + u + ', Zi = ' + fmtZ(zi) + ' ' + u +
+            '<br>|Z| = ' + fmtZ(Math.hypot(zr, zi)) + ' ' + u + ', θ = ' + (+th.toPrecision(4)) + (S.settings.phase === 'rad' ? ' rad' : '°');
     if (c) h += '<br><span class="muted">model: Zr = ' + fmtZ(c.re[k]) + ', Zi = ' + fmtZ(c.im[k]) + '</span>';
     return h;
   }
@@ -130,22 +130,22 @@ Y.plots = (function () {
     var parts = partsOf(ds, cv.f), out = [], n = cv.f.length;
     if (!parts.length) return out;
     if (kind === 'zr' || kind === 'zi') {
-      parts.forEach(function (p) { out.push({ name: p.label, group: 'part' + p.i, x: cv.f, y: kind === 'zr' ? p.re : p.im, color: p.color, mode: 'lines', dash: [6, 4], width: 1.6, legend: true }); });
+      parts.forEach(function (p) { out.push({ name: p.label, group: 'part' + p.i, x: cv.f, y: kind === 'zr' ? p.re : p.im, color: p.color, mode: 'lines', dash: [6, 4], width: 1.6, legend: true, parent: ds.id }); });
       return out;
     }
     var react = parts.filter(function (p) { return !p.resistive; });
     if (total) {
-      total.colors = new Array(n); total.width = 2.4;
+      total.colors = new Array(n); total.colorGroups = new Array(n); total.width = 2.4;
       for (var k = 0; k < n; k++) {
         var best = react[0] || parts[0], bv = -1;
         react.forEach(function (p) { var v = Math.abs(p.im[k]); if (v > bv) { bv = v; best = p; } });
-        total.colors[k] = best.color;
+        total.colors[k] = best.color; total.colorGroups[k] = 'part' + best.i;
       }
     }
     var x0 = 0;
     parts.forEach(function (p) {
       if (!p.resistive) return;
-      out.push({ name: p.label, group: 'part' + p.i, x: [x0, x0 + p.re[0]], y: [0, 0], color: p.color, mode: 'lines', width: 4, legend: true });
+      out.push({ name: p.label, group: 'part' + p.i, x: [x0, x0 + p.re[0]], y: [0, 0], color: p.color, mode: 'lines', width: 4, legend: true, parent: ds.id });
       x0 += p.re[0];
     });
     var order = react.slice().sort(function (a, b) { return cv.f[b.kmax] - cv.f[a.kmax]; });
@@ -153,7 +153,7 @@ Y.plots = (function () {
       var off = x0;
       order.forEach(function (q, j) { if (j < i) off += q.re[0]; else if (j > i) off += q.re[n - 1]; });
       out.push({ name: p.label, group: 'part' + p.i, x: Float64Array.from(p.re, function (v) { return v + off; }), y: Float64Array.from(p.im, function (v) { return -v; }),
-                 color: p.color, mode: 'lines', dash: [6, 4], width: 1.6, legend: true });
+                 color: p.color, mode: 'lines', dash: [6, 4], width: 1.6, legend: true, parent: ds.id });
     });
     return out;
   }
@@ -227,7 +227,7 @@ Y.plots = (function () {
     });
   }
 
-  function residLabel(part) { return S.settings.resid === 'rel' ? part + ' − calc /%|Z|' : part + ' − calc /Ω'; }
+  function residLabel(part, uz) { return S.settings.resid === 'rel' ? part + ' − calc /%|Z|' : part + ' − calc' + (uz || ' /Ω'); }
 
   function refresh(auto) {
     if (auto) Object.keys(needAuto).forEach(function (k) { needAuto[k] = true; });
@@ -246,6 +246,9 @@ Y.plots = (function () {
     if (!tab || !dirty[tab]) return;
     dirty[tab] = false;
     var list = plotted(), s;
+    var u = Y.state.zUnitOf(list), uz = u ? ' /' + u : ' (mixed units)';     // unit of Z (normalization)
+    P.nyq.o.xlabel = 'Zr' + uz; P.nyq.o.ylabel = '−Zi' + uz; P.zr.o.ylabel = 'Zr' + uz; P.zi.o.ylabel = 'Zi' + uz; P.mod.o.ylabel = '|Z|' + uz;
+    P.zrRes.o.ylabel = residLabel('Zr', uz); P.ziRes.o.ylabel = residLabel('Zi', uz);
     var empty = S.datasets.length ? 'Select one or more datasets' : 'No data yet. Use Read data, drop files on this window, or type demo in the command line below.';
     [P.nyq, P.zr, P.zi, P.mod].forEach(function (p) { p.o.empty = empty; });
     var note = $('#plot-note');
@@ -299,8 +302,9 @@ Y.plots = (function () {
         xs.push(x); ys.push(n); zs.push(z);
       }
     });
-    var zl = { nyq: '−Zi /Ω', nyqcalc: '−Zi calc /Ω', zr: 'Zr /Ω', zi: 'Zi /Ω', zrdiff: 'Zr − calc /Ω', zidiff: 'Zi − calc /Ω' }[mode];
-    return { x: xs, y: ys, z: zs, xlog: fBased, labels: { x: fBased ? 'f /Hz' : 'Zr /Ω', y: 'dataset', z: zl } };
+    var u = Y.state.zUnitOf(list), uz = u ? ' /' + u : ' (mixed units)';
+    var zl = { nyq: '−Zi' + uz, nyqcalc: '−Zi calc' + uz, zr: 'Zr' + uz, zi: 'Zi' + uz, zrdiff: 'Zr − calc' + uz, zidiff: 'Zi − calc' + uz }[mode];
+    return { x: xs, y: ys, z: zs, xlog: fBased, labels: { x: fBased ? 'f /Hz' : 'Zr' + uz, y: 'dataset', z: zl } };
   }
 
   function show(tab) {
@@ -346,11 +350,12 @@ Y.plots = (function () {
 
   // static images of one dataset for the report
   function imagesFor(ds, w, h) {
+    var uz = ' /' + Y.state.zUnit(ds);
     var one = [ds], out = {}, nq = build('nyq', one, { size: 4, width: 1.6, noContrib: true }), zr = build('zr', one, { size: 4, noContrib: true }), zi = build('zi', one, { size: 4, noContrib: true });
-    out.nyq = Y.Plot2D.image(nq.main, { xlabel: 'Zr /Ω', ylabel: '−Zi /Ω', equal: S.settings.nyqEqual, legend: false }, w, h);
-    out.zr = Y.Plot2D.image(zr.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zr /Ω', legend: false }, w, h);
-    out.zi = Y.Plot2D.image(zi.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zi /Ω', legend: false }, w, h);
-    out.mod = Y.Plot2D.image(build('mod', one, { size: 4 }).main, { xlog: true, ylog: true, xlabel: 'f /Hz', ylabel: '|Z| /Ω', legend: false }, w, h);
+    out.nyq = Y.Plot2D.image(nq.main, { xlabel: 'Zr' + uz, ylabel: '−Zi' + uz, equal: S.settings.nyqEqual, legend: false }, w, h);
+    out.zr = Y.Plot2D.image(zr.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zr' + uz, legend: false }, w, h);
+    out.zi = Y.Plot2D.image(zi.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zi' + uz, legend: false }, w, h);
+    out.mod = Y.Plot2D.image(build('mod', one, { size: 4 }).main, { xlog: true, ylog: true, xlabel: 'f /Hz', ylabel: '|Z|' + uz, legend: false }, w, h);
     out.ph = Y.Plot2D.image(build('phase', one, { size: 4 }).main, { xlog: true, xlabel: 'f /Hz', ylabel: phaseLabel(), legend: false }, w, h);
     if (zr.res.length) out.res = Y.Plot2D.image(zr.res.concat(zi.res.map(function (s) { return Object.assign({}, s, { color: '#d1495b' }); })),
       { xlog: true, xlabel: 'f /Hz', ylabel: 'residuals (Zr blue, Zi red)', legend: false }, w, Math.round(h * 0.6));

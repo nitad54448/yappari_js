@@ -344,6 +344,10 @@ dialog.xl { width: min(1000px, 96vw); }
 .log .restore { padding: 1px 8px; font-size: 12px; }
 .log-head { margin: 12px 22px 0; max-width: 90ch; }
 
+.form-grid [hidden] { display: none !important; }
+.ds .du { flex: none; font-size: 11px; color: var(--ink2); }
+.ds.on .du { color: #3d4650; }
+
 /* ---------- narrow windows ---------- */
 @media (max-width: 920px) {
   html, body { height: auto; overflow: auto; }

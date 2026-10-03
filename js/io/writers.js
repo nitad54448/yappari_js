@@ -8,6 +8,13 @@ Y.writers = (function () {
   'use strict';
   var SEP = { tab: '\t', comma: ',', semicolon: ';', space: ' ', auto: '\t' };
 
+  // unit of Z in ASCII for text files, from the dataset normalization
+  var NU = { area: 'Ohm.cm2', resist: 'Ohm.cm' }, NC = { area: 'F.cm-2', resist: 'F.cm-1' };
+  function zu(norm) { return (norm && NU[norm.type]) || 'Ohm'; }
+  function cu(norm) { return (norm && NC[norm.type]) || 'F'; }
+  function normLine(norm) {
+    return '#normalization ' + norm.type + ' k=' + e(norm.k) + (norm.A != null ? ' A=' + e(norm.A) : '') + (norm.L != null ? ' L=' + e(norm.L) : '') + ' unit=' + zu(norm);
+  }
   function e(v) { return (typeof v === 'number' && isFinite(v)) ? v.toExponential(6).toUpperCase() : 'NaN'; }
   function stamp(d) {
     d = d || new Date();
@@ -24,6 +31,7 @@ Y.writers = (function () {
     list.forEach(function (ds) {
       var calc = opts.calc ? calcFor(ds) : null, sig = anySig && ds.sr && ds.si;
       out.push('#dataset ' + ds.name);
+      if (ds.norm) out.push(normLine(ds.norm));
       var head = ['freq/Hz'];
       if (exp) head.push('Zr', 'Zi');
       if (anySig) head.push('sigma Zr', 'sigma Zi');
@@ -58,11 +66,12 @@ Y.writers = (function () {
   function paramsText(list, names, info) {
     var out = ['Yappari JS - parameters saved : ' + stamp(),
                '# circuit: ' + info.cdc + '   method: ' + info.method + '   weight: ' + info.weight + '   SE in % of the value'];
-    var head = ['Dataset', 'R2', 'chi2_w', 'chi2_red'];
+    var units = list.some(function (d) { return d.norm && NU[d.norm.type]; });
+    var head = ['Dataset'].concat(units ? ['Z unit'] : [], ['R2', 'chi2_w', 'chi2_red']);
     names.forEach(function (n) { head.push(n, 'SE%_' + n); });
     out.push(head.join('\t'));
     list.forEach(function (ds) {
-      var st = ds.stats, row = [ds.name, st ? e(st.r2) : '', st ? e(st.chi2w) : '', st ? e(st.chi2red) : ''];
+      var st = ds.stats, row = [ds.name].concat(units ? [zu(ds.norm)] : [], [st ? e(st.r2) : '', st ? e(st.chi2w) : '', st ? e(st.chi2red) : '']);
       names.forEach(function (n) {
         row.push(e(ds.p[n]));
         var se = st && st.se ? st.se[n] : undefined;
@@ -84,7 +93,7 @@ Y.writers = (function () {
       datasets: state.datasets.map(function (ds) {
         return { name: ds.name, f: arr(ds.f), zr: arr(ds.zr), zi: arr(ds.zi), mask: arr(ds.mask),
                  sr: ds.sr ? arr(ds.sr) : null, si: ds.si ? arr(ds.si) : null, notes: ds.notes || [],
-                 p: ds.p, fit: ds.fit, stats: ds.stats || null };
+                 p: ds.p, fit: ds.fit, stats: ds.stats || null, norm: ds.norm || null };
       })
     };
     return JSON.stringify(doc);
@@ -95,11 +104,12 @@ Y.writers = (function () {
   function drtText(items, sep, how) {
     var s = SEP[sep] || '\t', out = ['Yappari JS - DRT saved : ' + stamp(), '# ' + how + '; Rinf and Rpol from the data; peak R = Rpol x area, C = tau/R'], most = 0;
     items.forEach(function (it) { most = Math.max(most, it.r.peaks.length); });
-    var head = ['Dataset', 'Rinf/Ohm', 'Rpol/Ohm', 'misfit_rms', 'peaks'];
-    for (var q = 1; q <= most; q++) head.push('f' + q + '/Hz', 'R' + q + '/Ohm', 'C' + q + '/F');
+    var U = zu(items[0] && items[0].norm), same = items.every(function (it) { return zu(it.norm) === U; }), ru = same ? '/' + U : '', fu = same ? '/' + cu(items[0] && items[0].norm) : '';
+    var head = ['Dataset'].concat(same ? [] : ['Z unit'], ['Rinf' + ru, 'Rpol' + ru, 'misfit_rms', 'peaks']);
+    for (var q = 1; q <= most; q++) head.push('f' + q + '/Hz', 'R' + q + ru, 'C' + q + fu);
     out.push('', '#summary', head.join(s));
     items.forEach(function (it) {
-      var r = it.r, row = [it.name, e(r.rinf), e(r.rpol), e(r.err), String(r.peaks.length)];
+      var r = it.r, row = [it.name].concat(same ? [] : [zu(it.norm)], [e(r.rinf), e(r.rpol), e(r.err), String(r.peaks.length)]);
       r.peaks.forEach(function (p) { row.push(e(p.f), e(p.R), e(p.C)); });
       out.push(row.join(s));
     });
@@ -109,7 +119,7 @@ Y.writers = (function () {
       for (j = 0; j < r.tau.length; j++) out.push([e(r.tau[j]), e(1 / (2 * Math.PI * r.tau[j])), e(r.g[j])].join(s));
       out.push('', '#drt spectrum ' + it.name, ['freq/Hz', 'Zr', 'Zi', 'Zr drt', 'Zi drt'].join(s));
       for (j = 0; j < r.f.length; j++) out.push([e(r.f[j]), e(r.zrExp[j]), e(r.ziExp[j]), e(r.zr[j]), e(r.zi[j])].join(s));
-      out.push('', '#drt peaks ' + it.name, ['f/Hz', 'tau/s', 'R/Ohm', 'C/F', 'share_of_Rpol'].join(s));
+      out.push('', '#drt peaks ' + it.name, ['f/Hz', 'tau/s', 'R/' + zu(it.norm), 'C/' + cu(it.norm), 'share_of_Rpol'].join(s));
       r.peaks.forEach(function (p) { out.push([e(p.f), e(p.tau), e(p.R), e(p.C), e(p.share)].join(s)); });
     });
     return out.join('\n') + '\n';

@@ -100,7 +100,8 @@ Y.Plot2D = (function () {
   P.ix = function (p) { var b = this.box, v = this.view; return v.x0 + (p - b.x0) / (b.x1 - b.x0) * (v.x1 - v.x0); };
   P.iy = function (p) { var b = this.box, v = this.view; return v.y0 + (b.y1 - p) / (b.y1 - b.y0) * (v.y1 - v.y0); };
 
-  P.visibleSeries = function () { var h = this.hidden; return this.series.filter(function (s) { return !h.has(s.group); }); };
+  // a series with a parent (contributions of a dataset) is hidden with it
+  P.visibleSeries = function () { var h = this.hidden; return this.series.filter(function (s) { return !h.has(s.group) && !(s.parent != null && h.has(s.parent)); }); };
 
   P.autoscale = function (silent) {
     var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, self = this;
@@ -230,7 +231,7 @@ Y.Plot2D = (function () {
     this.series.forEach(function (s) {
       if (!s.legend || seen[s.group]) return;
       seen[s.group] = true;
-      groups.push({ group: s.group, name: s.name, color: s.color, dash: s.dash, marker: s.mode !== 'lines' && s.mode !== 'area' });
+      groups.push({ group: s.group, parent: s.parent, name: s.name, color: s.color, dash: s.dash, marker: s.mode !== 'lines' && s.mode !== 'area' });
     });
     if (!groups.length) return;
     var max = this.o.legendMax, more = groups.length - max;
@@ -245,7 +246,7 @@ Y.Plot2D = (function () {
     c.strokeStyle = T.grid; c.strokeRect(x + 0.5, y + 0.5, w, h);
     c.textAlign = 'left'; c.textBaseline = 'middle';
     groups.forEach(function (g, i) {
-      var yy = y + 4 + i * lh + lh / 2, off = self.hidden.has(g.group);
+      var yy = y + 4 + i * lh + lh / 2, off = self.hidden.has(g.group) || (g.parent != null && self.hidden.has(g.parent));
       c.globalAlpha = off ? 0.35 : 1;
       c.strokeStyle = g.color; c.lineWidth = 1.5; c.setLineDash(g.dash || []); c.beginPath(); c.moveTo(x + 6, yy); c.lineTo(x + 20, yy); c.stroke(); c.setLineDash([]);
       if (g.marker) { c.fillStyle = g.color; c.fillRect(x + 11.5, yy - 1.75, 3.5, 3.5); }
@@ -369,7 +370,7 @@ Y.Plot2D = (function () {
       for (i = 0; i < s.x.length; i++) {
         p = this._xy(s, i);
         if (!p) { prev = null; continue; }
-        if (prev) { c.strokeStyle = s.colors[i]; c.beginPath(); c.moveTo(prev[0], prev[1]); c.lineTo(p[0], p[1]); c.stroke(); }
+        if (prev) { c.strokeStyle = s.colorGroups && this.hidden.has(s.colorGroups[i]) ? s.color : s.colors[i]; c.beginPath(); c.moveTo(prev[0], prev[1]); c.lineTo(p[0], p[1]); c.stroke(); }
         prev = p;
       }
     } else {
