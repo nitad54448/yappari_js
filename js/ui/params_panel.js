@@ -59,7 +59,7 @@ Y.paramsPanel = (function () {
       row.classList.toggle('fixed', !fit);
       var se = row.querySelector('.ps'), st = ds && ds.stats;
       if (st && st.bound && st.bound[n]) { se.textContent = 'limit'; se.title = 'At its limit, no standard error'; se.className = 'ps lim'; }
-      else if (st && st.se && st.se[n] != null) { se.textContent = st.se[n] >= 100 ? '>100%' : '±' + fmtPct(st.se[n]); se.title = 'Standard error, % of the value'; se.className = 'ps'; }
+      else if (st && st.se && Number.isFinite(st.se[n])) { se.textContent = st.se[n] >= 100 ? '>100%' : '±' + fmtPct(st.se[n]); se.title = 'Standard error, % of the value'; se.className = 'ps'; }
       else { se.textContent = ''; se.title = ''; se.className = 'ps'; }
     });
     renderStats();
@@ -70,10 +70,10 @@ Y.paramsPanel = (function () {
     if (!ds || !S.model.prog) { host.innerHTML = ''; return; }
     if (!st) { host.innerHTML = '<p class="hint">Not fitted with these values.</p>'; return; }
     if (st.chi2w == null) { host.innerHTML = '<p class="hint err">Fit failed: ' + esc(st.msg || '') + '</p>'; return; }
-    var msg = st.msg || '', short = /^converged/.test(msg) ? 'converged' : /iteration limit/.test(msg) ? 'iteration limit' : msg;
+    var msg = st.msg || '', short = /^converged/.test(msg) ? 'converged' : /iteration limit/.test(msg) ? 'iteration limit' : /^stopped/.test(msg) ? 'stalled, not a minimum' : msg;
     var wname = { mod: '1/|Z|', mod2: '1/|Z|²', unit: '1', sigma: '1/σ², ' + (st.sigma || 'measured') }[st.weight] || st.weight || '';
     host.innerHTML = '<dl><dt>χ²<sub>w</sub></dt><dd>' + fmtStat(st.chi2w) + '</dd><dt>χ²<sub>red</sub></dt><dd>' + fmtStat(st.chi2red) +
-      '</dd><dt>R²</dt><dd>' + (isFinite(st.r2) ? st.r2.toFixed(6) : '—') + '</dd><dt>Weights</dt><dd>' + esc(wname) +
+      '</dd><dt>R²</dt><dd>' + (Number.isFinite(st.r2) ? st.r2.toFixed(6) : '—') + '</dd><dt>Weights</dt><dd>' + esc(wname) +
       '</dd><dt>Fit</dt><dd title="' + esc(msg) + '">' + (st.global ? 'global, ' : '') + (st.iter != null ? st.iter + ' it, ' : '') + esc(short) +
       (short === 'converged' ? ' <span class="why">(' + esc(msg.replace(/^converged: /, '')) + ')</span>' : '') + '</dd></dl>';
   }

@@ -18,15 +18,15 @@ Y.report = (function () {
     'svg{max-width:100%;height:auto}@media print{section{break-inside:avoid-page}}';
 
   function head(list) {
-    var st = S.settings, names = Y.state.names();
+    var fs = Y.state.fitSummary(list), names = Y.state.names();
     var lim = names.map(function (n) {
       var L = S.model.limits[n];
       return '<tr><td>' + n + '</td><td>' + fmt(L.min) + '</td><td>' + fmt(L.max) + '</td><td>' + (S.model.shared[n] ? 'shared' : 'local') + '</td></tr>';
     }).join('');
     return '<h1>Yappari report</h1><p class="muted">' + Y.writers.stamp() + ', Yappari JS ' + esc(Y.version) + ', ' + list.length + ' dataset' + (list.length === 1 ? '' : 's') + '</p>' +
       '<h2>Circuit</h2><p><code>' + esc(S.model.cdc) + '</code></p>' + Y.schematic.svgString(S.model.tree) +
-      '<table><tr><th>Method</th><td>' + esc(Y.fit.methods[st.method]) + '</td></tr><tr><th>Weight</th><td>' + esc(Y.fit.weightModes[st.weight]) +
-      '</td></tr><tr><th>Iterations, tolerance</th><td>' + st.maxIter + ', ' + st.tol + '</td></tr><tr><th>Standard errors</th><td>% of the value, from s²(JᵀJ)⁻¹ with s² = χ²red, DOF = 2N − p</td></tr></table>' +
+      '<table><tr><th>Method</th><td>' + esc(fs.method) + '</td></tr><tr><th>Weight</th><td>' + esc(fs.weight) +
+      '</td></tr><tr><th>Iterations, tolerance</th><td>' + esc(fs.iter) + '</td></tr><tr><th>Standard errors</th><td>% of the value, from s²(JᵀJ)⁻¹ with s² = χ²red, DOF = 2N − p</td></tr></table>' +
       '<table><tr><th>Parameter</th><th>Min</th><th>Max</th><th>Global fit</th></tr>' + lim + '</table>';
   }
 
@@ -34,12 +34,12 @@ Y.report = (function () {
     var st = ds.stats, names = Y.state.names(), img = Y.plots.imagesFor(ds, 560, 360);
     var rows = names.map(function (n) {
       var se = st && st.se ? st.se[n] : null, b = st && st.bound && st.bound[n];
-      return '<tr><td>' + n + '</td><td>' + fmt(ds.p[n]) + ' ' + esc(Y.state.paramUnit(n, ds)) + '</td><td>' + (ds.fit[n] ? (b ? 'at its limit' : (se != null ? '± ' + (+se.toPrecision(3)) + ' %' : '')) : 'fixed') + '</td></tr>';
+      return '<tr><td>' + n + '</td><td>' + fmt(ds.p[n]) + ' ' + esc(Y.state.paramUnit(n, ds)) + '</td><td>' + (ds.fit[n] ? (b ? 'at its limit' : (Number.isFinite(se) ? '± ' + (+se.toPrecision(3)) + ' %' : '')) : 'fixed') + '</td></tr>';
     }).join('');
     var stats = st && st.chi2w != null ?
       '<table><tr><th>χ²w</th><td>' + fmt(st.chi2w) + '</td><th>χ²red</th><td>' + fmt(st.chi2red) + '</td><th>R²</th><td>' +
-      (isFinite(st.r2) ? st.r2.toFixed(6) : '—') + '</td><th>Points</th><td>' + (st.n || '') + '</td></tr></table><p class="muted">' +
-      (st.global ? 'Global fit. ' : '') + (st.weight === 'sigma' ? 'Weights 1/σ², ' + esc(st.sigma || 'measured') + '. ' : '') + esc(st.msg || '') + (st.iter != null ? ', ' + st.iter + ' iterations' : '') + '.</p>' :
+      (Number.isFinite(st.r2) ? st.r2.toFixed(6) : '—') + '</td><th>Points</th><td>' + (st.n || '') + '</td></tr></table><p class="muted">' +
+      (st.global ? 'Global fit. ' : '') + (st.method ? esc(Y.fit.methods[st.method] || st.method) + (st.maxIter != null ? ', at most ' + st.maxIter + ' iterations, tolerance ' + st.tol : '') + '. ' : '') + (st.weight === 'sigma' ? 'Weights 1/σ², ' + esc(st.sigma || 'measured') + '. ' : '') + esc(st.msg || '') + (st.iter != null ? ', ' + st.iter + ' iterations' : '') + '.</p>' :
       '<p class="muted">Not fitted with these values.</p>';
     var pics = ['nyq', 'zr', 'zi', 'mod', 'ph', 'res'].filter(function (k) { return img[k]; })
       .map(function (k) { return '<img alt="" src="' + img[k] + '">'; }).join('');

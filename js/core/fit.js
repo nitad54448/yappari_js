@@ -179,7 +179,7 @@ Y.defineCore('fit', function (Y) {
     for (it = 0; it < o.maxIter; it++) {
       if (needJ) {
         P.jac(x, r, J, false); normalEq(J, r, m, nf, A, g); needJ = false;
-        if (mu < 0) { var md = 0; for (q = 0; q < nf; q++) md = Math.max(md, A[q * nf + q]); mu = 1e-3 * (md || 1); }
+        if (mu < 0) mu = 1e-3;              // dimensionless: the damping below is mu × diag(JᵀJ) (Marquardt scaling)
       }
       if (!activeSet(P, x, g, act)) { msg = 'all fitted parameters are at their limits'; break; }
       var F = [], gmax = 0, maxd = 0;
@@ -413,6 +413,54 @@ Y.defineCore('fit', function (Y) {
     return { chi2w: chi2, chi2red: chi2red, r2: r2, dof: dof, se: se, atBound: atBound };
   }
 
+  // ---------------------------------------------------------------- stagnation check
+  // A solver can stop with tiny steps that are not at a minimum (heavy damping, a trust region shrunk by
+  // noise ...). Before a stop is reported as convergence, one bounded Gauss-Newton step is tried from the
+  // final point: if it still lowers χ² by more than max(1e-6, 100·tol) (relative), the fit stalled.
+  var STALL_MSG = 'stopped: no further progress, but χ² can still decrease (not a minimum; try other start values or another method)';
+  function dataScale(P) {
+    var s = 0;
+    for (var k = 0; k < P.n; k++) { var a = P.swr[k] * P.zr[k], b = P.swi[k] * P.zi[k]; s += a * a + b * b; }
+    return s;
+  }
+  function stalled(P, x, tol) {
+    var m = 2 * P.n, nf = x.length, r = new Float64Array(m), q, a, c;
+    if (!nf) return false;
+    var f = P.resid(x, r);
+    if (!(f < Infinity) || f <= 1e-16 * dataScale(P)) { P.resid(x, r); return false; }   // residuals at round-off level
+    var J = new Float64Array(m * nf), A = new Float64Array(nf * nf), g = new Float64Array(nf), act = new Uint8Array(nf);
+    P.jac(x, r, J, true); normalEq(J, r, m, nf, A, g);
+    if (!activeSet(P, x, g, act)) { P.resid(x, r); return false; }
+    var F = [];
+    for (q = 0; q < nf; q++) if (!act[q]) F.push(q);
+    var nF = F.length, M = new Float64Array(nF * nF), b = new Float64Array(nF);
+    for (a = 0; a < nF; a++) {
+      b[a] = -g[F[a]];
+      for (c = 0; c < nF; c++) M[a * nF + c] = A[F[a] * nf + F[c]];
+      M[a * nF + a] *= 1 + 1e-9;
+    }
+    var d = LA.solveSPD(M, b, nF), better = false;
+    if (d) {
+      var xn = Float64Array.from(x), scl = 1;
+      for (a = 0; a < nF; a++) {
+        var cap = P.isLog[F[a]] ? 3 : 0.5 * Math.max(Math.abs(x[F[a]]), 1);
+        if (Math.abs(d[a]) * scl > cap) scl = cap / Math.abs(d[a]);
+      }
+      for (a = 0; a < nF; a++) {
+        q = F[a]; var v = x[q] + scl * d[a];
+        if (P.bounded) v = Math.min(P.hi[q], Math.max(P.lo[q], v));
+        xn[q] = v;
+      }
+      var fn = P.resid(xn, new Float64Array(m));
+      better = fn < f * (1 - Math.max(1e-6, 100 * tol));
+    }
+    P.resid(x, r);                                     // leave P at the final point
+    return better;
+  }
+
+  // fit status from the message: 'ok' converged, 'warn' iteration limit or stalled
+  function status(msg) { return /iteration limit|^stopped/.test(msg || '') ? 'warn' : 'ok'; }
+
   // ---------------------------------------------------------------- entry point (also used inside workers)
   function run(job) {
     var t0 = Date.now();
@@ -427,6 +475,8 @@ Y.defineCore('fit', function (Y) {
       else if (job.method === 'NM') res = nelderMead(P, x, o);
       else if (job.method === 'LM' || job.method === 'LMB') res = lm(P, x, o);
       else res = trdl(P, x, o);
+      if (/^converged/.test(res.msg) && !/zero gradient/.test(res.msg) && stalled(P, res.x, o.tol))
+        res.msg = STALL_MSG;
       var st = finalStats(P, res.x);
       return { id: job.id, ok: !res.fail, p: Float64Array.from(P.p), se: st.se, atBound: st.atBound,
                chi2w: st.chi2w, chi2red: st.chi2red, r2: st.r2, dof: st.dof, n: P.n,
@@ -436,7 +486,7 @@ Y.defineCore('fit', function (Y) {
     }
   }
 
-  Y.fit = { run: run, getProg: getProg, weights: weights, Problem: Problem, normalEq: normalEq,
+  Y.fit = { run: run, status: status, stalled: stalled, STALL_MSG: STALL_MSG, getProg: getProg, weights: weights, Problem: Problem, normalEq: normalEq,
             methods: { TRDL: 'Trust-region dogleg (bounded)', LMB: 'Levenberg–Marquardt (bounded)',
                        LM: 'Levenberg–Marquardt (unbounded)', NM: 'Nelder–Mead (bounded)' },
             weightModes: { mod: '|Z|  (w = 1/|Z|)', mod2: '|Z|²  (w = 1/|Z|²)', unit: 'equal  (w = 1)' } };

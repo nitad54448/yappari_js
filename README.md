@@ -269,7 +269,10 @@ them is brought back to the nearest limit.
 ### Running fits
 
 * **Individual** mode: each selected dataset is fitted on its own, from its own start values, in parallel Web
-  Workers (the status bar shows how many). *Stop* interrupts a running batch.
+  Workers (the status bar shows how many). *Stop* interrupts a running batch; a running global fit is stopped
+  at once and its result discarded (parameters unchanged).
+* A fit that stops on tiny steps is checked with one Gauss-Newton step; if χ² could still drop noticeably it is
+  reported as *stalled, not a minimum* (amber), not as converged.
 * Fit flags (the tick boxes) are per dataset and are copied with the values by *Copy these values to …*.
 * Start values: type them, or turn the mouse wheel over a value (Shift: larger steps, Alt: smaller), or use the
   arrow keys. The model curve follows immediately.
@@ -671,8 +674,8 @@ page is closed: Save project keeps a state for good.
 ### Measured errors as weights
 
 With *Use measured standard deviations as weights* (Parameters, Data files), datasets read with standard
-deviations (`realzstddev`, `imagzstddev` or `abszstddev` lines of MFLI csv files, `sigma Zr`, `sigma Zi` columns
-written by Save data) are fitted with w = 1/σ² for each part. Points without a σ get the median relative error
+deviations (`realzstddev`, `imagzstddev` or `abszstddev` lines of MFLI csv files, `sigma_Zr`, `sigma_Zi` columns
+written by Save data; the older `sigma Zr` headers are still read) are fitted with w = 1/σ² for each part. Points without a σ get the median relative error
 (σ/|Z|) of the others; with fewer than 3 measured points the usual weight is used. χ²red is then close to 1 for an
 adequate model. Error bars are drawn on the Nyquist, Zr and Zi plots.
 

@@ -193,7 +193,9 @@ Y.state = (function () {
     Y.bus.emit('params', {});
   }
 
-  // fit result from Y.fit.run / Y.globalFit (p, se, atBound arrays in circuit order)
+  // fit result from Y.fit.run / Y.globalFit (p, se, atBound arrays in circuit order).
+  // extra should hold the settings of the submitted job (method, weight, maxIter, tol), so the stored result
+  // describes the calculation that was actually run; the current settings are only a fallback.
   function applyResult(ds, res, extra) {
     var nm = names(), se = {}, bound = {};
     nm.forEach(function (n, j) {
@@ -203,8 +205,27 @@ Y.state = (function () {
     });
     ds.stats = Object.assign({ chi2w: res.chi2w, chi2red: res.chi2red, r2: res.r2, n: res.n, iter: res.iter,
                                msg: res.msg, ok: res.ok, se: se, bound: bound,
-                               method: S.settings.method, weight: S.settings.weight }, extra || {});
+                               method: S.settings.method, weight: S.settings.weight,
+                               maxIter: S.settings.maxIter, tol: S.settings.tol }, extra || {});
     invalidate(ds);
+  }
+
+  // settings of a job, recorded with its result
+  function jobMeta(job) { return { method: job.method, weight: job.weight, maxIter: job.maxIter, tol: job.tol }; }
+
+  // how the fitted datasets of a list were fitted, from the settings stored with each result:
+  // { method, weight, iter: text, mixed: bool, fitted: count }; texts say 'mixed' when they differ
+  var WEIGHT_TEXT = { mod: '|Z|  (w = 1/|Z|)', mod2: '|Z|²  (w = 1/|Z|²)', unit: 'equal  (w = 1)', sigma: '1/σ² (measured)' };
+  function fitSummary(list) {
+    var fitted = list.filter(function (d) { return d.stats && d.stats.chi2w != null; });
+    function one(fn) {
+      var v = fitted.map(fn).filter(function (x, i, a) { return a.indexOf(x) === i; });
+      return !fitted.length ? 'not fitted' : v.length === 1 ? v[0] : 'mixed (' + v.join('; ') + ')';
+    }
+    var method = one(function (d) { return (Y.fit.methods[d.stats.method] || d.stats.method || '?') + (d.stats.global ? ', global fit' : ''); });
+    var weight = one(function (d) { return d.stats.weight === 'sigma' ? '1/σ² (' + (d.stats.sigma || 'measured') + ')' : (WEIGHT_TEXT[d.stats.weight] || d.stats.weight || '?'); });
+    var iter = one(function (d) { return (d.stats.maxIter != null ? d.stats.maxIter : '?') + ', ' + (d.stats.tol != null ? d.stats.tol : '?'); });
+    return { method: method, weight: weight, iter: iter, fitted: fitted.length };
   }
 
   // ---------------------------------------------------------------- model values (cached)
@@ -288,19 +309,90 @@ Y.state = (function () {
   }
 
   // ---------------------------------------------------------------- project
-  function loadProject(doc) {
-    if (!doc || doc.format !== 'yappari-js-project') throw new Error('not a Yappari JS project file');
-    var d = defaults();
-    S.settings = Object.assign(d, doc.settings || {});
+  // Everything is checked and built before anything in memory changes, so a bad file leaves the
+  // current circuit, datasets and settings as they were. Returns the prepared project for commitProject.
+  var PROJECT_VERSION = 1;
+  var STAT_NUM = ['chi2w', 'chi2red', 'r2', 'globalChi2red'];
+  function prepareProject(doc) {
+    if (!doc || typeof doc !== 'object' || doc.format !== 'yappari-js-project') throw new Error('not a Yappari JS project file');
+    if (doc.version != null && !(doc.version >= 1 && doc.version <= PROJECT_VERSION))
+      throw new Error('project version ' + doc.version + ' is not supported (this program reads version ' + PROJECT_VERSION + ')');
+    function bad(what) { throw new Error('invalid project: ' + what); }
+    function isObj(v) { return v != null && typeof v === 'object' && !Array.isArray(v); }
+    function nums(a, n, what, nullOK) {
+      if (!Array.isArray(a) || (n != null && a.length !== n)) bad(what + (Array.isArray(a) ? ' has ' + a.length + ' values instead of ' + n : ' is missing'));
+      for (var k = 0; k < a.length; k++) {
+        var v = a[k];
+        if (!(typeof v === 'number' && isFinite(v)) && !(nullOK && v == null)) bad(what + ' value ' + (k + 1) + ' is not a number');
+      }
+      return a;
+    }
+    // settings: known keys with the type of the default; anything else keeps the default value
+    var settings = defaults();
+    if (doc.settings != null) {
+      if (!isObj(doc.settings)) bad('settings');
+      Object.keys(doc.settings).forEach(function (k) {
+        var v = doc.settings[k];
+        if (k in settings && typeof v === typeof settings[k] && !(typeof v === 'number' && !isFinite(v))) settings[k] = v;
+      });
+      var d0 = defaults();
+      if (!(settings.method in Y.fit.methods)) settings.method = d0.method;
+      if (!(settings.weight in Y.fit.weightModes)) settings.weight = d0.weight;
+      if (!(settings.maxIter >= 1)) settings.maxIter = d0.maxIter;
+      if (!(settings.tol > 0)) settings.tol = d0.tol;
+    }
+    // circuit
+    var m = doc.model == null ? {} : doc.model, tree = null, prog = null;
+    if (!isObj(m)) bad('model');
+    if (m.cdc != null && typeof m.cdc !== 'string') bad('circuit');
+    if (m.cdc) {
+      try { tree = Y.circuit.parse(m.cdc); prog = Y.circuit.compile(tree); }
+      catch (e) { throw new Error('invalid circuit "' + m.cdc + '": ' + ((e && e.message) || e)); }
+    }
+    var limits = m.limits == null ? {} : m.limits, shared = m.shared == null ? {} : m.shared;
+    if (!isObj(limits) || !isObj(shared)) bad('limits or shared flags');
+    Object.keys(limits).forEach(function (n) {
+      var L = limits[n];
+      if (!isObj(L) || !(typeof L.min === 'number' && typeof L.max === 'number' && L.min < L.max)) bad('limits of ' + n);
+    });
+    // datasets
+    if (doc.datasets != null && !Array.isArray(doc.datasets)) bad('datasets');
+    var raws = (doc.datasets || []).map(function (r, i) {
+      var what = 'dataset ' + (i + 1);
+      if (!isObj(r)) bad(what);
+      var n = nums(r.f, null, what + ': frequencies').length;
+      if (!n) bad(what + ' has no points');
+      r.f.forEach(function (v, k) { if (!(v > 0)) bad(what + ': frequency ' + (k + 1) + ' is not positive'); });
+      nums(r.zr, n, what + ': Zr'); nums(r.zi, n, what + ': Zi');
+      if (r.mask != null) nums(r.mask, n, what + ': mask');
+      if ((r.sr == null) !== (r.si == null)) bad(what + ': only one of the standard-deviation columns');
+      if (r.sr != null) { nums(r.sr, n, what + ': sigma Zr', true); nums(r.si, n, what + ': sigma Zi', true); }
+      if (r.notes != null) nums(r.notes, null, what + ': labels');
+      if (r.name != null && typeof r.name !== 'string') bad(what + ': name');
+      ['p', 'fit'].forEach(function (key) { if (r[key] != null && !isObj(r[key])) bad(what + ': ' + key); });
+      Object.keys(r.p || {}).forEach(function (pn) { if (!(typeof r.p[pn] === 'number' && isFinite(r.p[pn]))) bad(what + ': parameter ' + pn); });
+      if (r.norm != null && !(isObj(r.norm) && r.norm.k > 0 && isFinite(r.norm.k) && /^(factor|area|resist)$/.test(r.norm.type))) bad(what + ': normalization');
+      if (r.stats != null && !isObj(r.stats)) bad(what + ': fit statistics');
+      // JSON writes NaN as null: statistics come back as NaN, so they are never mistaken for numbers
+      var stats = r.stats ? Object.assign({}, r.stats) : null;
+      if (stats) STAT_NUM.forEach(function (k) { if (k in stats && stats[k] == null) stats[k] = NaN; });
+      return Object.assign({}, r, { stats: stats });
+    });
+    return { settings: settings, tree: tree, limits: limits, shared: shared, raws: raws };
+  }
+
+  // replaces the circuit, datasets and settings with a project from prepareProject (does not throw)
+  function commitProject(pj) {
+    S.settings = pj.settings;
     store('settings', S.settings);
     S.datasets = []; S.sel.clear();
-    var tree = null;
-    if (doc.model && doc.model.cdc) tree = Y.circuit.parse(doc.model.cdc);
-    setModel(tree, { limits: (doc.model && doc.model.limits) || {}, shared: (doc.model && doc.model.shared) || {}, quiet: true });
-    S.datasets = (doc.datasets || []).map(makeDataset);
+    setModel(pj.tree, { limits: pj.limits, shared: pj.shared, quiet: true });
+    S.datasets = pj.raws.map(makeDataset);
     Y.bus.emit('settings', '*'); Y.bus.emit('model'); Y.bus.emit('datasets');
     selectIds(S.datasets.length ? [S.datasets[0].id] : []);
   }
+
+  function loadProject(doc) { commitProject(prepareProject(doc)); }
 
   // ---------------------------------------------------------------- normalization of Z (per dataset)
   // ds.norm: null (as measured, Ω), {type: 'factor', k} (unit unchanged), {type: 'area', k: A, A} (Ω·cm²) or
@@ -342,9 +434,13 @@ Y.state = (function () {
     if (!(r > 0) || !isFinite(r)) throw new Error('the factor must be positive');
     if (r !== 1) {
       Y.dataops.scaleZ(ds, r);
-      [ds.p, ds.mem].forEach(function (m) {
-        if (m) Object.keys(m).forEach(function (n) { var u = baseUnit(n); if (/Ω|^H/.test(u)) m[n] *= r; else if (/^F/.test(u)) m[n] /= r; });
-      });
+      function scaled(n, v) { var u = baseUnit(n); return /Ω|^H/.test(u) ? v * r : /^F/.test(u) ? v / r : v; }
+      Object.keys(ds.p).forEach(function (n) { ds.p[n] = scaled(n, ds.p[n]); });
+      if (ds.mem) {                     // remembered entries are [value, fit flag]; new pairs, so undo records stay intact
+        var mem = {};
+        Object.keys(ds.mem).forEach(function (n) { var e = ds.mem[n]; mem[n] = e ? [scaled(n, e[0]), e[1]] : e; });
+        ds.mem = mem;
+      }
       if (ds.stats && ds.stats.chi2w != null) {               // 1/|Z|² and 1/σ² weights leave χ² unchanged
         var w = ds.stats.weight, c = w === 'unit' ? r * r : w === 'mod' ? r : 1;
         ds.stats = Object.assign({}, ds.stats, { chi2w: ds.stats.chi2w * c, chi2red: ds.stats.chi2red * c },
@@ -374,7 +470,7 @@ Y.state = (function () {
     selectIds: selectIds, toggle: toggle, range: range, selectAll: selectAll, selected: selected, first: first,
     vector: vector, setParam: setParam, setFit: setFit, copyParams: copyParams, applyResult: applyResult,
     invalidate: invalidate, invalidateAll: invalidateAll, calcFor: calcFor, curveFor: curveFor,
-    bounds: bounds, unmasked: unmasked, fitData: fitData, sigmaFor: sigmaFor, jobFor: jobFor, loadProject: loadProject, setBusy: setBusy, fromRecord: fromRecord,
+    bounds: bounds, unmasked: unmasked, fitData: fitData, sigmaFor: sigmaFor, jobFor: jobFor, jobMeta: jobMeta, fitSummary: fitSummary, loadProject: loadProject, prepareProject: prepareProject, commitProject: commitProject, setBusy: setBusy, fromRecord: fromRecord,
     zUnit: zUnit, zUnitOf: zUnitOf, unitFor: unitFor, paramUnit: paramUnit, normText: normText, normalize: normalize
   };
 })();

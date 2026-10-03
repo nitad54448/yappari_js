@@ -34,8 +34,9 @@ Y.writers = (function () {
       if (ds.norm) out.push(normLine(ds.norm));
       var head = ['freq/Hz'];
       if (exp) head.push('Zr', 'Zi');
-      if (anySig) head.push('sigma Zr', 'sigma Zi');
-      if (calc) head.push('Zr calc', 'Zi calc');
+      // one token per column name, so a space-separated file reads back with the same columns
+      if (anySig) head.push('sigma_Zr', 'sigma_Zi');
+      if (calc) head.push('Zr_calc', 'Zi_calc');
       out.push(head.join(s));
       for (var k = 0; k < ds.f.length; k++) {
         if (ds.mask[k]) continue;
@@ -50,7 +51,7 @@ Y.writers = (function () {
         var r = ds.drt;
         out.push('#drt ' + ds.name + ': ' + r.method + (r.method === 'gold' ? ', ' + r.iterations + ' iterations' : ', lambda ' + e(r.lambda)) +
                  ', data ' + r.source + ', Rinf ' + e(r.rinf) + ' Ohm, Rpol ' + e(r.rpol) + ' Ohm');
-        out.push(['tau/s', 'f_tau/Hz', 'g(tau)', 'freq/Hz', 'Zr drt', 'Zi drt'].join(s));
+        out.push(['tau/s', 'f_tau/Hz', 'g(tau)', 'freq/Hz', 'drt_Zr', 'drt_Zi'].join(s));
         var nt = r.tau.length, nf = r.f.length;
         for (var j = 0; j < Math.max(nt, nf); j++) {
           out.push([j < nt ? e(r.tau[j]) : '', j < nt ? e(1 / (2 * Math.PI * r.tau[j])) : '', j < nt ? e(r.g[j]) : '',
@@ -65,7 +66,8 @@ Y.writers = (function () {
   // one line per dataset: name, R2, chi2_w, chi2_red, then value and SE% of every parameter
   function paramsText(list, names, info) {
     var out = ['Yappari JS - parameters saved : ' + stamp(),
-               '# circuit: ' + info.cdc + '   method: ' + info.method + '   weight: ' + info.weight + '   SE in % of the value'];
+               '# circuit: ' + info.cdc + '   method: ' + info.method + '   weight: ' + info.weight +
+               (info.iter ? '   iterations, tolerance: ' + info.iter : '') + '   SE in % of the value'];
     var units = list.some(function (d) { return d.norm && NU[d.norm.type]; });
     var head = ['Dataset'].concat(units ? ['Z unit'] : [], ['R2', 'chi2_w', 'chi2_red']);
     names.forEach(function (n) { head.push(n, 'SE%_' + n); });
@@ -117,7 +119,7 @@ Y.writers = (function () {
       var r = it.r, j;
       out.push('', '#drt ' + it.name, ['tau/s', 'f_tau/Hz', 'g(tau)'].join(s));
       for (j = 0; j < r.tau.length; j++) out.push([e(r.tau[j]), e(1 / (2 * Math.PI * r.tau[j])), e(r.g[j])].join(s));
-      out.push('', '#drt spectrum ' + it.name, ['freq/Hz', 'Zr', 'Zi', 'Zr drt', 'Zi drt'].join(s));
+      out.push('', '#drt spectrum ' + it.name, ['freq/Hz', 'Zr', 'Zi', 'drt_Zr', 'drt_Zi'].join(s));
       for (j = 0; j < r.f.length; j++) out.push([e(r.f[j]), e(r.zrExp[j]), e(r.ziExp[j]), e(r.zr[j]), e(r.zi[j])].join(s));
       out.push('', '#drt peaks ' + it.name, ['f/Hz', 'tau/s', 'R/' + zu(it.norm), 'C/' + cu(it.norm), 'share_of_Rpol'].join(s));
       r.peaks.forEach(function (p) { out.push([e(p.f), e(p.tau), e(p.R), e(p.C), e(p.share)].join(s)); });
