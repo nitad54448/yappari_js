@@ -85,7 +85,7 @@ Y.paramsPanel = (function () {
     var v = Y.ui.parseNum(inp.value);
     if (!isFinite(v)) { inp.value = fmtVal(ds.p[n]); Y.ui.toast('Not a number: ' + n + ' unchanged.', 'warn'); return; }
     var c = clampVal(n, v);
-    if (c !== v) Y.ui.toast(n + ' kept within its limits, ' + fmtVal(S.model.limits[n].min) + ' to ' + fmtVal(S.model.limits[n].max) + ' (see the Parameters tab).', 'warn');
+    if (c !== v) Y.ui.toast(n + ' kept within its limits, ' + fmtVal(S.model.limits[n].min) + ' to ' + fmtVal(S.model.limits[n].max) + ' (see Settings).', 'warn');
     Y.state.setParam(n, c);
   }
 

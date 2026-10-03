@@ -27,7 +27,7 @@ Y.state = (function () {
   function defaults() {
     return { sep: 'auto', method: 'TRDL', weight: 'mod', maxIter: 2500, tol: 1e-12,
              simStart: 1e-3, simEnd: 1e6, simPoints: 128, maxPlots: 60, legendMax: 24,
-             nyqEqual: true, resid: 'abs', phase: 'deg', view3d: 'nyq', useSigma: false, theme: 'system', contrib: false,
+             nyqEqual: true, resid: 'abs', phase: 'deg', view3d: 'nyq', useSigma: false, theme: 'system', contrib: false, showFit: true, showData: true,
              drtMethod: 'tikhonov', drtSource: 'both', drtLambda: -3, drtIter: 5, drtX: 'f' };
   }
 

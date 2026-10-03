@@ -24,7 +24,7 @@ with sync_playwright() as p:
             f = 10 ** (6 - 8 * k / 39); w = 2 * 3.141592653589793 * f
             z = 20 + 1000 / complex(1, w * 1000 * 1e-6)
             fh.write('%.6E\t%.6E\t%.6E\n' % (f, z.real, z.imag))
-    pg.click('[data-menu="read"]')
+    pg.click('[data-menu="file"]')
     with pg.expect_file_chooser() as fc:
         pg.click('#menu-pop button >> nth=0')
     fc.value.set_files(tmp)
@@ -33,7 +33,7 @@ with sync_playwright() as p:
     # the example files through the real menus and dialogs
     FILES = os.path.join(ROOT, 'files')
     def read_menu(index, path):
-        pg.click('[data-menu="read"]')
+        pg.click('[data-menu="file"]')
         with pg.expect_file_chooser() as fc:
             pg.click('#menu-pop button >> nth=%d' % index)
         fc.value.set_files(path); pg.wait_for_timeout(300)
@@ -44,7 +44,7 @@ with sync_playwright() as p:
     print('VersaStudio menu:', read_menu(3, os.path.join(FILES, 'type_VersaStudio.par')))
     print('MFLI csv menu (generated file):', read_menu(1, '/tmp/yappari_mfli_generated.csv'))
     print('MFLI csv menu (sample, incomplete):', read_menu(1, os.path.join(FILES, 'mfli_imps_csv.txt')))
-    pg.click('[data-menu="read"]'); pg.click('#menu-pop button >> nth=5'); pg.wait_for_timeout(200)
+    pg.click('[data-menu="file"]'); pg.click('#menu-pop button >> nth=5'); pg.wait_for_timeout(200)
     with pg.expect_file_chooser() as fc:
         pg.click('#dlg button:has-text("Load definition")')
     fc.value.set_files(os.path.join(FILES, 'custom_hp4192a.xml')); pg.wait_for_timeout(300)
@@ -60,31 +60,31 @@ with sync_playwright() as p:
     print('drop hp4192a alone:', pg.evaluate('''async (t) => { await Y.cmd.readFiles([new File([t], 'hp4192a.txt')], 'auto');
         return document.getElementById('status-msg').textContent; }''', rdf('hp4192a.txt')))
     pg.evaluate("Y.cmd.runCommand('select>>^Z_MFLI_449')"); pg.wait_for_timeout(300); shot(pg, '0_zmfli_nyq')
-    pg.evaluate("Y.cmd.runCommand('select>>^hp4192a_')"); pg.click('[data-tab="zr"]'); pg.wait_for_timeout(300); shot(pg, '0_hp_zr')
-    pg.evaluate("Y.cmd.runCommand('select>>^MFLI_Zview')"); pg.click('[data-tab="nyq"]'); pg.wait_for_timeout(300); shot(pg, '0_mfli_nyq')
+    pg.evaluate("Y.cmd.runCommand('select>>^hp4192a_')"); pg.evaluate("Y.app.showTab('zr')"); pg.wait_for_timeout(300); shot(pg, '0_hp_zr')
+    pg.evaluate("Y.cmd.runCommand('select>>^MFLI_Zview')"); pg.evaluate("Y.app.showTab('nyq')"); pg.wait_for_timeout(300); shot(pg, '0_mfli_nyq')
     # demo spectra through the command line
     pg.fill('#cmdline', 'demo'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(400)
     print('datasets:', pg.evaluate('Y.state.S.datasets.length'), 'circuit:', pg.evaluate('Y.state.S.model.cdc'))
     pg.evaluate("""() => { const S = Y.state.S; Y.state.selectIds([S.datasets[0].id]);
       const v = {R1: 60, R2: 1e4, Q1: 3e-10, Q1_n: 0.9, R3: 3e4, Q2: 1e-6, Q2_n: 0.8};
       Object.keys(v).forEach(n => Y.state.setParam(n, v[n])); ['Q1_n', 'Q2_n'].forEach(n => Y.state.setFit(n, true)); }""")
-    pg.click('#btn-fit'); pg.wait_for_timeout(100)
+    pg.evaluate("Y.app.showSide('fit')"); pg.click('#btn-fit'); pg.wait_for_timeout(100)
     pg.wait_for_function('!Y.state.S.busy', timeout=30000)
     print('single fit:', status(pg))
     print('  values:', pg.evaluate("(() => { const d = Y.state.first(); return Object.keys(d.p).map(n => n + '=' + d.p[n].toPrecision(4) + ' ±' + (d.stats.se[n] || 0).toFixed(2) + '%').join(', '); })()"))
     shot(pg, '1_single_nyq')
     # wheel over a parameter changes it
     before = pg.evaluate('Y.state.first().p.R2')
-    pg.hover('#param-list .prow[data-name="R2"] .pv'); pg.mouse.wheel(0, -100); pg.wait_for_timeout(100)
+    pg.evaluate("Y.app.showSide('params')"); pg.hover('#param-list .prow[data-name="R2"] .pv'); pg.mouse.wheel(0, -100); pg.wait_for_timeout(100)
     print('wheel R2: %.4g -> %.4g' % (before, pg.evaluate('Y.state.first().p.R2')))
     pg.evaluate('Y.cmd.cloneTo(true)')
-    pg.focus('#ds-list'); pg.keyboard.press('Control+a'); pg.wait_for_timeout(100)
-    t0 = time.time(); pg.click('#btn-fit'); pg.wait_for_timeout(100)
+    pg.evaluate("Y.app.showSide('datasets')"); pg.focus('#ds-list'); pg.keyboard.press('Control+a'); pg.wait_for_timeout(100)
+    t0 = time.time(); pg.evaluate("Y.app.showSide('fit')"); pg.click('#btn-fit'); pg.wait_for_timeout(100)
     pg.wait_for_function('!Y.state.S.busy', timeout=60000)
     print('batch fit (%.2f s wall):' % (time.time() - t0), status(pg))
     shot(pg, '2_all_nyq')
     for tab in ['zr', 'bode', 'd3']:
-        pg.click('[data-tab="%s"]' % tab); pg.wait_for_timeout(400); shot(pg, '3_' + tab)
+        pg.evaluate("Y.app.showTab('%s')" % tab); pg.wait_for_timeout(400); shot(pg, '3_' + tab)
     # Model tab: select R3, add a capacitor in parallel, undo, bad code
     pg.click('[data-tab="model"]'); pg.wait_for_timeout(200)
     pg.click('#schematic .el[data-path="2.0"]')
@@ -102,7 +102,7 @@ with sync_playwright() as p:
     pg.evaluate('void Y.cmd.globalFit()'); pg.wait_for_timeout(200); pg.wait_for_function('!Y.state.S.busy', timeout=60000)
     print('global:', status(pg))
     # mask by zooming the Nyquist plot
-    pg.click('[data-tab="nyq"]'); pg.evaluate('Y.state.selectIds([Y.state.S.datasets[0].id])'); pg.wait_for_timeout(300)
+    pg.evaluate("Y.app.showTab('nyq')"); pg.evaluate('Y.state.selectIds([Y.state.S.datasets[0].id])'); pg.wait_for_timeout(300)
     bb = pg.locator('#nyq-host canvas').bounding_box()
     pg.mouse.move(bb['x'] + bb['width'] * 0.55, bb['y'] + bb['height'] * 0.15); pg.mouse.down()
     pg.mouse.move(bb['x'] + bb['width'] * 0.95, bb['y'] + bb['height'] * 0.9, steps=6); pg.mouse.up(); pg.wait_for_timeout(200)
@@ -113,7 +113,7 @@ with sync_playwright() as p:
     print('masked points drawn (hollow):', pg.evaluate("Y.plots._plots.nyq.series.filter(s => s.masked).map(s => s.x.length)"))
     print('params file:', pg.evaluate("Y.writers.paramsText(Y.state.selected(), Y.state.names(), {cdc: Y.state.S.model.cdc, method: 'm', weight: 'w'}).split('\\n')[2].slice(0, 120)"))
     print('report html length:', pg.evaluate('Y.report.build(Y.state.selected()).length'))
-    pg.click('[data-menu="action"]'); pg.wait_for_timeout(150); shot(pg, '7_menu'); pg.keyboard.press('Escape')
+    pg.click('[data-menu="data"]'); pg.wait_for_timeout(150); shot(pg, '7_menu'); pg.keyboard.press('Escape')
     pg.evaluate("Y.cmd.runCommand('help')"); pg.wait_for_timeout(150); shot(pg, '8_help'); pg.keyboard.press('Escape')
     proj = pg.evaluate('Y.writers.projectJSON(Y.state.S)')
     pg.evaluate('(t) => Y.state.loadProject(JSON.parse(t))', proj)
@@ -127,19 +127,19 @@ with sync_playwright() as p:
     z1 = pg.evaluate('Y.state.first().zr[5]')
     pg.fill('#cmdline', 'undo'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(100)
     print('undo: %.7g -> %.7g -> %.7g |' % (z0, z1, pg.evaluate('Y.state.first().zr[5]')), status(pg))
-    pg.click('[data-tab="nyq"]'); pg.check('#contrib-toggle')
+    pg.evaluate("Y.app.showTab('nyq')"); pg.check('#contrib-toggle')
     pg.fill('#cmdline', 'label>>1k'); pg.press('#cmdline', 'Enter'); pg.fill('#cmdline', 'label>>10'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(300)
     print('labels:', status(pg)); shot(pg, 'a_contrib_nyq')
-    pg.click('[data-tab="zi"]'); pg.wait_for_timeout(300); shot(pg, 'a_contrib_zi')
+    pg.evaluate("Y.app.showTab('zi')"); pg.wait_for_timeout(300); shot(pg, 'a_contrib_zi')
     pg.click('[data-tab="model"]'); pg.wait_for_timeout(300); shot(pg, 'a_contrib_model')
     pg.uncheck('#contrib-model')
     print('fit status:', pg.inner_text('#param-stats').replace('\n', ' | '))
     pg.evaluate("""() => { const d = Y.state.first(); const sr = Array.from(d.zr, (v, k) => 0.01 * Math.hypot(d.zr[k], d.zi[k]) * (k < 30 ? NaN : 1));
         Y.state.addDatasets([{ name: 'with_sigma', f: d.f, zr: d.zr, zi: d.zi, sr: sr, si: sr, p: d.p, fit: d.fit }]); Y.state.setSetting('useSigma', true); }""")
-    pg.click('#btn-fit'); pg.wait_for_timeout(100); pg.wait_for_function('!Y.state.S.busy', timeout=30000)
+    pg.evaluate("Y.app.showSide('fit')"); pg.click('#btn-fit'); pg.wait_for_timeout(100); pg.wait_for_function('!Y.state.S.busy', timeout=30000)
     print('sigma fit:', status(pg))
     print('  stats:', pg.inner_text('#param-stats').replace('\n', ' | '))
-    pg.click('[data-tab="zr"]'); pg.wait_for_timeout(300); shot(pg, 'a_sigma_zr')
+    pg.evaluate("Y.app.showTab('zr')"); pg.wait_for_timeout(300); shot(pg, 'a_sigma_zr')
     pg.evaluate("Y.state.setSetting('useSigma', false)")
     pg.evaluate("Y.cmd.runCommand('select>>^demo_00$')"); pg.click('[data-tab="drt"]'); pg.wait_for_timeout(600)
     print('DRT:', pg.inner_text('#drt-peaks').replace('\n', ' | ')[:420])
@@ -185,7 +185,7 @@ with sync_playwright() as p:
     print('  info:', pg.inner_text('#history-info')[:120])
     shot(pg, 'd_log')
     # contributions follow the legend; normalization by electrode area and back
-    pg.evaluate("Y.cmd.runCommand('select>>^demo_02$')"); pg.click('[data-tab="nyq"]'); pg.wait_for_timeout(100)
+    pg.evaluate("Y.cmd.runCommand('select>>^demo_02$')"); pg.evaluate("Y.app.showTab('nyq')"); pg.wait_for_timeout(100)
     pg.keyboard.press('F9'); pg.wait_for_timeout(1500)
     pg.check('#contrib-toggle'); pg.wait_for_timeout(300)
     cvis = pg.evaluate("""() => { const n = Y.plots._plots.nyq, id = Y.state.first().id, parts = () => n.visibleSeries().filter(s => String(s.group).startsWith('part')).length;
@@ -194,7 +194,7 @@ with sync_playwright() as p:
     pg.uncheck('#contrib-toggle'); pg.wait_for_timeout(200)
     get = "(() => { const d = Y.state.first(); return [d.zr[5], d.p.R2, d.p.Q1, d.p.Q1_n, d.stats && d.stats.chi2red]; })()"
     before = pg.evaluate(get)
-    pg.click('button:has-text("Action")'); pg.click('text=Normalize: area'); pg.wait_for_timeout(200)
+    pg.click('[data-menu="data"]'); pg.click('text=Normalize: area'); pg.wait_for_timeout(200)
     shown = pg.evaluate("[...document.querySelectorAll('dialog [data-when]')].filter(e => !e.hidden).length")
     pg.select_option('[data-key="type"]', 'area'); pg.fill('[data-key="A"]', '0.5'); pg.wait_for_timeout(100)
     shown2 = pg.evaluate("[...document.querySelectorAll('dialog [data-when]')].filter(e => !e.hidden).length")
@@ -206,7 +206,7 @@ with sync_playwright() as p:
     rt = pg.evaluate("(() => { const t = Y.writers.dataText([Y.state.first()], { sep: 'tab' }, () => null); const r = Y.readers.headerTable(t, 'x.txt')[0]; return [t.split('\\n')[1], r.norm]; })()")
     print('  saved and read back:', rt)
     shot(pg, 'e_norm')
-    pg.click('button:has-text("Action")'); pg.click('text=Normalize: area'); pg.wait_for_timeout(200)
+    pg.click('[data-menu="data"]'); pg.click('text=Normalize: area'); pg.wait_for_timeout(200)
     pg.select_option('[data-key="type"]', 'none'); pg.click('dialog button:has-text("Apply")'); pg.wait_for_timeout(300)
     back = pg.evaluate(get)
     print('  back to none, relative change from the start:', max(abs(a / b - 1) for a, b in zip(back, before)), '|', status(pg))
@@ -214,7 +214,7 @@ with sync_playwright() as p:
     pg.click('[data-tab="drt"]'); pg.wait_for_timeout(500); shot(pg, 'b_drt_dark')
     pg.click('#theme-toggle'); pg.wait_for_timeout(100)
     pg.emulate_media(color_scheme='dark'); pg.click('[data-tab="model"]'); pg.wait_for_timeout(300); shot(pg, '9_dark_model')
-    pg.click('[data-tab="nyq"]'); pg.evaluate('Y.state.selectAll()'); pg.wait_for_timeout(300); shot(pg, '9_dark_nyq')
+    pg.evaluate("Y.app.showTab('nyq')"); pg.evaluate('Y.state.selectAll()'); pg.wait_for_timeout(300); shot(pg, '9_dark_nyq')
     b.close()
 print('\n'.join(logs) if logs else 'no console errors or warnings')
 from PIL import Image

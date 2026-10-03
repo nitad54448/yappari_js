@@ -6,7 +6,7 @@
  *            legend (show entry), hover (tooltip on its points) }
  *  The view is stored in axis units (log10 for log axes).
  *  Mouse: drag = zoom box (thin box = one axis), shift-drag or right-drag = pan, wheel = zoom,
- *         double-click = autoscale, click on a legend entry = hide/show that dataset.
+ *         double-click = autoscale, click on a legend entry = hide/show that group (data, Fit, a contribution).
  */
 Y.Plot2D = (function () {
   'use strict';

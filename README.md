@@ -35,6 +35,15 @@ tests/                node tests/run_core_tests.js (core, readers, the files/ ex
                       tests/browser_test.py drives index.html in headless Chromium (Playwright)
 ```
 
+## Layout
+
+Top tabs are workspaces: **EIS** (plots; Nyquist, Zr, Zi, |Z| θ and 3D are chosen in the plot toolbar), **Model**
+(circuit editor), **DRT** (a Show selector picks g, the rebuilt spectrum, the residuals or the peak table, shown at full height),
+**Log**, **About**, and **Settings** on the right (fit, data and plot settings, parameter limits, element start values).
+The File, Data and Analysis menus are in the header, left of Settings. The side panel has three tabs: **Datasets** (the list), **Parameters** (values of
+the first selected dataset, fit statistics, copy to all or to the selected datasets) and **Fit** (what will be fitted,
+Individual or Global, method, weights, the Fit button; F9 works anywhere). The `?` next to the command line shows its help. Drag the left edge of the side panel to resize it (double-click resets).
+
 ## Circuit code
 
 Boukamp's circuit description code. Elements written next to each other are in series, `( )` puts its content in
@@ -83,7 +92,7 @@ The composite elements of the LabVIEW version (Randles variants, M00x) are templ
 * Batch fits run in parallel Web Workers. Fit selected uses each dataset's own start values; the usual route for
   many spectra is: fit one, Clone parameters to all, select all, Fit selected.
 * Global fit: one fit of all selected datasets. Each parameter is shared (one value) or local (one value per
-  dataset), set in the Parameters tab; all shared is the LabVIEW behaviour. Start values: shared ones from the first
+  dataset), set in Settings; all shared is the LabVIEW behaviour. Start values: shared ones from the first
   selected dataset, local ones from each dataset.
 
 ### Why a fit says "converged: …"
@@ -91,7 +100,7 @@ The composite elements of the LabVIEW version (Randles variants, M00x) are templ
 Every normal end of a fit is reported as `converged`, followed by the rule that stopped it (shown when you
 point at the status, and in the Log):
 
-* `χ² change below the tolerance`: χ² changed by less than the tolerance (Parameters tab) twice in a row;
+* `χ² change below the tolerance`: χ² changed by less than the tolerance (Settings) twice in a row;
 * `no step lowers χ² further` or `steps below numerical resolution`: the minimum is reached to the precision of
   the computer, which is the usual end with the very small default tolerance (1e-12);
 * `zero gradient`, `simplex collapsed` (Nelder–Mead): the same, seen by other tests.
@@ -105,7 +114,7 @@ the electrode area (Z × A, Ω·cm²) or a resistivity (Z × A / L, Ω·cm). A n
 *None* brings back the measured values. Fitted parameters are converted at the same time (R and L multiplied, C and
 Q divided, n, α, β and τ unchanged), so the fit still matches and needs no new run. Plots, tooltips, parameters,
 DRT, report and saved files show the unit; the dataset list shows it next to the name. Save data writes a
-`#normalization` line that Read data takes back.
+`#normalization` line that File, reading data, takes back.
 
 ### Contributions
 
@@ -148,12 +157,13 @@ adequate model. Error bars are drawn on the Nyquist, Zr and Zi plots.
   (at most 12; Gold only the first); spectra, residuals and peaks are those of the first one. *Save DRT…* computes
   every selected dataset with the current settings and saves a summary line per dataset (R∞, Rpol, f, R and C of
   each peak), then each distribution, rebuilt spectrum and peak list.
-* **Z-HIT** (Action menu, `zhit`): ln|Z| is rebuilt from the phase,
+* **Z-HIT** (Analysis menu, `zhit`): ln|Z| is rebuilt from the phase,
   ln|Z(ω0)| = C + (2/π)∫φ dlnω − (π/6) φ' − (π³/360) φ''' − (π⁵/15120) φ⁽⁵⁾ − (π⁷/604800) φ⁽⁷⁾ (derivatives in lnω),
   and compared with the measured |Z|. The derivatives come from local polynomials of degree 5 over ±1 decade, so
   φ⁽⁷⁾ counts as 0: a degree-7 fit turns 1 % noise into errors of hundreds of percent, while degree 5 keeps the
   deviation of valid noisy data at the noise level; new datasets `zh_…` hold the result. The phase integral cannot cross a
   gap left by masked points, so each side of such a gap is checked on its own (and the gap is reported).
+* **Show Data / Fit / Contributions** (plot toolbar, `showfit`, `contrib`): data, model curve and contributions are shown or hidden independently, from the toolbar or by clicking their legend entries (one "Fit" entry for all model curves); reports always include data and model curve.
 * **Contributions** (plot toolbar, Model tab, `contrib`): the parts of the top-level series chain add up.
   On the Zr and Zi plots each part of the first plotted dataset is drawn in its colour; on the Nyquist plot the
   model curve takes the colour of the part with the largest |Zi| at each frequency, and each part is drawn alone,

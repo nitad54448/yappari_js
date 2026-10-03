@@ -61,6 +61,8 @@ Y.plots = (function () {
   // series for one plot kind; residuals for 'zr' / 'zi'
   function build(kind, list, opts) {
     opts = opts || {};
+    // data, model curve and contributions are drawn and hidden independently (toolbar or legend)
+    var showFit = opts.report || S.settings.showFit !== false, showData = opts.report || S.settings.showData !== false;
     var main = [], res = [], lmax = S.settings.legendMax, rel = S.settings.resid === 'rel', ps = phaseScale();
     list.forEach(function (ds, n) {
       var col = color(ds), idx = [], k;
@@ -75,11 +77,11 @@ Y.plots = (function () {
         ey = Float64Array.from(idx, function (kk) { return kind === 'zr' ? ds.sr[kk] : ds.si[kk]; });
         if (kind === 'nyq') ex = Float64Array.from(idx, function (kk) { return ds.sr[kk]; });
       }
-      main.push({ name: ds.name, group: ds.id, x: X, y: Yv, color: col, mode: 'markers', hover: true,
+      if (showData) main.push({ name: ds.name, group: ds.id, x: X, y: Yv, color: col, mode: 'markers', hover: true,
                   legend: n < lmax, ds: ds, idx: idx, size: opts.size, ex: ex, ey: ey });
       var midx = [];                                         // masked points stay visible, hollow and pale
       for (k = 0; k < ds.f.length; k++) if (ds.mask[k]) midx.push(k);
-      if (midx.length) {
+      if (midx.length && showData) {
         var MX = new Float64Array(midx.length), MY = new Float64Array(midx.length);
         midx.forEach(function (kk, i) { var c = Y.dataops.coords(ds, kk, kind); MX[i] = c[0]; MY[i] = kind === 'phase' ? c[1] * ps : c[1]; });
         main.push({ name: ds.name, group: ds.id, x: MX, y: MY, color: col, mode: 'markers', hollow: true, alpha: 0.45, noAuto: true,
@@ -87,8 +89,8 @@ Y.plots = (function () {
       }
       var cv = Y.state.curveFor(ds);
       if (cv) {
-        var xy = curveXY(cv, kind), line = { group: ds.id, x: xy[0], y: xy[1], color: col, mode: 'lines', legend: false, width: opts.width };
-        main.push(line);
+        var xy = curveXY(cv, kind), line = { name: 'Fit', group: 'fit', x: xy[0], y: xy[1], color: col, mode: 'lines', legend: true, width: opts.width };
+        if (showFit) main.push(line);
         if (n === 0 && S.settings.contrib && !opts.noContrib && (kind === 'nyq' || kind === 'zr' || kind === 'zi'))
           Array.prototype.push.apply(main, contribSeries(ds, kind, cv, kind === 'nyq' ? line : null));
       }
@@ -130,7 +132,7 @@ Y.plots = (function () {
     var parts = partsOf(ds, cv.f), out = [], n = cv.f.length;
     if (!parts.length) return out;
     if (kind === 'zr' || kind === 'zi') {
-      parts.forEach(function (p) { out.push({ name: p.label, group: 'part' + p.i, x: cv.f, y: kind === 'zr' ? p.re : p.im, color: p.color, mode: 'lines', dash: [6, 4], width: 1.6, legend: true, parent: ds.id }); });
+      parts.forEach(function (p) { out.push({ name: p.label, group: 'part' + p.i, x: cv.f, y: kind === 'zr' ? p.re : p.im, color: p.color, mode: 'lines', dash: [6, 4], width: 1.6, legend: true }); });
       return out;
     }
     var react = parts.filter(function (p) { return !p.resistive; });
@@ -145,7 +147,7 @@ Y.plots = (function () {
     var x0 = 0;
     parts.forEach(function (p) {
       if (!p.resistive) return;
-      out.push({ name: p.label, group: 'part' + p.i, x: [x0, x0 + p.re[0]], y: [0, 0], color: p.color, mode: 'lines', width: 4, legend: true, parent: ds.id });
+      out.push({ name: p.label, group: 'part' + p.i, x: [x0, x0 + p.re[0]], y: [0, 0], color: p.color, mode: 'lines', width: 4, legend: true });
       x0 += p.re[0];
     });
     var order = react.slice().sort(function (a, b) { return cv.f[b.kmax] - cv.f[a.kmax]; });
@@ -153,7 +155,7 @@ Y.plots = (function () {
       var off = x0;
       order.forEach(function (q, j) { if (j < i) off += q.re[0]; else if (j > i) off += q.re[n - 1]; });
       out.push({ name: p.label, group: 'part' + p.i, x: Float64Array.from(p.re, function (v) { return v + off; }), y: Float64Array.from(p.im, function (v) { return -v; }),
-                 color: p.color, mode: 'lines', dash: [6, 4], width: 1.6, legend: true, parent: ds.id });
+                 color: p.color, mode: 'lines', dash: [6, 4], width: 1.6, legend: true });
     });
     return out;
   }
@@ -249,7 +251,7 @@ Y.plots = (function () {
     var u = Y.state.zUnitOf(list), uz = u ? ' /' + u : ' (mixed units)';     // unit of Z (normalization)
     P.nyq.o.xlabel = 'Zr' + uz; P.nyq.o.ylabel = '−Zi' + uz; P.zr.o.ylabel = 'Zr' + uz; P.zi.o.ylabel = 'Zi' + uz; P.mod.o.ylabel = '|Z|' + uz;
     P.zrRes.o.ylabel = residLabel('Zr', uz); P.ziRes.o.ylabel = residLabel('Zi', uz);
-    var empty = S.datasets.length ? 'Select one or more datasets' : 'No data yet. Use Read data, drop files on this window, or type demo in the command line below.';
+    var empty = S.datasets.length ? 'Select one or more datasets' : 'No data yet. Use File, drop files on this window, or type demo in the command line below.';
     [P.nyq, P.zr, P.zi, P.mod].forEach(function (p) { p.o.empty = empty; });
     var note = $('#plot-note');
     if (note) {
@@ -338,6 +340,10 @@ Y.plots = (function () {
   function exportPNG(tab) {
     var parts = { nyq: [P.nyq], zr: [P.zr, P.zrRes], zi: [P.zi, P.ziRes], bode: [P.mod, P.ph], d3: [P.d3], drt: Y.drtTab.plots() }[tab];
     if (!parts) return;
+    if (tab === 'drt') {                          // only the plot open in the accordion, or all when the peak table is open
+      var open = parts.filter(function (p) { return p.canvas.offsetParent !== null; });
+      parts = open.length ? open : parts.filter(function (p) { return p.canvas.width > 0; });
+    }
     var cvs = parts.map(function (p) { return p.canvas; }), w = Math.max.apply(null, cvs.map(function (c) { return c.width; }));
     var h = cvs.reduce(function (a, c) { return a + c.height; }, 0), out = document.createElement('canvas');
     out.width = w; out.height = h;
@@ -351,12 +357,12 @@ Y.plots = (function () {
   // static images of one dataset for the report
   function imagesFor(ds, w, h) {
     var uz = ' /' + Y.state.zUnit(ds);
-    var one = [ds], out = {}, nq = build('nyq', one, { size: 4, width: 1.6, noContrib: true }), zr = build('zr', one, { size: 4, noContrib: true }), zi = build('zi', one, { size: 4, noContrib: true });
+    var one = [ds], out = {}, nq = build('nyq', one, { size: 4, width: 1.6, noContrib: true, report: true }), zr = build('zr', one, { size: 4, noContrib: true, report: true }), zi = build('zi', one, { size: 4, noContrib: true, report: true });
     out.nyq = Y.Plot2D.image(nq.main, { xlabel: 'Zr' + uz, ylabel: '−Zi' + uz, equal: S.settings.nyqEqual, legend: false }, w, h);
     out.zr = Y.Plot2D.image(zr.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zr' + uz, legend: false }, w, h);
     out.zi = Y.Plot2D.image(zi.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zi' + uz, legend: false }, w, h);
-    out.mod = Y.Plot2D.image(build('mod', one, { size: 4 }).main, { xlog: true, ylog: true, xlabel: 'f /Hz', ylabel: '|Z|' + uz, legend: false }, w, h);
-    out.ph = Y.Plot2D.image(build('phase', one, { size: 4 }).main, { xlog: true, xlabel: 'f /Hz', ylabel: phaseLabel(), legend: false }, w, h);
+    out.mod = Y.Plot2D.image(build('mod', one, { size: 4, report: true }).main, { xlog: true, ylog: true, xlabel: 'f /Hz', ylabel: '|Z|' + uz, legend: false }, w, h);
+    out.ph = Y.Plot2D.image(build('phase', one, { size: 4, report: true }).main, { xlog: true, xlabel: 'f /Hz', ylabel: phaseLabel(), legend: false }, w, h);
     if (zr.res.length) out.res = Y.Plot2D.image(zr.res.concat(zi.res.map(function (s) { return Object.assign({}, s, { color: '#d1495b' }); })),
       { xlog: true, xlabel: 'f /Hz', ylabel: 'residuals (Zr blue, Zi red)', legend: false }, w, Math.round(h * 0.6));
     return out;

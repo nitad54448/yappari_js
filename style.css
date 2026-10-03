@@ -201,7 +201,8 @@ table.grid small { color: var(--ink-3); }
 .log li.warn span { color: var(--warn); }
 .log li.err span { color: var(--err); }
 .log li.cmd span { font-family: var(--font-code); color: var(--ink-2); }
-.about { max-width: 70ch; padding: 22px 28px 44px; font-size: 14px; line-height: 1.55; }
+.about { max-width: none; padding: 22px clamp(18px, 3vw, 48px) 44px; font-size: 14px; line-height: 1.55; }
+.about table.grid { width: 100%; }
 .kana-big { font-family: var(--font-kana); font-size: 56px; line-height: 1; color: var(--blue); margin: 0 0 8px; letter-spacing: 0.04em; }
 .about h1 { font-size: 20px; margin: 0 0 6px; }
 .about h1 small { font-size: 12px; font-weight: 400; color: var(--ink-3); }
@@ -220,7 +221,7 @@ table.grid small { color: var(--ink-3); }
 .side-h { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px 4px; min-width: 0; }
 .side-h h2 { font-size: 13px; margin: 0; flex: none; }
 .side-h .sub { color: var(--ink-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.side-params { display: flex; flex-direction: column; flex: 0 0 auto; max-height: 52%; min-height: 110px; border-bottom: 1px solid var(--rule); }
+.side-params { display: flex; flex-direction: column; flex: 0 1 auto; max-height: 55%; min-height: 110px; border-top: 1px solid var(--rule); }
 .param-list { overflow: auto; padding: 0 10px 4px; min-height: 0; }
 .prow { display: grid; grid-template-columns: 62px minmax(0, 1fr) 46px 52px 16px; align-items: center; gap: 6px; padding: 1px 0; }
 .prow .pn { font-weight: 600; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -254,7 +255,7 @@ table.grid small { color: var(--ink-3); }
 .ds .rename { flex: 1; padding: 1px 4px; }
 .empty-list { padding: 14px 12px; color: var(--ink-2); }
 .empty-list p { margin: 0 0 6px; }
-.fitbar { display: grid; grid-template-columns: 1fr auto; gap: 6px 8px; padding: 10px; border-top: 1px solid var(--rule); }
+.fitbar { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 8px; padding: 10px; border-top: 1px solid var(--rule); }
 .fitbar .primary { padding: 8px 10px; font-size: 13.5px; }
 .progress { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 14px; }
 .progress .track { position: relative; flex: 1; height: 4px; background: var(--rule-2); overflow: hidden; }
@@ -359,3 +360,114 @@ dialog.xl { width: min(1000px, 96vw); }
   .ds-list { max-height: 50vh; }
   .status { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---------- navigation: workspaces on top, plot views inside EIS ---------- */
+.top { gap: 22px; }
+.tabs button { font-size: 13.5px; padding: 9px 14px 10px; letter-spacing: 0.01em; }
+.settings-btn {
+  margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid transparent; background: none; color: var(--ink-2); padding: 5px 9px;
+}
+.settings-btn:hover { color: var(--ink); border-color: var(--rule); }
+.settings-btn[aria-selected="true"] { color: var(--blue); border-color: var(--blue); background: var(--blue-tint); font-weight: 600; }
+.theme-switch { margin-left: 0; }
+.ptools { padding-top: 10px; }
+.seg.views button { padding: 5px 13px; }
+.seg.views button[aria-selected="true"] { background: var(--blue); color: var(--on-blue); font-weight: 600; }
+.seg.views button:not([aria-selected="true"]):hover { background: var(--blue-tint); }
+.tool-sep { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--rule); }
+
+/* command line help button */
+.cmd-help {
+  flex: none; width: 22px; height: 22px; padding: 0; border-radius: 50%;
+  font-weight: 600; font-size: 12px; color: var(--ink-2); line-height: 1;
+}
+.cmd-help:hover { color: var(--blue); border-color: var(--blue); }
+.status { grid-template-columns: auto minmax(220px, 30%) minmax(0, 1fr); gap: 10px; }
+@media (max-width: 920px) {
+  .status { grid-template-columns: auto minmax(0, 1fr); }
+  .status .msg { grid-column: 1 / -1; }
+  .settings-btn span { display: none; }
+}
+
+/* ---------- resizable side panel ---------- */
+.side { position: relative; }
+
+.side-grip {
+  position: absolute; z-index: 6; top: 0; bottom: 0; left: 0; width: 7px; cursor: col-resize; touch-action: none;
+}
+.side-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: transparent; transition: background .12s; }
+.side-grip:hover::after, .side-grip:focus-visible::after, body.resizing .side-grip::after { background: var(--blue); }
+.side-grip:focus-visible { outline: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing .plot-canvas { pointer-events: none; }
+@media (max-width: 920px) { .side-grip { display: none; } }
+
+/* ---------- DRT: one view at a time ---------- */
+.drt-views { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.drt-view { display: none; }
+.drt-view.on { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.drt-pane .drt-view.on .plot-host { flex: 1 1 0; min-height: 160px; }
+@media (prefers-reduced-motion: reduce) { .side-grip::after { transition: none; } }
+
+/* ---------- side panel: Datasets, Parameters, Fit ---------- */
+.side-tabs { display: flex; border-bottom: 1px solid var(--rule); padding: 0 6px; gap: 2px; flex: none; }
+.side-tabs button {
+  flex: 1 1 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+  padding: 8px 6px 7px; color: var(--ink-2); font-weight: 600; font-size: 13px;
+}
+.side-tabs button:hover { color: var(--ink); border-bottom-color: var(--rule); }
+.side-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--blue); }
+.side .side-panel { display: none; }
+.side .side-panel.on { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; max-height: none; border: 0; }
+.side-panel .side-h { padding: 6px 10px 4px; gap: 5px; }
+.side-h .sub.strong { color: var(--ink); font-weight: 600; }
+.side-panel.side-params .param-list { flex: 0 1 auto; padding-top: 2px; }
+.side-panel.side-params .param-stats { flex: 0 0 auto; border-top: 1px solid var(--rule-2); padding-top: 8px; margin-top: 4px; }
+.clone-bar { margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px; border-top: 1px solid var(--rule); }
+.clone-bar .sub { flex: 1 0 100%; color: var(--ink-2); font-size: 12px; }
+.clone-bar button { flex: 1 1 0; }
+
+.side .fitbar.on { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 10px; overflow: auto; border-top: 0; }
+.fit-target { margin: 0; padding: 8px 10px; background: var(--paper); border-left: 3px solid var(--amber); color: var(--ink-2); line-height: 1.6; }
+.fit-target b { color: var(--ink); }
+.fit-target code { color: var(--ink); font-size: 12.5px; }
+.fit-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 8px; }
+.fit-lbl { color: var(--ink-2); }
+.fit-row .seg { justify-self: start; }
+.fit-row .seg button { padding: 5px 14px; }
+.fit-mode-hint { margin: -4px 0 0 72px; }
+.fit-go { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 4px; }
+.fit-go .primary { padding: 9px 10px; font-size: 13.5px; }
+
+.drt-pane .drt-view .drt-peaks { max-height: none; min-height: 0; flex: 1 1 auto; overflow: auto; padding: 0 4px; }
+.side .fitbar.on { align-items: stretch; }
+
+/* plot toolbar: what is drawn, with a small key for each */
+.pt-show { display: inline-flex; align-items: center; gap: 12px; margin-left: 6px; }
+.pt-lbl { color: var(--ink-3); }
+.pt-key i { display: inline-block; width: 18px; height: 8px; flex: none; }
+.pt-key .key-dots { background: radial-gradient(circle, var(--ink-2) 1.6px, transparent 2px) 0 50% / 6px 8px repeat-x; }
+.pt-key .key-line { height: 2px; background: var(--ink-2); }
+.pt-key .key-dash { height: 2px; background: repeating-linear-gradient(90deg, var(--ink-2) 0 5px, transparent 5px 8px); }
+
+/* DRT toolbar, two rows: method, data and λ; then axis, autoscale, search, and the saves on the right */
+.drt-pane { gap: 4px; }
+.drt-pane > .drt-tools:first-child { padding-top: 10px; }
+.drt-tools .tool-gap { flex: 1 1 auto; }
+
+/* ---------- command menus in the header, left of Settings ---------- */
+.top .menus { margin-left: auto; align-self: center; display: flex; gap: 2px; padding: 0; border: 0; }
+.top .menu-btn { border: 1px solid transparent; background: none; color: var(--ink-2); padding: 5px 10px; }
+.top .menu-btn:hover { color: var(--ink); border-color: var(--rule); }
+.top .menu-btn[aria-expanded="true"] { color: var(--blue); border-color: var(--blue); background: var(--blue-tint); }
+.top .settings-btn { margin-left: 6px; }
+.top .menus + .settings-btn { position: relative; }
+.top .menus + .settings-btn::before { content: ""; position: absolute; left: -5px; top: 5px; bottom: 5px; width: 1px; background: var(--rule); }
+.side-tabs { padding-top: 4px; }
+@media (max-width: 920px) { .top .menus { margin-left: 0; } }
+
+/* fit progress lives in the status bar, only while a job runs */
+.status { grid-template-columns: auto minmax(220px, 30%) minmax(0, 1fr) auto; }
+.status .progress { grid-column: auto; width: 220px; }
+@media (max-width: 920px) { .status { grid-template-columns: auto minmax(0, 1fr); } .status .progress { grid-column: 1 / -1; width: auto; } }

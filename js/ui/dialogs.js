@@ -200,6 +200,7 @@ Y.ui = (function () {
     var p = $('#fit-progress');
     if (!p) return;
     var bar = p.querySelector('i'), lab = p.querySelector('span');
+    p.hidden = !total;                       // shown only while something runs
     p.classList.toggle('indet', total < 0);
     bar.style.width = total > 0 ? (100 * done / total).toFixed(1) + '%' : (total < 0 ? '' : '0');
     lab.textContent = total > 0 ? done + ' / ' + total : (total < 0 ? 'working' : '');
