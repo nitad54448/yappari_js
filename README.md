@@ -3,7 +3,7 @@
 *Yet Another Program for Analysis and Research in Impedance*, browser version of
 [Yappari 5.1](https://nitad54448.github.io/yappari-5-1/) (LabVIEW) by Nita Dragoe, Université Paris-Saclay, ICMMO.
 One equivalent circuit is fitted to one or to thousands of impedance spectra; the distribution of relaxation
-times (DRT) and the Z-HIT check complete the analysis.
+times (DRT), the Z-HIT check and a Kramers–Kronig test (Lin-KK) complete the analysis.
 
 Open `index.html` in Chrome, Edge or Firefox. A double-click is enough: no server, no installation, and nothing is
 uploaded, all computations run in your browser. The same folder can be published on GitHub Pages. Settings, the last
@@ -22,15 +22,16 @@ circuit, the element start values and the layout (tabs, side panel width) are re
 8. [Plots](#8-plots)
 9. [Distribution of relaxation times (DRT)](#9-distribution-of-relaxation-times-drt)
 10. [Z-HIT](#10-z-hit)
-11. [Data operations](#11-data-operations)
-12. [Saving](#12-saving)
-13. [History, undo and the Log](#13-history-undo-and-the-log)
-14. [Settings reference](#14-settings-reference)
-15. [Command line](#15-command-line)
-16. [Mouse and keyboard](#16-mouse-and-keyboard)
-17. [Files of the program, tests](#17-files-of-the-program-tests)
-18. [Differences from Yappari 5.1](#18-differences-from-yappari-51-labview)
-19. [Citing](#19-citing)
+11. [Kramers–Kronig test](#11-kramerskronig-test)
+12. [Data operations](#12-data-operations)
+13. [Saving](#13-saving)
+14. [History, undo and the Log](#14-history-undo-and-the-log)
+15. [Settings reference](#15-settings-reference)
+16. [Command line](#16-command-line)
+17. [Mouse and keyboard](#17-mouse-and-keyboard)
+18. [Files of the program, tests](#18-files-of-the-program-tests)
+19. [Differences from Yappari 5.1](#19-differences-from-yappari-51-labview)
+20. [Citing](#20-citing)
 
 ---
 
@@ -75,7 +76,7 @@ circuit, the element start values and the layout (tabs, side panel width) are re
 | **EIS** | The plots of the selected datasets. The plot type is chosen in the toolbar: Nyquist, Zr, Zi, \|Z\| and θ (Bode), 3D. |
 | **Model** | Circuit code, element palette, templates, circuit drawing, table of element equations. |
 | **DRT** | Distribution of relaxation times, rebuilt spectrum, residuals and peak table, one view at a time. |
-| **Log** | Every action and message, with *Restore before* buttons (see [History](#13-history-undo-and-the-log)). |
+| **Log** | Every action and message, with *Restore before* buttons (see [History](#14-history-undo-and-the-log)). |
 | **About** | Short help, mouse and keys, citation. |
 | **⚙ Settings** | Fit, data files, simulation and plot settings; parameter limits and *shared* flags; start values of new elements; settings file. |
 
@@ -92,7 +93,7 @@ the plots must be plain values (#hex, rgb(), rgba()).
 |---|---|
 | **File** | Read: 3 columns · MFLI csv · MFLI ZView .txt / ZView .z · VersaStudio .par · Table with column headers · Custom format. Open project · Save project. Save parameters of selected · Save data of selected · Report of selected datasets. Load 24 demo spectra. |
 | **Data** | Undo the last command. Mask points in the current view · Unmask selected datasets · Delete points in the current view · Delete selected datasets. Normalize · Negate Zi. Add random noise · Spline to a log frequency grid · Smooth (Savitzky–Golay) · Average selected datasets. Simulate spectrum. |
-| **Analysis** | Show / Save the DRT of selected datasets · DRT λ search. Z-HIT of selected datasets. Label a frequency on the Nyquist plot · Clear Nyquist labels. Command line help. |
+| **Analysis** | Show / Save the DRT of selected datasets · DRT λ search. Z-HIT of selected datasets · Kramers–Kronig test of selected datasets. Label a frequency on the Nyquist plot · Clear Nyquist labels. Command line help. |
 
 Items that cannot run in the current situation are greyed out, and their tooltip says why: no data loaded, no dataset
 selected, no circuit, no masked points to unmask, no labels to clear, nothing to undo, a fit running, and so on. The
@@ -182,7 +183,8 @@ back. The green dot next to *Apply* shows that the code is valid and applied.
 3. Click an element of the palette, or pick a **template**.
 
 *Delete* removes the selection, *Undo* (Ctrl+Z) undoes the last edit, *Clear* empties the circuit, Esc deselects.
-*Colour the parts in series* uses the colours of the contributions shown on the plots.
+*Show contributions* (or `contrib`) colours each part of the series chain in the drawing, with the colours of the
+contributions on the plots (see [What is drawn](#what-is-drawn)).
 
 **Templates**: R‖C `(RC)`; Zarc R‖Q `(RQ)`; R and Q in series `RQ`; Randles `R(Q[RW])`, with short `R(Q[RWs])` or
 open `R(Q[RWo])` Warburg; two Zarcs `(RQ)(RQ)`; Rs + two or three Zarcs `R(RQ)(RQ)`, `R(RQ)(RQ)(RQ)`;
@@ -315,7 +317,7 @@ A converged fit can still be a local minimum: compare χ²red after starting fro
 
 ## 7. Global fit
 
-**Fit tab → Global**, then *Global fit of selected*: one fit of all selected datasets with one circuit. Each fitted
+**Fit tab → Global**, then *Fit* in the top bar (or F9): one fit of all selected datasets with one circuit. Each fitted
 parameter is
 
 * **shared**: one value for all datasets (ticked *shared* in *Settings → Parameter limits*; the default, which is
@@ -389,8 +391,8 @@ Masks apply to fits only: a masked point is left out of every fit, and everythin
 
 * **Plots**: masked points stay on the plots, hollow and pale. They do not count for autoscale, and the 3D view
   does not draw them (both are display only).
-* **DRT, Z-HIT, average, spline and smooth** use masked points. Z-HIT still reports a real gap in the frequencies,
-  for example after points are deleted.
+* **DRT, Z-HIT, the Kramers–Kronig test, average, spline and smooth** use masked points. Z-HIT still reports a real gap
+  in the frequencies, for example after points are deleted.
 * **Save data** writes every point, with a `masked` column (1 = masked). Reading the file back with *Table with
   column headers* restores the masks.
 * **Frequency labels** can sit on masked points: masking a labelled point leaves its label in place.
@@ -460,18 +462,123 @@ is rebuilt from the phase φ and compared with the measured |Z|.
 
 $$\ln\lvert Z(\omega_0)\rvert = C + \frac{2}{\pi}\int^{\omega_0}\varphi\,d\ln\omega - \frac{\pi}{6}\varphi' - \frac{\pi^3}{360}\varphi''' - \frac{\pi^5}{15120}\varphi^{(5)} - \frac{\pi^7}{604800}\varphi^{(7)}$$
 
-(derivatives with respect to ln ω). The phase is resampled on a uniform ln ω grid (cubic spline, ≥ 10 points per
-decade); derivatives come from local polynomials of degree 5 over ±1 decade, so $\varphi^{(7)}$ counts as 0: a
-degree-7 fit turns 1 % noise into errors of hundreds of percent, while degree 5 keeps the deviation of valid noisy
-data at the noise level. C matches the median of ln|Z|. New datasets `zh_…` hold the spectrum rebuilt from the
-phase (rebuilt |Z|, measured phase); the rms and the largest deviation are written to the Log. Deviations larger
-than the noise, especially at low frequency, indicate drift or non-stationary data.
-Masked points are used. The phase integral cannot cross a gap in the frequencies (points deleted, for example), so
-each side of such a gap is checked on its own (and the gap is reported).
+Derivatives are with respect to ln ω; phase is in radians. The phase is interpolated on a uniform ln ω
+grid (natural cubic spline, at least 10 points per decade). By default, local degree-5 polynomial fits
+over a two-decade window estimate the first, third and fifth derivatives; the seventh-derivative term
+is zero. The integration constant C is the median difference between measured and reconstructed
+ln|Z| within each checked range. The reconstructed impedance retains the measured phase.
+
+**Endpoint treatment**
+
+At the first and last frequencies, a centered polynomial window is unavailable. Evaluating third and
+fifth derivatives at the edge of a shifted degree-5 fit can create an artificial bend in the reconstructed
+Nyquist curve, even for smooth data. Within one decade of each range boundary, the correction now
+smoothly transitions to the first-derivative term alone. Its slope comes from a local quadratic fit
+over approximately half a decade (at least five interpolated grid points). At a boundary the higher-order
+terms have zero weight; one decade inward the original full correction has full weight. The blend is
+`t²(3 − 2t)`, with `t` the distance to the nearest endpoint in decades, limited to 1.
+
+This is a numerical stabilization, not an exact reconstruction of missing phase outside the measured
+range. It uses only phase and frequency: no pointwise adjustment to measured |Z| is made. The one
+global normalization constant per range is still determined as described above. Edge errors can remain,
+especially when a relaxation lies near a boundary; endpoint agreement is not guaranteed.
+With a non-default `win`, the transition distance and local slope window scale in proportion to `win`;
+with `deg=1`, the local slope fit is linear rather than quadratic.
+
+**Eligibility and numerical safeguards**
+
+- Each continuous range needs at least **10 distinct frequencies spanning at least 2 decades** (a factor
+  of 100 in frequency). A dense but narrow sweep does not qualify. This conservative implementation
+  rule keeps the full derivative window available; it is not a universal mathematical limit of Z-HIT.
+- Frequencies must be finite and positive, and every impedance must be finite with **|Z| > 0**.
+  Invalid points, invalid averages at duplicate frequencies, failed derivative calculations, and
+  non-finite or zero reconstructed magnitudes reject that dataset with an explicit error.
+- The two-decade requirement prevents the derivative window from collapsing on short ranges, where
+  high derivatives can greatly amplify even 1% noise. It does not guarantee accuracy for every spectrum.
+- The programmatic `Y.drt.zhit(ds, options)` interface accepts polynomial degrees 1–5 and a half-window
+  `win` of at least 1 decade. A larger window requires a continuous span of at least `2 * win` decades.
+
+**Gaps and output**
+
+Masked points are included (masks apply only to circuit fits). Duplicate frequencies are averaged.
+A spacing exceeding both four times the median log-frequency spacing and half a decade splits the
+spectrum into separate ranges. Each eligible range is reconstructed and normalized independently.
+Ranges with too few points or insufficient frequency span are explicitly listed as **NOT checked** in
+the Log. If no range qualifies, no reconstructed dataset is created.
+
+New `zh_…` datasets contain **only checked points**. Unchecked measurements are not copied into the
+reconstruction; the original dataset remains available alongside it. The Log reports the number of
+checked versus total distinct-frequency points, RMS deviation, maximum absolute deviation and its
+frequency. The deviation is `measured |Z| / reconstructed |Z| - 1`; RMS and maximum use checked points only.
+For code callers, unchecked entries in `zr`, `zi` and `dev` are NaN; `unchecked` and `skippedRanges`
+identify the omitted points/ranges.
+
+**Interpretation**
+
+Z-HIT is an approximate consistency check, **not a pass/fail proof** of causality or stationarity.
+Noise, interpolation, endpoint derivatives, and sharp resonances can produce deviations even for
+valid data. A low-frequency discrepancy may suggest drift, but should not be attributed to drift
+without considering these limitations. Independent normalization across gaps cannot test the relative
+magnitude offset between disconnected ranges. A constant multiplicative impedance error is also
+absorbed into C. The DRT algorithms in the same `js/core/drt.js` file are separate from this Z-HIT procedure.
 
 ---
 
-## 11. Data operations
+## 11. Kramers–Kronig test
+
+*Analysis → Kramers–Kronig test of selected datasets* (or `kk`) checks a spectrum with the linear Kramers–Kronig test
+(Lin-KK) of Boukamp and of Schönleber et al.: a model that obeys the Kramers–Kronig relations by construction is fitted
+to Zr and Zi, and whatever the data do that such a model cannot follow is left in the residuals.
+
+$$Z_\text{KK}(\omega) = R_0 + j\omega L + \frac{1}{j\omega C} + \sum_{k=1}^{M} \frac{R_k}{1 + j\omega\tau_k}$$
+
+* The M time constants are fixed, log-spaced from $1/\omega_\text{max}$ to $1/\omega_\text{min}$. $R_0$, the $R_k$, L and
+  1/C enter linearly: they come from one weighted linear least-squares fit (weights 1/|Z|, Householder QR with column
+  pivoting), without start values or iterations. Each term is causal, linear and stable whatever its sign, so
+  $Z_\text{KK}$ obeys the Kramers–Kronig relations for any values; negative $R_k$ are allowed.
+* L takes up lead inductance and relaxations faster than $\tau_1$; C takes up blocking (capacitive) behaviour and
+  relaxations slower than $\tau_M$.
+* **Number of RC elements**: the fit is made for M = 1 … min(50, N/2), N distinct frequencies, and the smallest M whose
+  rms residual stays within 10 % (and 0.1 percentage point) of the best one is kept: the elbow where more elements stop
+  improving the fit, the same rule as the λ suggestion of the DRT. `kk>>M` uses M elements instead (1 to N − 2).
+* **Residuals**, relative to the measured modulus: $\Delta_\text{re} = (Z_r - Z_{r,\text{KK}})/\lvert Z\rvert$ and
+  $\Delta_\text{im} = (Z_i - Z_{i,\text{KK}})/\lvert Z\rvert$.
+
+**Output**
+
+New `kk_…` datasets hold $Z_\text{KK}$ at the distinct measured frequencies, with the parameters of the original; they
+are selected together with the originals, so every plot compares the two. The Log gives, for each dataset, M, the rms of
+$\Delta_\text{re}$ and of $\Delta_\text{im}$, and the largest $\lvert Z - Z_\text{KK}\rvert/\lvert Z\rvert$ with its
+frequency. Masked points are used (masks apply only to circuit fits) and duplicate frequencies are averaged; gaps in the
+frequencies need no special treatment. A dataset needs at least 6 distinct frequencies, finite and positive, and a
+finite, nonzero |Z|. Large selections are computed in slices, with the progress bar.
+
+**Interpretation**
+
+Residuals at the noise level, scattered around zero, mean the spectrum is consistent with a linear, causal and stable
+system. Larger residuals, or residuals with a trend, often at low frequency where a sweep spends most of its time, point
+to drift, non-linearity or instrument artefacts. Simulated spectra without noise give rms residuals of a few 0.01 % or
+less. Like Z-HIT, this is a consistency check, **not a pass/fail proof**: many elements can follow part of a small
+drift, and a spectrum cut off in the middle of a relaxation can leave larger residuals at its ends.
+
+**For code callers**
+
+`Y.kk.run(ds, options)` (`js/core/kk.js`) accepts `M` (fixed number of RC elements), `maxM` (50, the largest automatic
+M), `cap` (true; false leaves out the series capacitance), `fit` (`'complex'`, the default; `'real'`: $R_0$ and the
+$R_k$ from Zr alone, then L and C from what remains of Zi; `'imag'`: the $R_k$, L and C from Zi alone, then $R_0$ from
+Zr; these are Boukamp's transform tests, where the part not fitted is predicted) and `c`, for Schönleber's criterion
+instead of the elbow: M grows until $\mu = 1 - \sum_{R_k<0}\lvert R_k\rvert / \sum_{R_k\ge 0}\lvert R_k\rvert \le c$
+(0.85 in the paper). The μ criterion can stop at a very small M, when the time constants fall between sharp relaxations
+or when the spectrum needs negative $R_k$ (inductive loops, series C or L), which is why it is not the default. The
+result holds `f`, `zr`, `zi`, `resRe`, `resIm`, `dev`, `rmsRe`, `rmsIm`, `rms`, `max`, `fmax`, `chi2ps` (Boukamp's
+pseudo χ², $\sum(\Delta_\text{re}^2 + \Delta_\text{im}^2)$), `M`, `mu`, `tau`, `R`, `R0`, `L` and `C`.
+
+B. A. Boukamp, *J. Electrochem. Soc.* **142** (1995) 1885; M. Schönleber, D. Klotz, E. Ivers-Tiffée,
+*Electrochim. Acta* **131** (2014) 20.
+
+---
+
+## 12. Data operations
 
 All act on the selected datasets (Data menu, or the command line).
 
@@ -479,7 +586,7 @@ All act on the selected datasets (Data menu, or the command line).
 |---|---|
 | **Normalize** | None (as measured, Ω); correction factor k: $Z \times k$ (unit unchanged); electrode area A: $Z \times A$ (Ω·cm²); resistivity: $Z \times A / L$ (Ω·cm), L the thickness. A new choice replaces the previous one; *None* restores the measured values. Fitted parameters are converted at the same time (R and L multiplied, C and Q divided, n, α, β and τ unchanged), so the fit still matches. Units are shown everywhere; *Save data* writes a `#normalization` line that is read back. |
 | **Negate Zi** | $Z_i \to -Z_i$ (files written with the opposite sign convention). |
-| **Add random noise** | Uniform noise in ±x % of \|Z\| added to Zr and Zi, Zr only, Zi only, or to f (tests). |
+| **Add random noise** | Uniform noise in ±x % of \|Z\| added to Zr and Zi, Zr only, Zi only, or to f (tests; x below 100 % for f, so that the frequencies stay positive). |
 | **Spline to a log frequency grid** | New datasets: natural cubic spline of Zr and Zi versus log f, on n log-spaced frequencies. Masked points are used. |
 | **Smooth (Savitzky–Golay)** | New datasets: least-squares polynomial of degree d on 2s + 1 neighbours (frequencies taken as log-spaced); windows are shifted at the ends instead of shrunk. Masked points are used. |
 | **Average selected datasets** | New dataset: point-by-point mean, masked points included; all datasets must share the same frequencies. |
@@ -492,7 +599,7 @@ or double-click renames; drag to reorder. `select>>text` selects by name (regula
 
 ---
 
-## 12. Saving
+## 13. Saving
 
 | Item | Content |
 |---|---|
@@ -508,7 +615,7 @@ Closing the page with datasets loaded asks for confirmation; data are not kept b
 
 ---
 
-## 13. History, undo and the Log
+## 14. History, undo and the Log
 
 Before every command or action that changes datasets, a **restore point** keeps the datasets (data, masks,
 parameters, fit results, labels), the selection and the circuit. In the **Log** tab, the line of each such action
@@ -518,7 +625,7 @@ oldest are dropped first), and are lost when the page is closed: *Save project* 
 
 ---
 
-## 14. Settings reference
+## 15. Settings reference
 
 | Group | Setting | Default | Meaning |
 |---|---|---|---|
@@ -539,7 +646,7 @@ oldest are dropped first), and are lost when the page is closed: *Save project* 
 
 ---
 
-## 15. Command line
+## 16. Command line
 
 Type in the field at the bottom of the window, Enter to run, ↑/↓ for the history. Commands act on the selected
 datasets. Numbers accept SI prefixes where a frequency is expected (`1k`, `2.5M`, `10m`).
@@ -547,7 +654,7 @@ datasets. Numbers accept SI prefixes where a frequency is expected (`1k`, `2.5M`
 | Command | Action |
 |---|---|
 | `rndz>>x`, `rndzr>>x`, `rndzi>>x` | Add uniform noise of x % of \|Z\| to Zr and Zi, Zr only, Zi only |
-| `rndf>>x` | Noise on the frequencies (tests) |
+| `rndf>>x` | Noise on the frequencies (tests), x below 100 |
 | `negate_zi` | Change the sign of Zi |
 | `spline>>n` | New datasets on n log-spaced frequencies |
 | `smooth>>s&d` | Savitzky–Golay, s points on each side, degree d |
@@ -561,13 +668,14 @@ datasets. Numbers accept SI prefixes where a frequency is expected (`1k`, `2.5M`
 | `contrib` | Show or hide the contributions |
 | `drt`, `drt_save`, `drt_search` | Show the DRT; save it; search the regularisation |
 | `zhit` | Z-HIT check |
+| `kk`, `kk>>M` | Kramers–Kronig test (Lin-KK); M RC elements, chosen automatically when omitted |
 | `demo` | Add 24 simulated spectra |
 | `undo` | Go back one step (repeat to go further) |
 | `help` | The list of commands (also the **?** button) |
 
 ---
 
-## 16. Mouse and keyboard
+## 17. Mouse and keyboard
 
 | Where | Action |
 |---|---|
@@ -582,7 +690,7 @@ datasets. Numbers accept SI prefixes where a frequency is expected (`1k`, `2.5M`
 
 ---
 
-## 17. Files of the program, tests
+## 18. Files of the program, tests
 
 ```
 index.html            page layout
@@ -595,6 +703,7 @@ js/core/fit.js        weights, residuals, TRDL, LM (bounded / unbounded), Nelder
 js/core/globalfit.js  global fit with shared and local parameters (block Levenberg–Marquardt)
 js/core/dataops.js    noise, Zi sign, correction factor, log spline, Savitzky–Golay, average, view selection
 js/core/drt.js        DRT (Tikhonov NNLS, Fisk, Gold, λ search, peaks) and Z-HIT
+js/core/kk.js         Kramers–Kronig test (Lin-KK): linear least squares on a chain of RC elements
 js/io/readers.js      3 columns, tables with headers, MFLI, ZView, VersaStudio, custom definitions
 js/io/writers.js      data, parameters, project files, downloads
 js/state.js           datasets, selection, circuit, parameters, settings, event bus
@@ -615,17 +724,17 @@ No library and no build step: plain JavaScript, canvas plots, one page.
 
 ---
 
-## 18. Differences from Yappari 5.1 (LabVIEW)
+## 19. Differences from Yappari 5.1 (LabVIEW)
 
 * Circuits of any depth instead of ten slots; readable parameter names instead of 4ZARR, 2MR1D …
 * Standard errors for all methods; global fit with shared and local parameters; parallel batch fits.
-* DRT with three methods and a λ search; Z-HIT; contributions of the parts in series; measured-error weights.
+* DRT with three methods and a λ search; Z-HIT; Kramers–Kronig test (Lin-KK); contributions of the parts in series; measured-error weights.
 * JSON project files. Custom-format definitions stay the Yappari 5.1 XML files, read and written.
 * Restore points for every action; no dependence on the Windows decimal separator; runs in any recent browser.
 
 ---
 
-## 19. Citing
+## 20. Citing
 
 N. Dragoe, *Materials Lab* **2024**, 3, 230031, https://doi.org/10.54227/mlab.20230031
 

@@ -166,13 +166,14 @@ Y.state = (function () {
     return ds;
   }
 
-  // new datasets go to the top of the list (as in Yappari), the first one is selected
+  // new datasets go to the top of the list (as in Yappari), or just below the dataset opts.after (to the top when it is
+  // not in the list); the first new one is selected (opts.selectAll: all of them; opts.select false: selection unchanged)
   function addDatasets(raws, opts) {
     opts = opts || {};
     var made = raws.map(makeDataset);
     if (opts.after) {
       var at = S.datasets.indexOf(opts.after);
-      Array.prototype.splice.apply(S.datasets, [at < 0 ? 0 : at, 0].concat(made));
+      Array.prototype.splice.apply(S.datasets, [at < 0 ? 0 : at + 1, 0].concat(made));
     } else Array.prototype.unshift.apply(S.datasets, made);
     Y.bus.emit('datasets');
     if (made.length && opts.select !== false) {

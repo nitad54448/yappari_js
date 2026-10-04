@@ -352,6 +352,7 @@ Y.cmd = (function () {
   // ---------------------------------------------------------------- data operations
   function applyNoise(pct, target) {
     if (!idle() || !haveSel()) return;
+    if (target === 'f' && !(Math.abs(pct) < 100)) { ui.toast('Noise on the frequencies must stay below 100 %, so that they remain positive.', 'warn'); return; }
     var list = sel();
     snapshot('noise');
     list.forEach(function (ds) { Y.dataops.addNoise(ds, pct, target); });
@@ -468,7 +469,7 @@ Y.cmd = (function () {
   function snapshot(label, opts) { Y.history.take(label, opts); }
   function undo() { if (idle()) Y.history.undo(); }
 
-  // ---------------------------------------------------------------- frequency labels, DRT, Z-HIT
+  // ---------------------------------------------------------------- frequency labels, DRT, Z-HIT, Kramers–Kronig test
   function parseFreq(t) {
     var m = /^\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)\s*([kKMmuµ]?)\s*(?:hz)?\s*$/i.exec(String(t).replace(',', '.'));
     if (!m) return NaN;
@@ -508,22 +509,81 @@ Y.cmd = (function () {
   function drtSave() { if (haveSel()) Y.drtTab.saveSelected(); }
   function zhitSelected() {
     if (!idle() || !haveSel()) return;
-    var src = sel(), out = [], lines = [];
+    var src = sel(), out = [], lines = [], warnings = [], failed = 0;
     src.forEach(function (ds) {
       try {
         var r = Y.drt.zhit(ds);
-        out.push({ name: 'zh_' + ds.name, f: r.f, zr: r.zr, zi: r.zi, p: Object.assign({}, ds.p), fit: Object.assign({}, ds.fit), norm: ds.norm });
+        var idx = [];
+        for (var k = 0; k < r.f.length; k++) if (isFinite(r.dev[k])) idx.push(k);
+        out.push({ name: 'zh_' + ds.name,
+          f: Float64Array.from(idx, function (i) { return r.f[i]; }),
+          zr: Float64Array.from(idx, function (i) { return r.zr[i]; }),
+          zi: Float64Array.from(idx, function (i) { return r.zi[i]; }),
+          p: Object.assign({}, ds.p), fit: Object.assign({}, ds.fit), norm: ds.norm });
         lines.push(ds.name + ': ' + (100 * r.rms).toFixed(2) + ' % rms, at most ' + (100 * r.max).toFixed(1) + ' % at ' + Y.plots.fmtF(r.fmax, 3) +
-          (r.gap ? ', each side of the gap without points from ' + Y.plots.fmtF(r.gap.f0, 3) + ' to ' + Y.plots.fmtF(r.gap.f1, 3) + ' checked on its own' : ''));
-      } catch (e) { ui.toast(ds.name + ': ' + e.message, 'err'); }
+          ', ' + r.checked + ' of ' + r.f.length + ' distinct-frequency points checked' +
+          (r.gap ? ', gaps split the data into ' + r.ranges + ' independently normalized ranges' : ''));
+        r.skippedRanges.forEach(function (sg) {
+          warnings.push(ds.name + ': NOT checked, ' + sg.n + ' points from ' + Y.plots.fmtF(sg.f0, 3) + ' to ' + Y.plots.fmtF(sg.f1, 3) +
+            ' (' + sg.reason + '); omitted from zh_ output.');
+        });
+      } catch (e) { failed++; ui.toast(ds.name + ': ' + e.message, 'err'); }
     });
     if (!out.length) return;
     snapshot('Z-HIT');
     var made = Y.state.addDatasets(out, { select: false });
     Y.state.selectIds(made.map(function (d) { return d.id; }).concat(src.map(function (d) { return d.id; })));
     lines.forEach(function (l) { ui.log('Z-HIT ' + l, 'info'); });
+    warnings.forEach(function (l) { ui.log('Z-HIT ' + l, 'warn'); });
     ui.toast('Z-HIT, measured |Z| against |Z| rebuilt from the phase. ' + lines.slice(0, 2).join('; ') + (lines.length > 2 ? ' …' : '') +
-      '. New datasets zh_… are selected with the originals.', 'ok');
+      '. New datasets zh_… contain only checked points and are selected with the originals.' +
+      (warnings.length ? ' ' + warnings.length + ' ranges were not checked; see Log.' : '') +
+      (failed ? ' ' + failed + ' datasets failed; see Log.' : '') +
+      ' Deviations can also reflect noise, endpoints or sharp resonances; this is not a pass/fail test.', warnings.length || failed ? 'warn' : 'info');
+  }
+
+  // Kramers–Kronig test (Lin-KK, js/core/kk.js). New datasets kk_… hold the fit that obeys the Kramers–Kronig relations,
+  // at the distinct measured frequencies. o.M fixes the number of RC elements (kk>>M); otherwise M is where more elements
+  // stop improving the fit. The datasets are computed in slices with a progress bar, so a large selection keeps the
+  // window responsive.
+  function kkSelected(o) {
+    if (!idle() || !haveSel()) return;
+    o = o || {};
+    var src = sel(), out = [], lines = [], failed = 0, i = 0;
+    // ends the run; always clears the busy state, also when something unexpected throws, so the program cannot stay busy
+    function finish(err) {
+      Y.state.setBusy(false);
+      ui.progress(0, 0);
+      if (err) { ui.toast('Kramers–Kronig test stopped: ' + ((err && err.message) || err) + '. No dataset was added.', 'err'); return; }
+      if (!out.length) return;
+      snapshot('Kramers–Kronig test');
+      var made = Y.state.addDatasets(out, { select: false });
+      Y.state.selectIds(made.map(function (d) { return d.id; }).concat(src.map(function (d) { return d.id; })));
+      lines.forEach(function (l) { ui.log('KK ' + l, 'info'); });
+      ui.toast('Kramers–Kronig test (Lin-KK), measured Z against a fit that obeys the Kramers–Kronig relations. ' + lines.slice(0, 2).join('; ') +
+        (lines.length > 2 ? ' …' : '') + '. New datasets kk_… hold that fit and are selected with the originals.' +
+        (failed ? ' ' + plural(failed, 'dataset') + ' failed, see Log.' : '') +
+        ' Residuals above the noise, or with a trend, point to drift, non-linearity or artefacts; this is not a pass/fail test.', failed ? 'warn' : 'info');
+    }
+    ui.progress(0, src.length);
+    Y.state.setBusy(true);
+    (function slice() {
+      try {
+        var t0 = performance.now();
+        while (i < src.length && performance.now() - t0 < 40) {
+          var ds = src[i++];
+          try {
+            var r = Y.kk.run(ds, o);
+            out.push({ name: 'kk_' + ds.name, f: r.f, zr: r.zr, zi: r.zi, p: Object.assign({}, ds.p), fit: Object.assign({}, ds.fit), norm: ds.norm });
+            lines.push(ds.name + ': ' + plural(r.M, 'RC element') + (r.auto ? '' : ' (fixed)') + ', residuals Zr ' +
+              (100 * r.rmsRe).toFixed(2) + ' %, Zi ' + (100 * r.rmsIm).toFixed(2) + ' % rms, at most ' + (100 * r.max).toFixed(1) + ' % of |Z| at ' +
+              Y.plots.fmtF(r.fmax, 3) + ', ' + r.n + ' distinct-frequency points');
+          } catch (e) { failed++; ui.toast(ds.name + ': ' + e.message, 'err'); }
+        }
+        ui.progress(i, src.length);
+      } catch (e) { finish(e); return; }
+      if (i < src.length) setTimeout(slice, 0); else finish(null);
+    })();
   }
 
   // ---------------------------------------------------------------- availability
@@ -620,6 +680,7 @@ Y.cmd = (function () {
     ['drt, drt_save', 'show the DRT of the selected datasets, or save it to a file'],
     ['drt_search', 'search the regularisation of the DRT'],
     ['zhit', 'Z-HIT check of the selected datasets'],
+    ['kk, kk>>M', 'Kramers–Kronig test (Lin-KK) of the selected datasets, with M RC elements (chosen automatically when omitted)'],
     ['help', 'this list']
   ];
   function showHelp() {
@@ -668,6 +729,9 @@ Y.cmd = (function () {
       case 'drt_save': drtSave(); break;
       case 'drt_search': Y.drtTab.searchDialog(); break;
       case 'zhit': zhitSelected(); break;
+      case 'kk':
+        if (m[2] && !(Number.isInteger(a[0]) && a[0] >= 1)) { ui.toast('kk>>M needs a whole number of RC elements, at least 1; kk alone chooses it.', 'err'); break; }
+        kkSelected(m[2] ? { M: a[0] } : {}); break;
       case 'help': showHelp(); break;
       default: ui.toast('Unknown command: ' + cmd + '. Type help for the list.', 'err');
     }
@@ -695,7 +759,8 @@ Y.cmd = (function () {
              ['Simulate spectrum', simulate, 'simulate']],
       analysis: [['Show the DRT of selected datasets', drtSelected, 'selection'], ['Save the DRT of selected datasets…', drtSave, 'edit'],
                  ['DRT λ search…', function () { Y.drtTab.searchDialog(); }, 'selection'], null,
-                 ['Z-HIT of selected datasets', zhitSelected, 'edit'], null,
+                 ['Z-HIT of selected datasets', zhitSelected, 'edit'],
+                 ['Kramers–Kronig test of selected datasets', function () { kkSelected(); }, 'edit'], null,
                  ['Label a frequency on the Nyquist plot…', labelDialog, 'selection'], ['Clear Nyquist labels', clearLabels, 'unlabel'], null,
                  ['Command line help', showHelp]]
     };
@@ -710,7 +775,7 @@ Y.cmd = (function () {
   }
 
   return { init: init, readFiles: readFiles, fitSelected: fitSelected, globalFit: globalFit, stop: stop, cloneTo: cloneTo, undo: undo,
-           labelDialog: labelDialog, clearLabels: clearLabels, addLabels: addLabels, zhitSelected: zhitSelected, drtSelected: drtSelected,
+           labelDialog: labelDialog, clearLabels: clearLabels, addLabels: addLabels, zhitSelected: zhitSelected, kkSelected: kkSelected, drtSelected: drtSelected,
            inView: inView, unmask: unmask, deleteDatasets: deleteDatasets, simulate: simulate, demo: demo,
            runCommand: runCommand, saveProject: saveProject, saveParams: saveParams, showHelp: showHelp,
            why: why, syncButtons: syncButtons };

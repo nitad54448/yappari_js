@@ -219,11 +219,11 @@ Y.defineCore('globalfit', function (Y) {
           for (i = 0; i < nd && nL; i++) for (b = 0; b < nL; b++) B[i][a * nL + b] = 0;
         }
         for (i = 0; i < nd && nL; i++) {
-          var off = new Uint8Array(nL);
-          for (b = 0; b < nL; b++) if (onBound(nS + i * nL + b)) off[b] = 1;
-          undL.push(dependent(D[i], nL, off));                     // marks dependent columns in off as well
-          offL.push(off);
-          for (b = 0; b < nL; b++) if (off[b]) {
+          var offI = new Uint8Array(nL);                           // local parameters of dataset i left out
+          for (b = 0; b < nL; b++) if (onBound(nS + i * nL + b)) offI[b] = 1;
+          undL.push(dependent(D[i], nL, offI));                    // marks dependent columns in offI as well
+          offL.push(offI);
+          for (b = 0; b < nL; b++) if (offI[b]) {
             for (c = 0; c < nL; c++) { D[i][b * nL + c] = 0; D[i][c * nL + b] = 0; }
             D[i][b * nL + b] = 1;
             for (a = 0; a < nS; a++) B[i][a * nL + b] = 0;

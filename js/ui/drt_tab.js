@@ -138,26 +138,34 @@ Y.drtTab = (function () {
       ', data ' + { both: 'Zr and Zi', im: 'Zi', re: 'Zr' }[o.source];
   }
 
-  // DRT of every selected dataset with the current settings, saved to a text file
+  // DRT of every selected dataset with the current settings, saved to a text file. The work runs in slices with the
+  // busy state set; finish() always clears it, also when something unexpected throws, so the program cannot stay busy.
   function saveSelected() {
     var list = Y.state.selected();
     if (!list.length) { Y.ui.toast('Select one or more datasets first.', 'warn'); return; }
     if (S.busy) { Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }
     var o = opts(), i = 0, items = [], bad = 0;
-    Y.state.setBusy(true); Y.ui.progress(0, list.length);
-    (function chunk() {
-      var t = performance.now();
-      while (i < list.length && performance.now() - t < 40) {
-        try { list[i].drt = Y.drt.compute(list[i], o); items.push({ name: list[i].name, r: list[i].drt, norm: list[i].norm }); }
-        catch (e) { bad++; Y.ui.log(list[i].name + ': ' + e.message, 'warn'); }
-        i++;
-      }
-      Y.ui.progress(i, list.length);
-      if (i < list.length) { setTimeout(chunk, 0); return; }
+    function finish(err) {
       Y.state.setBusy(false); Y.ui.progress(0, 0);
-      if (items.length) Y.writers.download('yappari_drt_' + Y.writers.fileStamp() + '.txt', Y.writers.drtText(items, S.settings.sep, describe(o)));
+      try {
+        if (err) throw err;
+        if (items.length) Y.writers.download('yappari_drt_' + Y.writers.fileStamp() + '.txt', Y.writers.drtText(items, S.settings.sep, describe(o)));
+      } catch (e) { Y.ui.toast('The DRT could not be saved: ' + ((e && e.message) || e), 'err'); return; }
       Y.ui.toast('Saved the DRT of ' + items.length + ' dataset' + (items.length === 1 ? '' : 's') + ' (' + describe(o) + ')' +
         (bad ? '; ' + bad + ' not possible, see Log' : '') + '.', bad ? 'warn' : 'ok');
+    }
+    Y.ui.progress(0, list.length); Y.state.setBusy(true);
+    (function chunk() {
+      try {
+        var t = performance.now();
+        while (i < list.length && performance.now() - t < 40) {
+          try { list[i].drt = Y.drt.compute(list[i], o); items.push({ name: list[i].name, r: list[i].drt, norm: list[i].norm }); }
+          catch (e) { bad++; Y.ui.log(list[i].name + ': ' + e.message, 'warn'); }
+          i++;
+        }
+        Y.ui.progress(i, list.length);
+      } catch (e) { finish(e); return; }
+      if (i < list.length) setTimeout(chunk, 0); else finish(null);
     })();
   }
 

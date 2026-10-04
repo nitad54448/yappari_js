@@ -141,7 +141,7 @@
         <h2>Circuit code</h2>
         <p>Elements written next to each other are in series. Round brackets put their content in parallel, square brackets put their content in series inside a parallel group. <code>R(RQ)(Q[RW])</code> is Rs + (R‖Q) + (Q‖(R + W)). Elements: R, C, L, Q (constant phase element), W, Wo, Ws (Warburg), G (Gerischer), HN (Havriliak–Negami). Numbers name the elements (R1, Q2) and are added for you.</p>
         <h2>Checks and relaxation times</h2>
-        <p>The DRT tab shows the distribution of relaxation times of the selected datasets (Tikhonov with non-negativity, Fisk or Gold; R∞ and Rpol from the data), with peak estimates of R and C. Analysis, Z-HIT checks a spectrum: |Z| rebuilt from the phase should match the measured |Z|. Show contributions, in the Model tab, colours each part of the series chain, on the plots and in the circuit drawing.</p>
+        <p>The DRT tab shows the distribution of relaxation times of the selected datasets (Tikhonov with non-negativity, Fisk or Gold; R∞ and Rpol from the data), with peak estimates of R and C. Analysis, Z-HIT checks a spectrum: |Z| rebuilt from the phase should match the measured |Z|. Analysis, Kramers–Kronig test fits a chain of RC elements that obeys the Kramers–Kronig relations (Lin-KK) and gives the residuals: above the noise level they point to drift or non-linearity. Show contributions, in the Model tab, colours each part of the series chain, on the plots and in the circuit drawing.</p>
         <h2>Mouse and keys</h2>
         <table class="grid">
           <tr><td>Plots</td><td>drag to zoom, shift-drag or right-drag to pan, wheel to zoom, double-click to autoscale</td></tr>
@@ -215,6 +215,7 @@
 <script src="js/core/globalfit.js"></script>
 <script src="js/core/dataops.js"></script>
 <script src="js/core/drt.js"></script>
+<script src="js/core/kk.js"></script>
 <script src="js/io/readers.js"></script>
 <script src="js/io/writers.js"></script>
 <script src="js/state.js"></script>

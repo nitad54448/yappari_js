@@ -21,10 +21,12 @@
  *    g1 = -pi/6, g3 = -pi^3/360, g5 = -pi^5/15120, g7 = -pi^7/604800: terms of coth(pi k / 2), the kernel
  *    linking ln|Z| and the phase. Phase resampled on a uniform ln w grid (cubic spline, >= 10 points per decade);
  *    derivatives from local least-squares polynomials of degree 5 over +-1 decade, so phi(7) is taken as 0: a
- *    degree-7 fit, needed for the pi^7 term, turns 1 % noise into errors of hundreds of percent, whereas degree 5
- *    keeps the deviation of valid noisy data at the noise level. C matches the median of ln|Z|. Masked points are
- *    used; a gap in the frequencies (points deleted, for example) is reported in .gap and each side is rebuilt
- *    on its own.
+ *    degree-7 fit is deliberately excluded. Noise and endpoint effects can still amplify errors with degree 5.
+ *    Within one half-window of either endpoint, smoothly blend toward a first-derivative-only correction
+ *    from a local quadratic over about half a decade. This avoids one-sided high-order derivatives.
+ *    Each checked range must contain the full two-decade derivative window and at least 10 distinct points.
+ *    C matches the median log-modulus difference in each range. Masked points are used; gaps split ranges.
+ *    Unchecked ranges are reported explicitly; they are not presented as reconstructed data.
  */
 Y.drt = (function () {
   'use strict';
@@ -270,7 +272,7 @@ Y.drt = (function () {
         for (a = 0; a < nc; a++) { b[a] += pw[a] * y[j]; for (q = 0; q < nc; q++) A[a * nc + q] += pw[a] * pw[q]; }
       }
       var coef = LA.solveSPD(A, b, nc);
-      if (!coef) continue;
+      if (!coef) throw new Error('Z-HIT phase derivative calculation failed');
       for (var o = 0; o < 4; o++) if (orders[o] < nc) out[o][i] = fact[orders[o]] * coef[orders[o]] / Math.pow(half * h, orders[o]);
     }
     return out;
@@ -285,20 +287,46 @@ Y.drt = (function () {
     for (i = 0; i < N; i++) { X[i] = x[0] + i * h; Ph[i] = Y.dataops.splineAt(x, ph, y2, X[i]); }
     for (i = 1; i < N; i++) I[i] = I[i - 1] + 0.5 * h * (Ph[i] + Ph[i - 1]);
     var D = derivatives(Ph, h, Math.max(2, Math.round(o.win * Math.LN10 / h)), o.deg);
-    for (i = 0; i < N; i++) L[i] = (2 / Math.PI) * I[i] + GAMMA[0] * D[0][i] + GAMMA[1] * D[1][i] + GAMMA[2] * D[2][i] + GAMMA[3] * D[3][i];
+    // A high-degree polynomial evaluated at the end of a shifted window gives unstable
+    // third/fifth derivatives. Use a short, low-degree slope estimate at the boundary,
+    // smoothly returning to the full correction where its window is centered.
+    // This rule uses phase and frequency only, never the measured modulus.
+    var E = derivatives(Ph, h, Math.max(2, Math.round(0.25 * o.win * Math.LN10 / h)), Math.min(2, o.deg));
+    for (i = 0; i < N; i++) {
+      var t = Math.min(1, Math.min(i, N - 1 - i) * h / (o.win * Math.LN10));
+      var blend = t * t * (3 - 2 * t);  // smoothstep: zero slope at either end of the blend
+      var full = GAMMA[0] * D[0][i] + GAMMA[1] * D[1][i] + GAMMA[2] * D[2][i] + GAMMA[3] * D[3][i];
+      L[i] = (2 / Math.PI) * I[i] + blend * full + (1 - blend) * GAMMA[0] * E[0][i];
+    }
     var yL = Y.dataops.splineY2(X, L), Lm = new Float64Array(n), diff = new Float64Array(n);
     for (k = 0; k < n; k++) { Lm[k] = Y.dataops.splineAt(X, L, yL, x[k]); diff[k] = lz[k] - Lm[k]; }
     var C = median(diff), mod = new Float64Array(n);
-    for (k = 0; k < n; k++) mod[k] = Math.exp(Lm[k] + C);
+    for (k = 0; k < n; k++) {
+      mod[k] = Math.exp(Lm[k] + C);
+      if (!(mod[k] > 0) || !isFinite(mod[k])) throw new Error('Z-HIT reconstruction is not finite and positive; the phase or frequency range is unsuitable');
+    }
     return { mod: mod, ph: ph, lz: lz };
   }
 
   // Z-HIT of a dataset. A gap in the frequencies (more than 4 times the usual spacing and half a decade)
   // splits the data: each continuous range is rebuilt on its own, since the phase integral cannot cross a gap.
-  // Ranges with fewer than 10 points keep their measured values and get no deviation.
+  // A range needs 10 distinct points and the full derivative window (2*win decades).
+  // Unchecked points have NaN output/deviation and are omitted from the UI's reconstructed dataset.
   function zhit(ds, o) {
     o = Object.assign({ deg: 5, win: 1 }, o || {});      // local polynomials of degree 5 over +-1 decade (see header)
+    if (!Number.isInteger(o.deg) || o.deg < 1 || o.deg > 5 || !(o.win >= 1) || !isFinite(o.win))
+      throw new Error('Z-HIT requires a polynomial degree from 1 to 5 and a half-window of at least 1 decade');
+    if (!ds || !ds.f || !ds.zr || !ds.zi || ds.f.length !== ds.zr.length || ds.f.length !== ds.zi.length)
+      throw new Error('Z-HIT needs matching frequency, Zr and Zi arrays');
+    function valid(f, re, im) {
+      var m = Math.hypot(re, im);
+      return f > 0 && isFinite(f) && isFinite(re) && isFinite(im) && m > 0 && isFinite(m) && isFinite(2 * Math.PI * f);
+    }
+    for (var j = 0; j < ds.f.length; j++) if (!valid(ds.f[j], ds.zr[j], ds.zi[j]))
+      throw new Error('Z-HIT needs finite positive frequencies and finite nonzero |Z| (invalid point ' + (j + 1) + ')');
     var c = Y.dataops.cleanSorted(ds), n = c.f.length, k;
+    for (k = 0; k < n; k++) if (!valid(c.f[k], c.zr[k], c.zi[k]))
+      throw new Error('Z-HIT found invalid impedance after averaging duplicate frequencies');
     if (n < 10) throw new Error('Z-HIT needs at least 10 points');
     var sp = [];
     for (k = 1; k < n; k++) sp.push(Math.log10(c.f[k] / c.f[k - 1]));
@@ -308,20 +336,29 @@ Y.drt = (function () {
       if (!gap || sp[k - 1] > gap.decades) gap = { f0: c.f[k - 1], f1: c.f[k], decades: sp[k - 1] };
     }
     segs.push([start, n]);
-    var zr = Float64Array.from(c.zr), zi = Float64Array.from(c.zi), dev = new Float64Array(n).fill(NaN), rms = 0, done = 0, worst = 0, fw = 0;
+    var zr = new Float64Array(n).fill(NaN), zi = new Float64Array(n).fill(NaN), dev = new Float64Array(n).fill(NaN), rms = 0, done = 0, worst = 0, fw = null, skippedRanges = [];
     segs.forEach(function (sg) {
       var a = sg[0], m = sg[1] - a;
-      if (m < 10) return;
+      var span = Math.log10(c.f[a + m - 1]) - Math.log10(c.f[a]);
+      if (m < 10 || span + 1e-9 < 2 * o.win) {
+        skippedRanges.push({ f0: c.f[a], f1: c.f[a + m - 1], n: m,
+          reason: m < 10 ? 'fewer than 10 distinct points' : 'less than ' + (2 * o.win) + ' decades (the full derivative window)' });
+        return;
+      }
       var r = rebuild(c.f.subarray(a, a + m), c.zr.subarray(a, a + m), c.zi.subarray(a, a + m), o);
       for (var i = 0; i < m; i++) {
         var q = a + i;
         zr[q] = r.mod[i] * Math.cos(r.ph[i]); zi[q] = r.mod[i] * Math.sin(r.ph[i]);
-        dev[q] = Math.exp(r.lz[i]) / r.mod[i] - 1; rms += dev[q] * dev[q]; done++;
-        if (Math.abs(dev[q]) > worst) { worst = Math.abs(dev[q]); fw = c.f[q]; }
+        dev[q] = Math.exp(r.lz[i]) / r.mod[i] - 1;
+        if (!isFinite(dev[q]) || !isFinite(dev[q] * dev[q])) throw new Error('Z-HIT deviation is non-finite; no result was accepted');
+        rms += dev[q] * dev[q]; done++;
+        if (fw == null || Math.abs(dev[q]) > worst) { worst = Math.abs(dev[q]); fw = c.f[q]; }
       }
     });
-    if (!done) throw new Error('no range of 10 points without a gap');
-    return { f: c.f, zr: zr, zi: zi, dev: dev, rms: Math.sqrt(rms / done), max: worst, fmax: fw, gap: gap, ranges: segs.length, checked: done };
+    if (!done) throw new Error('Z-HIT needs a continuous range with at least 10 distinct points spanning at least ' + (2 * o.win) + ' decades; no range was checked');
+    if (!isFinite(rms)) throw new Error('Z-HIT RMS deviation is non-finite; no result was accepted');
+    return { f: c.f, zr: zr, zi: zi, dev: dev, rms: Math.sqrt(rms / done), max: worst, fmax: fw, gap: gap,
+             ranges: segs.length, checked: done, unchecked: n - done, skippedRanges: skippedRanges };
   }
 
   return { compute: compute, scanValues: scanValues, scanner: scanner, bestIndex: bestIndex, zhit: zhit, GAMMA: GAMMA, GOLD_ITER: GOLD_ITER };
