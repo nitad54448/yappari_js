@@ -146,6 +146,7 @@
         <table class="grid">
           <tr><td>Plots</td><td>drag to zoom, shift-drag or right-drag to pan, wheel to zoom, double-click to autoscale</td></tr>
           <tr><td>Parameter</td><td>mouse wheel or arrow keys change the value; Shift for larger steps, Alt for smaller ones</td></tr>
+          <tr><td>Parameters tab</td><td>← → next to the dataset name show the previous or next dataset of the list</td></tr>
           <tr><td>Dataset list</td><td>Ctrl+A all, Shift+click range, Ctrl+click one more, Delete, F2 or double-click to rename, drag to reorder</td></tr>
           <tr><td>Anywhere</td><td>F9 fit selected, Ctrl+S save project</td></tr>
           <tr><td>Drawing</td><td>click to select, Delete to remove, Ctrl+Z to undo, Esc to deselect</td></tr>
@@ -166,7 +167,7 @@
       <div id="ds-list" class="ds-list" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="Datasets"></div>
     </section>
     <section class="side-panel side-params" id="sp-params" role="tabpanel" aria-label="Parameters">
-      <div class="side-h"><span class="sub">Values of</span><span id="param-ds" class="sub strong"></span></div>
+      <div class="side-h param-head"><span class="sub">Values of</span><span id="param-ds" class="sub strong"></span><span id="param-more" class="sub"></span><span class="ds-step" role="group" aria-label="Show another dataset"><button type="button" id="param-prev" aria-label="Previous dataset">←</button><button type="button" id="param-next" aria-label="Next dataset">→</button></span></div>
       <div id="param-list" class="param-list"></div>
       <div id="param-stats" class="param-stats"></div>
       <div class="clone-bar">

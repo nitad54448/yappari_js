@@ -31,9 +31,11 @@ Y.paramsPanel = (function () {
 
   // ---------------------------------------------------------------- side panel list
   function renderList() {
-    var host = $('#param-list'), ds = Y.state.first(), prog = S.model.prog, head = $('#param-ds');
-    head.textContent = ds ? (S.sel.size > 1 ? ds.name + ' and ' + (S.sel.size - 1) + ' more' : ds.name) : '';
-    head.title = S.sel.size > 1 ? 'Values of the first selected dataset. Changes apply to all ' + S.sel.size + ' selected datasets.' : '';
+    var host = $('#param-list'), ds = Y.state.first(), prog = S.model.prog, head = $('#param-ds'), more = S.sel.size > 1 ? S.sel.size - 1 : 0;
+    head.textContent = ds ? ds.name : '';                  // cut with … when long (style.css); the whole name is in the tooltip
+    $('#param-more').textContent = ds && more ? 'and ' + more + ' more' : '';
+    head.title = !ds ? '' : more ? ds.name + ': values of the first selected dataset. Changes apply to all ' + S.sel.size + ' selected datasets.' : ds.name;
+    syncStep();
     if (!prog) { host.innerHTML = '<p class="hint">No circuit yet. Build one in the Model tab.</p>'; renderStats(); return; }
     host.innerHTML = prog.params.map(function (pp) {
       var E = Y.elements[pp.kind], dis = ds && !S.busy ? '' : ' disabled';
@@ -77,6 +79,22 @@ Y.paramsPanel = (function () {
       '</dd><dt>Fit</dt><dd title="' + esc(msg) + '">' + (st.global ? 'global, ' : '') + (st.iter != null ? st.iter + ' it, ' : '') + esc(short) +
       (short === 'converged' ? ' <span class="why">(' + esc(msg.replace(/^converged: /, '')) + ')</span>' : '') + '</dd></dl>';
   }
+
+  // ← → next to the dataset name: the previous or next dataset of the list (relative to the one shown, the first selected)
+  // becomes the selection, so the parameters of many datasets can be scanned from here. Without a selection, → starts at
+  // the top of the list and ← at the bottom.
+  function neighbour(dir) {
+    var list = S.datasets, f = Y.state.first(), i = f ? list.indexOf(f) : -1, j = i < 0 ? (dir > 0 ? 0 : list.length - 1) : i + dir;
+    return j >= 0 && j < list.length ? { ds: list[j], k: j } : null;
+  }
+  function syncStep() {
+    [['#param-prev', -1, 'Previous'], ['#param-next', 1, 'Next']].forEach(function (b) {
+      var el = $(b[0]), nb = neighbour(b[1]);
+      if (nb) el.dataset.tip = b[2] + ' dataset: ' + nb.ds.name + ' (' + (nb.k + 1) + ' of ' + S.datasets.length + ')' + (S.sel.size > 1 ? ', selected alone' : '');
+      Y.ui.able(el, !S.datasets.length ? 'No data loaded yet.' : nb ? '' : b[1] < 0 ? 'This is the first dataset of the list.' : 'This is the last dataset of the list.');
+    });
+  }
+  function stepDataset(dir) { var nb = neighbour(dir); if (nb) Y.state.selectIds([nb.ds.id]); }
 
   // Snapshot only real changes, including edits applied to several selected datasets.
   function changeValue(n, v) {
@@ -305,6 +323,8 @@ Y.paramsPanel = (function () {
 
   function init() {
     bindList();
+    $('#param-prev').addEventListener('click', function () { stepDataset(-1); });
+    $('#param-next').addEventListener('click', function () { stepDataset(1); });
     renderSettings();
     renderElementDefaults();
     bindTab();

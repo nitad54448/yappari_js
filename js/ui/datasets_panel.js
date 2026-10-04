@@ -58,7 +58,8 @@ Y.datasetsPanel = (function () {
   function moveSel(dir, extend) {
     var arr = S.datasets;
     if (!arr.length) return;
-    var i = arr.findIndex(function (d) { return d.id === (cursor != null ? cursor : S.anchor); });
+    var ref = cursor != null && S.sel.has(cursor) ? cursor : S.anchor;      // the selection can change elsewhere (← → in Parameters)
+    var i = arr.findIndex(function (d) { return d.id === ref; });
     var j = Math.max(0, Math.min(arr.length - 1, i < 0 ? 0 : i + dir));
     cursor = arr[j].id;
     if (extend) Y.state.range(cursor); else Y.state.selectIds([cursor]);

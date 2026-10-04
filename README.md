@@ -105,7 +105,7 @@ rules. The command line and the keyboard shortcuts still run the commands, which
 | Tab | Content |
 |---|---|
 | **Datasets** | All datasets, newest on top. Colour square = plot colour; dot on the right = fit status (green converged; amber iteration limit, stalled, singular system or all fitted parameters at their limits; red failed). Selected datasets are amber. |
-| **Parameters** | Values of the first selected dataset: name, value, unit, standard error (%), fit tick box. Below: χ²w, χ²red, R², weights, fit status. At the bottom: *Copy these values to All datasets / Selected datasets*. |
+| **Parameters** | Values of the first selected dataset: name, value, unit, standard error (%), fit tick box. Below: χ²w, χ²red, R², weights, fit status. At the bottom: *Copy these values to All datasets / Selected datasets*. The arrows ← → right of the dataset name (cut with … when it is long; the whole name shows on hover) select the previous or next dataset of the list, to scan the parameters of many datasets from here. |
 | **Fit** | What will be fitted (number of selected datasets, circuit), mode **Individual** or **Global**, method, weights, max iterations, min χ² step (relative tolerance) and *Stop*. The **Fit** button is in the top bar, immediately left of Settings. All four fit settings stay synchronized with Settings. |
 
 Drag the **left edge of the side panel** to resize it (arrow keys when it has the focus; double-click resets).
@@ -682,6 +682,7 @@ datasets. Numbers accept SI prefixes where a frequency is expected (`1k`, `2.5M`
 | Anywhere | F9 fit selected (Individual or Global, as set in the Fit tab); Ctrl+S save project; drop files to read them |
 | Plots | Drag to zoom, Shift-drag or right-drag to pan, wheel to zoom, double-click to autoscale; click a legend entry to hide or show it |
 | Parameter value | Mouse wheel or ↑/↓ change the value; Shift for larger steps, Alt for smaller ones |
+| Parameters tab | ← → right of the dataset name: previous or next dataset of the list (it becomes the selection) |
 | Dataset list | Ctrl+A all, Shift+click range, Ctrl+click one more, Delete, F2 or double-click to rename, drag to reorder |
 | Circuit drawing | Click to select, Delete to remove, Ctrl+Z to undo, Esc to deselect |
 | Tabs | ←/→ move between tabs when a tab has the focus |
