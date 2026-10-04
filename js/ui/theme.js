@@ -49,9 +49,23 @@ Y.theme = (function () {
     }
     return cache[key];
   }
+  // Export the light tokens and a CSS-authored template without fetching local files.
+  function exportCSS(name) {
+    get('light');
+    probe.setAttribute('data-theme', 'light');
+    var cs = getComputedStyle(probe), template = cs.getPropertyValue('--' + name + '-css').trim();
+    if (!template) throw new Error('Missing export styles in style.css: ' + name);
+    var declarations = [];
+    for (var i = 0; i < cs.length; i++) {
+      var key = cs[i];
+      if (key.indexOf('--') === 0 && !/-css$/.test(key))
+        declarations.push(key + ':' + cs.getPropertyValue(key).trim() + ';');
+    }
+    return ':root{' + declarations.join('') + '}' + JSON.parse(template);
+  }
   function refresh() { cache = {}; }
   function seriesVar(n) { return 'var(--series-' + (n % get().series.length + 1) + ')'; }
   function partVars() { return get().parts.map(function (c, i) { return 'var(--part-' + (i + 1) + ')'; }); }
 
-  return { get: get, refresh: refresh, seriesVar: seriesVar, partVars: partVars };
+  return { exportCSS: exportCSS, get: get, refresh: refresh, seriesVar: seriesVar, partVars: partVars };
 })();

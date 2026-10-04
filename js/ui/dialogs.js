@@ -193,7 +193,7 @@ Y.ui = (function () {
     return new Promise(function (resolve) {
       var inp = document.createElement('input');
       inp.type = 'file'; inp.multiple = !!o.multiple; if (o.accept) inp.accept = o.accept;
-      inp.style.display = 'none';
+      inp.hidden = true;
       document.body.appendChild(inp);
       inp.addEventListener('change', function () { var f = Array.prototype.slice.call(inp.files || []); inp.remove(); resolve(f); });
       inp.addEventListener('cancel', function () { inp.remove(); resolve([]); });

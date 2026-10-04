@@ -26,8 +26,6 @@
     $('#ptools .tool-sep').hidden = !VIEWS[tab];
     $('#v3d-wrap').hidden = tab !== 'd3';
     $('#pt-nyq').hidden = tab !== 'nyq';
-    $('#pt-show').hidden = !(tab === 'nyq' || tab === 'zr' || tab === 'zi' || tab === 'bode');
-    $('#pt-contrib').hidden = !(tab === 'nyq' || tab === 'zr' || tab === 'zi');
     $('#phint').textContent = tab === 'd3' ? 'Drag to rotate, wheel to zoom, double-click to reset.' :
       tab === 'drt' ? 'Distributions of the selected datasets; spectra, residuals and peaks of the first one. Drag to zoom, double-click to reset.' :
       'Drag to zoom, shift-drag to pan, double-click to reset. Click a legend entry (data, Fit or a contribution) to hide or show it.';
@@ -210,15 +208,13 @@
     }
     $('#theme-toggle').addEventListener('click', function () { Y.state.setSetting('theme', isDark() ? 'light' : 'dark'); });
     if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { if (S.settings.theme !== 'dark' && S.settings.theme !== 'light') applyTheme(); });
-    // contributions: one setting, two check boxes (plots and Model tab)
-    var cb = [$('#contrib-toggle'), $('#contrib-model')];
-    function syncContrib() { cb.forEach(function (c) { c.checked = !!S.settings.contrib; }); $('#fit-toggle').checked = S.settings.showFit !== false; $('#data-toggle').checked = S.settings.showData !== false; $('#nyq-square').checked = !!S.settings.nyqSquare; }
-    $('#nyq-square').addEventListener('change', function () { Y.state.setSetting('nyqSquare', $('#nyq-square').checked); });
-    $('#data-toggle').addEventListener('change', function () { Y.state.setSetting('showData', $('#data-toggle').checked); });
-    $('#fit-toggle').addEventListener('change', function () { Y.state.setSetting('showFit', $('#fit-toggle').checked); });
-    cb.forEach(function (c) { c.addEventListener('change', function () { Y.state.setSetting('contrib', c.checked); }); });
-    Y.bus.on('settings', function (k) { if (k === '*' || k === 'theme') applyTheme(); if (k === '*' || k === 'contrib' || k === 'showFit' || k === 'showData' || k === 'nyqSquare') syncContrib(); });
-    applyTheme(); syncContrib();
+    // contributions (Model tab) and square Nyquist plot (Nyquist toolbar); data, Fit and each contribution are hidden from the legend
+    var cm = $('#contrib-model'), sq = $('#nyq-square');
+    function syncToggles() { cm.checked = !!S.settings.contrib; sq.checked = !!S.settings.nyqSquare; }
+    cm.addEventListener('change', function () { Y.state.setSetting('contrib', cm.checked); });
+    sq.addEventListener('change', function () { Y.state.setSetting('nyqSquare', sq.checked); });
+    Y.bus.on('settings', function (k) { if (k === '*' || k === 'theme') applyTheme(); if (k === '*' || k === 'contrib' || k === 'nyqSquare') syncToggles(); });
+    applyTheme(); syncToggles();
 
     $('#about-version').textContent = Y.version;
     syncFitbar();

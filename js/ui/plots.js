@@ -61,8 +61,7 @@ Y.plots = (function () {
   // series for one plot kind; residuals for 'zr' / 'zi'
   function build(kind, list, opts) {
     opts = opts || {};
-    // data, model curve and contributions are drawn and hidden independently (toolbar or legend)
-    var showFit = opts.report || S.settings.showFit !== false, showData = opts.report || S.settings.showData !== false;
+    // data, model curves and contributions are hidden independently from the legend
     var main = [], res = [], lmax = S.settings.legendMax, rel = S.settings.resid === 'rel', ps = phaseScale();
     list.forEach(function (ds, n) {
       var col = color(ds, opts.report ? 'light' : null), idx = [], k;
@@ -77,11 +76,11 @@ Y.plots = (function () {
         ey = Float64Array.from(idx, function (kk) { return kind === 'zr' ? ds.sr[kk] : ds.si[kk]; });
         if (kind === 'nyq') ex = Float64Array.from(idx, function (kk) { return ds.sr[kk]; });
       }
-      if (showData) main.push({ name: ds.name, group: ds.id, x: X, y: Yv, color: col, mode: 'markers', hover: true,
+      main.push({ name: ds.name, group: ds.id, x: X, y: Yv, color: col, mode: 'markers', hover: true,
                   legend: n < lmax, ds: ds, idx: idx, size: opts.size, ex: ex, ey: ey });
       var midx = [];                                         // masked points stay visible, hollow and pale
       for (k = 0; k < ds.f.length; k++) if (ds.mask[k]) midx.push(k);
-      if (midx.length && showData) {
+      if (midx.length) {
         var MX = new Float64Array(midx.length), MY = new Float64Array(midx.length);
         midx.forEach(function (kk, i) { var c = Y.dataops.coords(ds, kk, kind); MX[i] = c[0]; MY[i] = kind === 'phase' ? c[1] * ps : c[1]; });
         main.push({ name: ds.name, group: ds.id, x: MX, y: MY, color: col, mode: 'markers', hollow: true, noAuto: true,
@@ -90,7 +89,7 @@ Y.plots = (function () {
       var cv = Y.state.curveFor(ds);
       if (cv) {
         var xy = curveXY(cv, kind), line = { name: 'Fit', group: 'fit', x: xy[0], y: xy[1], color: col, mode: 'lines', legend: true, width: opts.width };
-        if (showFit) main.push(line);
+        main.push(line);
         if (n === 0 && S.settings.contrib && !opts.noContrib && (kind === 'nyq' || kind === 'zr' || kind === 'zi'))
           Array.prototype.push.apply(main, contribSeries(ds, kind, cv, kind === 'nyq' ? line : null));
       }

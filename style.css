@@ -4,13 +4,13 @@
    Variables read by the plots must be plain values (#hex, rgb(), rgba(), px): canvas cannot evaluate var() or color-mix().
    The page always carries data-theme="light" or "dark" (the script resolves "follow the system"), so the dark theme
    is the single block after this one. Reports always use the light values.
-   Selected datasets are amber, as in the LabVIEW Yappari; circuit elements are drawn in ink blue. */
+   Selected datasets use a muted blue tint; circuit elements are drawn in ink blue. */
 :root, [data-theme="light"] {
-  --paper: #f3f5f4;
+  --paper: #edf1f5;
   --panel: #ffffff;
   --ink: #1f2933;
   --ink-2: #52606d;
-  --ink-3: #8a96a3;
+  --ink-3: #657587;
   --rule: #d3d9de;
   --rule-2: #e7ebee;
   --blue: #2457a6;
@@ -31,6 +31,9 @@
   --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-code: "Cascadia Mono", ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;
   --font-kana: "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", "Noto Sans CJK JP", Meiryo, sans-serif;
+  --control-bg: #edf3fa; --control-border: #b9cbe0; --control-ink: #2457a6;
+  --chrome: #e8eef5; --selection: #dfebf8; --selection-ink: #183c66;
+  --shadow: rgba(24, 44, 68, 0.12);
   --side-w: 350px;            /* side panel: default width, narrowest, widest (share of the window) */
   --side-min: 260px;
   --side-max: 60%;
@@ -62,11 +65,14 @@
   color-scheme: light;
 }
 [data-theme="dark"] {
-  --paper: #14181c; --panel: #1b2025; --ink: #e3e7ea; --ink-2: #a7b2bc; --ink-3: #75818c;
+  --paper: #14181c; --panel: #1b2025; --ink: #e3e7ea; --ink-2: #a7b2bc; --ink-3: #96a5b4;
   --rule: #2f363d; --rule-2: #252b31; --blue: #7ea6e6; --blue-2: #9bbbee; --blue-tint: #1f2b3d; --on-blue: #0f1620;
   --amber: #f2b231; --amber-tint: #3b3017; --ok: #5cb88a; --warn: #e0a740; --err: #f07a7a;
   --plot-bg: #1b2025; --plot-grid: #2b3238; --plot-minor: #22282e; --plot-axis: #5d6873;
   --grid-major: rgba(126, 166, 230, 0.13); --grid-minor: rgba(126, 166, 230, 0.05);
+  --control-bg: #233246; --control-border: #405771; --control-ink: #bed6f4;
+  --chrome: #172330; --selection: #263e58; --selection-ink: #e0edff;
+  --shadow: rgba(0, 0, 0, 0.28);
   color-scheme: dark;
 }
 
@@ -82,10 +88,10 @@ code { font-family: var(--font-code); }
 
 /* ---------- controls ---------- */
 button {
-  font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule);
-  border-radius: 3px; padding: 5px 10px; cursor: pointer;
+  font: inherit; color: var(--control-ink); background: var(--control-bg); border: 1px solid var(--control-border);
+  border-radius: 4px; padding: 5px 10px; cursor: pointer;
 }
-button:hover { border-color: var(--ink-3); }
+button:enabled:hover { border-color: var(--blue); background: var(--blue-tint); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.primary { background: var(--blue); border-color: var(--blue); color: var(--on-blue); font-weight: 600; }
 button.primary:hover { background: var(--blue-2); border-color: var(--blue-2); }
@@ -264,15 +270,15 @@ table.grid small { color: var(--ink-3); }
 .ds-list:focus-visible { box-shadow: inset 0 0 0 2px var(--blue); }
 .ds { display: flex; align-items: center; gap: 8px; height: 23px; padding: 0 10px; cursor: default; user-select: none; border-bottom: 1px solid var(--rule-2); }
 .ds:hover { background: var(--blue-tint); }
-.ds.on { background: var(--amber); color: #1f2933; }
+.ds.on { background: var(--selection); color: var(--selection-ink); box-shadow: inset 3px 0 0 var(--blue); }
 .ds .sw { width: 8px; height: 8px; flex: none; }
 .ds .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds .st { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .ds .st.ok { background: var(--ok); }
 .ds .st.warn { background: var(--warn); }
 .ds .st.bad { background: var(--err); }
-.ds.on .st.ok { background: #1e6b45; }
-.ds.on .st.warn { background: #7a4b00; }
+.ds.on .st.ok { background: var(--ok); }
+.ds.on .st.warn { background: var(--warn); }
 .ds.drop { box-shadow: inset 0 2px 0 var(--blue); }
 .ds .rename { flex: 1; padding: 1px 4px; }
 .empty-list { padding: 14px 12px; color: var(--ink-2); }
@@ -281,7 +287,7 @@ table.grid small { color: var(--ink-3); }
 .fitbar .primary { padding: 8px 10px; font-size: 13.5px; }
 .progress { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 14px; }
 .progress .track { position: relative; flex: 1; height: 4px; background: var(--rule-2); overflow: hidden; }
-.progress i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--amber); }
+.progress i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--blue); }
 .progress span { font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; }
 .progress.indet i { width: 30%; animation: indet 1.1s linear infinite; }
 @keyframes indet { from { left: -30%; } to { left: 100%; } }
@@ -368,8 +374,8 @@ dialog.xl { width: min(1000px, 96vw); }
 .log-head { margin: 12px 22px 0; max-width: 90ch; }
 
 .form-grid [hidden] { display: none !important; }
-.ds .du { flex: none; font-size: 11px; color: var(--ink2); }
-.ds.on .du { color: #3d4650; }
+.ds .du { flex: none; font-size: 11px; color: var(--ink-2); }
+.ds.on .du { color: var(--selection-ink); }
 
 /* ---------- narrow windows ---------- */
 @media (max-width: 920px) {
@@ -451,7 +457,7 @@ body.resizing .plot-canvas { pointer-events: none; }
 .clone-bar button { flex: 1 1 0; }
 
 .side .fitbar.on { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 10px; overflow: auto; border-top: 0; }
-.fit-target { margin: 0; padding: 8px 10px; background: var(--paper); border-left: 3px solid var(--amber); color: var(--ink-2); line-height: 1.6; }
+.fit-target { margin: 0; padding: 8px 10px; background: var(--paper); border-left: 3px solid var(--blue); color: var(--ink-2); line-height: 1.6; }
 .fit-target b { color: var(--ink); }
 .fit-target code { color: var(--ink); font-size: 12.5px; }
 .fit-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 8px; }
@@ -464,14 +470,6 @@ body.resizing .plot-canvas { pointer-events: none; }
 
 .drt-pane .drt-view .drt-peaks { max-height: none; min-height: 0; flex: 1 1 auto; overflow: auto; padding: 0 4px; }
 .side .fitbar.on { align-items: stretch; }
-
-/* plot toolbar: what is drawn, with a small key for each */
-.pt-show { display: inline-flex; align-items: center; gap: 12px; margin-left: 6px; }
-.pt-lbl { color: var(--ink-3); }
-.pt-key i { display: inline-block; width: 18px; height: 8px; flex: none; }
-.pt-key .key-dots { background: radial-gradient(circle, var(--ink-2) 1.6px, transparent 2px) 0 50% / 6px 8px repeat-x; }
-.pt-key .key-line { height: 2px; background: var(--ink-2); }
-.pt-key .key-dash { height: 2px; background: repeating-linear-gradient(90deg, var(--ink-2) 0 5px, transparent 5px 8px); }
 
 /* DRT toolbar, two rows: method, data and λ; then axis, autoscale, search, and the saves on the right */
 .drt-pane { gap: 4px; }
@@ -501,3 +499,29 @@ body.resizing .plot-canvas { pointer-events: none; }
 button.primary:disabled:hover { background: var(--blue); border-color: var(--blue); }
 button:not(.primary):disabled:hover { border-color: var(--rule); }
 .fit-target .why-not { color: var(--warn); }
+
+/* Technical workspace: restrained blue controls and structured chrome. */
+.top { background: var(--chrome); border-top: 3px solid var(--blue); }
+.tabs button[aria-selected="true"], .side-tabs button[aria-selected="true"] {
+  background: var(--blue-tint); color: var(--blue); border-bottom-color: var(--blue);
+}
+.side-tabs, .status { background: var(--chrome); }
+.ptools, .drt-tools { background: var(--paper); }
+.side-h { background: var(--paper); }
+.side-h h2, .settings legend { color: var(--blue); }
+.prow .pv, .fit-target code, table.grid { font-variant-numeric: tabular-nums; }
+.prow .pv { font-family: var(--font-code); }
+.menu-pop, dialog { border-radius: 6px; box-shadow: 0 8px 28px var(--shadow); }
+.dlg h2 { background: var(--chrome); padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
+.ds .sw { background: var(--dataset-color); }
+.settings { grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
+
+/* Portable exports. Quoted CSS keeps these rules available through computed styles,
+   including when index.html is opened directly from disk. theme.exportCSS embeds
+   these rules and the light-theme tokens, so saved reports need no external files.
+   Keep each template on one line; use double quotes for the CSS string. */
+:root {
+  --report-css: "body{font:14px/1.45 var(--font-ui);color:var(--ink);background:var(--panel);max-width:1180px;margin:24px auto;padding:0 20px}h1{font-size:22px;margin:0 0 2px}h2{font-size:17px;margin:30px 0 6px;padding-top:12px;border-top:1px solid var(--rule)}table{border-collapse:collapse;margin:6px 0 12px}td,th{padding:3px 14px 3px 0;text-align:left;font-variant-numeric:tabular-nums;vertical-align:top}th{color:var(--ink-2);font-weight:600}.imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr));gap:10px}.imgs img{width:100%;border:1px solid var(--rule-2)}.muted{color:var(--ink-2)}code{font-family:var(--font-code);font-size:15px}svg{max-width:100%;height:auto}@media print{section{break-inside:avoid-page}}";
+  --schematic-css: ".w{stroke:var(--ink-2);stroke-width:var(--schematic-wire)}.sym{fill:var(--blue)}.sym-line{stroke:var(--blue);stroke-width:var(--schematic-line);fill:none;stroke-linecap:round;stroke-linejoin:round}.sym-box{fill:var(--panel);stroke:var(--blue);stroke-width:var(--schematic-box)}.sym-txt{fill:var(--blue);font:600 var(--schematic-symbol-size) var(--font-ui);text-anchor:middle}.lbl{fill:var(--ink);font:var(--schematic-font-size) var(--font-ui);text-anchor:middle}.hit,.grp{fill:none;stroke:none}.node{fill:var(--ink-2)}.term{fill:var(--panel);stroke:var(--ink-2);stroke-width:var(--schematic-wire)}";
+}
+button.danger:enabled:hover { background: color-mix(in srgb, var(--err) 88%, var(--ink)); border-color: var(--err); color: #fff; }

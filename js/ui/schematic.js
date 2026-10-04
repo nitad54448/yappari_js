@@ -111,13 +111,7 @@ Y.schematic = (function () {
   }
 
   // styles of the standalone SVG in the report, from the light theme of style.css
-  function reportCSS() {
-    var T = Y.theme.get('light'), s = T.schematic;
-    return '.w{stroke:' + T.ink2 + ';stroke-width:' + s.wire + '}.sym{fill:' + T.blue + '}.sym-line{stroke:' + T.blue + ';stroke-width:' + s.line +
-      ';fill:none;stroke-linecap:round;stroke-linejoin:round}.sym-box{fill:' + T.panel + ';stroke:' + T.blue + ';stroke-width:' + s.box +
-      '}.sym-txt{fill:' + T.blue + ';font:600 ' + s.symbol + ' ' + T.font + ';text-anchor:middle}.lbl{fill:' + T.ink + ';font:' + s.font + ' ' + T.font +
-      ';text-anchor:middle}.hit,.grp{fill:none;stroke:none}.node{fill:' + T.ink2 + '}.term{fill:' + T.panel + ';stroke:' + T.ink2 + ';stroke-width:' + s.wire + '}';
-  }
+  function reportCSS() { return Y.theme.exportCSS('schematic'); }
 
   // standalone SVG (report)
   function svgString(tree) {

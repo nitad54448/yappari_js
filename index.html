@@ -47,11 +47,6 @@
         <label class="chk"><input type="checkbox" id="label-click"> Click labels a point</label>
         <label class="chk" title="Square frame and saved image. With the same scale on both axes (Settings), both axes span the same range."><input type="checkbox" id="nyq-square"> Square</label>
       </span>
-      <span class="pt-group pt-show" id="pt-show"><span class="pt-lbl">Show</span>
-        <label class="chk pt-key" title="Measured points"><input type="checkbox" id="data-toggle"><i class="key-dots" aria-hidden="true"></i>Data</label>
-        <label class="chk pt-key" title="The model curve with the current parameters"><input type="checkbox" id="fit-toggle"><i class="key-line" aria-hidden="true"></i>Fit</label>
-        <label class="chk pt-key" id="pt-contrib" title="Each part of the series chain in its own colour, dashed"><input type="checkbox" id="contrib-toggle"><i class="key-dash" aria-hidden="true"></i>Contributions</label>
-      </span>
       <span class="phint" id="phint"></span>
       <span class="note" id="plot-note"></span>
     </div>
@@ -97,7 +92,7 @@
         </div>
         <div class="palette" id="palette" aria-label="Elements"></div>
         <select id="templates" aria-label="Templates"></select>
-        <label class="chk" title="Colours match the contributions shown on the plots"><input type="checkbox" id="contrib-model"> Colour the parts in series</label>
+        <label class="chk" title="Each part of the series chain in its own colour: dashed curves on the Nyquist, Zr and Zi plots, coloured in this drawing"><input type="checkbox" id="contrib-model"> Show contributions</label>
         <span class="tool-gap"></span>
         <button type="button" id="node-del">Delete</button>
         <button type="button" id="node-undo">Undo</button>
@@ -145,7 +140,7 @@
         <h2>Circuit code</h2>
         <p>Elements written next to each other are in series. Round brackets put their content in parallel, square brackets put their content in series inside a parallel group. <code>R(RQ)(Q[RW])</code> is Rs + (R‖Q) + (Q‖(R + W)). Elements: R, C, L, Q (constant phase element), W, Wo, Ws (Warburg), G (Gerischer), HN (Havriliak–Negami). Numbers name the elements (R1, Q2) and are added for you.</p>
         <h2>Checks and relaxation times</h2>
-        <p>The DRT tab shows the distribution of relaxation times of the selected datasets (Tikhonov with non-negativity, Fisk or Gold; R∞ and Rpol from the data), with peak estimates of R and C. Analysis, Z-HIT checks a spectrum: |Z| rebuilt from the phase should match the measured |Z|. Contributions colours each part of the series chain, on the plots and in the circuit drawing.</p>
+        <p>The DRT tab shows the distribution of relaxation times of the selected datasets (Tikhonov with non-negativity, Fisk or Gold; R∞ and Rpol from the data), with peak estimates of R and C. Analysis, Z-HIT checks a spectrum: |Z| rebuilt from the phase should match the measured |Z|. Show contributions, in the Model tab, colours each part of the series chain, on the plots and in the circuit drawing.</p>
         <h2>Mouse and keys</h2>
         <table class="grid">
           <tr><td>Plots</td><td>drag to zoom, shift-drag or right-drag to pan, wheel to zoom, double-click to autoscale</td></tr>

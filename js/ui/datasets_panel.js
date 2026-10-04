@@ -13,7 +13,7 @@ Y.datasetsPanel = (function () {
     var cls = st ? (st.chi2w == null || st.ok === false ? 'bad' : Y.fit.status(st.msg)) : '';
     var tip = st ? (st.chi2w == null ? 'fit failed: ' + (st.msg || '') : 'χ²red ' + fmt(st.chi2red) + ', R² ' + (Number.isFinite(st.r2) ? st.r2.toFixed(5) : '—')) : 'not fitted';
     return '<div class="ds' + (on ? ' on' : '') + '" data-id="' + d.id + '" draggable="true" role="option" aria-selected="' + on + '">' +
-      '<i class="sw" style="background:' + Y.plots.colorVar(d) + '"></i><span class="nm" title="' + esc(d.name) + ', ' + d.f.length + ' points">' + esc(d.name) + '</span>' +
+      '<i class="sw" style="--dataset-color:' + Y.plots.colorVar(d) + '"></i><span class="nm" title="' + esc(d.name) + ', ' + d.f.length + ' points">' + esc(d.name) + '</span>' +
       (d.norm ? '<small class="du" title="Normalized: ' + esc(Y.state.normText(d.norm)) + '">' + (d.norm.type === 'factor' ? '×' + (+d.norm.k.toPrecision(4)) : Y.state.zUnit(d)) + '</small>' : '') +
       '<span class="st ' + cls + '" title="' + esc(tip) + '"></span></div>';
   }

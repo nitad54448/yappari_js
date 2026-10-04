@@ -611,7 +611,6 @@ Y.cmd = (function () {
     ['label>>f', 'label the point nearest to f on the Nyquist plot (1k, 2.5M, 10m allowed)'],
     ['unlabel', 'remove the labels of the selected datasets'],
     ['contrib', 'show or hide the contributions of the parts in series'],
-    ['showfit', 'show or hide the model curve on the plots'],
     ['drt, drt_save', 'show the DRT of the selected datasets, or save it to a file'],
     ['drt_search', 'search the regularisation of the DRT'],
     ['zhit', 'Z-HIT check of the selected datasets'],
@@ -658,7 +657,6 @@ Y.cmd = (function () {
       case 'demo': demo(); break;
       case 'undo': undo(); break;
       case 'unlabel': clearLabels(); break;
-      case 'showfit': Y.state.setSetting('showFit', S.settings.showFit === false); ui.toast('Model curve ' + (S.settings.showFit !== false ? 'shown' : 'hidden') + '.', 'info'); break;
       case 'contrib': Y.state.setSetting('contrib', !S.settings.contrib); ui.toast('Contributions ' + (S.settings.contrib ? 'shown' : 'hidden') + '.', 'info'); break;
       case 'drt': drtSelected(); break;
       case 'drt_save': drtSave(); break;

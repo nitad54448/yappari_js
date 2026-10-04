@@ -338,20 +338,20 @@ uses the same scale on both axes unless unticked in Settings. *Square* (Nyquist 
 and the saved image square, so that with the same scale both axes span the same range. Large selections are thinned out evenly for drawing
 (*Datasets drawn at most*, Settings); fits always use all datasets.
 
-### What is drawn: Show Data / Fit / Contributions
+### What is drawn
 
-The toolbar has three independent boxes, also available by clicking the legend entries:
+Click a legend entry to hide or show it; double-click the plot to show everything again:
 
 * **Data**: the measured points of each dataset (its legend entry hides only these points).
 * **Fit**: the model curves with the current parameters, one legend entry *Fit* for all datasets.
-* **Contributions** (Nyquist, Zr, Zi): the parts of the top-level series chain, dashed, each in its colour, for the
+* **Contributions** (Nyquist, Zr, Zi; switched on with *Show contributions* in the Model tab, or `contrib`): the parts of the top-level series chain, dashed, each in its colour, for the
   first plotted dataset. They add up exactly: $Z = \sum_\text{parts} Z_\text{part}$. On the Zr and Zi plots each part
   is drawn as is. On the Nyquist plot the model curve takes, at each frequency, the colour of the part with the
   largest |Zi|, and each part is drawn alone, shifted along Zr as if the relaxations were separate (series
   resistances as thick segments on the axis). The circuit drawing can use the same colours.
 
-Any combination works: data with contributions and no fit curve, contributions alone, and so on. Reports always
-include data and model curve.
+Any combination works: data with contributions and no fit curve, contributions alone, and so on. Hidden entries
+reappear when the selection changes. Reports always include data and model curve.
 
 ### Frequency labels
 
@@ -531,7 +531,7 @@ datasets. Numbers accept SI prefixes where a frequency is expected (`1k`, `2.5M`
 | `simulate` | New dataset from the circuit and the current parameters |
 | `select>>text` | Select the datasets whose name contains text (regular expressions work) |
 | `label>>f`, `unlabel` | Label the point nearest to f on the Nyquist plot; remove the labels |
-| `contrib`, `showfit` | Show or hide the contributions; the model curve |
+| `contrib` | Show or hide the contributions |
 | `drt`, `drt_save`, `drt_search` | Show the DRT; save it; search the regularisation |
 | `zhit` | Z-HIT check |
 | `demo` | Add 24 simulated spectra |
@@ -712,7 +712,7 @@ adequate model. Error bars are drawn on the Nyquist, Zr and Zi plots.
   φ⁽⁷⁾ counts as 0: a degree-7 fit turns 1 % noise into errors of hundreds of percent, while degree 5 keeps the
   deviation of valid noisy data at the noise level; new datasets `zh_…` hold the result. The phase integral cannot cross a
   gap left by masked points, so each side of such a gap is checked on its own (and the gap is reported).
-* **Show Data / Fit / Contributions** (plot toolbar, `showfit`, `contrib`): data, model curve and contributions are shown or hidden independently, from the toolbar or by clicking their legend entries (one "Fit" entry for all model curves); reports always include data and model curve.
+* **Data / Fit / Contributions**: hidden or shown by clicking their legend entries (one "Fit" entry for all model curves); contributions are switched on in the Model tab or with `contrib`; reports always include data and model curve.
 * **Contributions** (plot toolbar, Model tab, `contrib`): the parts of the top-level series chain add up.
   On the Zr and Zi plots each part of the first plotted dataset is drawn in its colour; on the Nyquist plot the
   model curve takes the colour of the part with the largest |Zi| at each frequency, and each part is drawn alone,
