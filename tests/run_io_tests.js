@@ -13,6 +13,17 @@ module.exports = function (Y, ok, close) {
   d = R.threeColumns('1000,150.5,-20.25\n100,250,-30\n', 'd.csv', 'auto');
   ok(d[0].zr[0] === 150.5, '3 columns, commas');
 
+  // Presentation tabs in a three-column header must not become data columns.
+  const padded = 'Frequency\t\tReal_Z\t\t\tImag_Z\n';
+  d = R.headerTable(padded + '1000000.000000000000\t1002.533025707866\t-1593.136948918278\n831763.771103000034\t1003.661331967358\t-1915.369734188152\n', 'example_3_columns_datafile.txt');
+  ok(d.length === 1 && d[0].f.length === 2 && d[0].f[0] === 1000000 && d[0].zr[0] === 1002.533025707866 && d[0].zi[1] === -1915.369734188152, 'padded three-column header, single-tab data');
+  d = R.headerTable(padded + '1000\t\t10\t\t\t-5\n100\t\t20\t\t\t-8\n', 'aligned.txt');
+  ok(d[0].zr[0] === 10 && d[0].zi[1] === -8, 'matching empty header and data columns retain their positions');
+  d = R.headerTable(padded + '1000\t10\t-5\n100\t\t-8\n10\t30\t-9\n', 'missing.txt');
+  ok(d[0].f.length === 2 && d.skipped === 1 && d[0].zr[1] === 30, 'padded heading does not collapse missing numeric fields');
+  d = R.headerTable('Frequency\tReal_Z\tImag_Z\n1000\t10\t\t-5\n100\t20\t-8\n', 'missing-extra.txt');
+  ok(d[0].f.length === 1 && d.skipped === 1 && d[0].zi[0] === -8, 'separator inference does not collapse empty tab fields');
+
   // LabOne-like csv with chunks
   d = R.headerTable('chunk;timestamp;size;frequency;realz;imagz\n0;1;3;1000;10;-5\n0;2;3;100;20;-8\n1;3;3;1000;11;-6\n1;4;3;100;21;-9\n', 'dev3221_imps_0.csv');
   ok(d.length === 2 && d[1].zr[1] === 21 && d[0].name === 'dev3221_imps_0_0', 'MFLI-like csv split by chunk');

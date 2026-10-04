@@ -88,10 +88,11 @@ Y.readers = (function () {
   function isImag(s) { return /imag/.test(s) || /^-?im\(?z/.test(s) || /^-?z''/.test(s) || /^-?z_?i($|[\/(\[_])/.test(s) || /^-?z_?im/.test(s); }
   function isReal(s) { return /real/.test(s) || /^re\(?z/.test(s) || /^z'($|[^'])/.test(s) || /^z_?r($|[\/(\[_])/.test(s) || /^z_?re/.test(s); }
 
-  function parseHeader(line) {
+  function parseHeader(line, compact) {
     if (!/[A-Za-z]/.test(line)) return null;
     var sep = line.indexOf('\t') >= 0 ? 'tab' : line.indexOf(';') >= 0 ? 'semicolon' : line.indexOf(',') >= 0 ? 'comma' : 'space';
     var cols = splitter(sep)(line).map(function (c) { return c.trim().toLowerCase().replace(/^"|"$/g, '').replace(/\s+/g, ''); });
+    if (compact) cols = cols.filter(function (c) { return c !== ''; });
     var h = { sep: sep, n: cols.length, cf: -1, cr: -1, ci: -1, cc: -1, sr: -1, si: -1, neg: false };
     cols.forEach(function (s, k) {
       if (!s || /calc|fit|sim|pwr/.test(s)) return;
@@ -114,7 +115,10 @@ Y.readers = (function () {
   // (some programs write a comma-separated title above tab-separated numbers)
   function dataSep(line, h) {
     var c = [h.sep, 'tab', 'semicolon', 'comma', 'space'];
-    for (var k = 0; k < c.length; k++) if (splitter(c[k])(line).length === h.n) return c[k];
+    for (var k = 0; k < c.length; k++) {
+      if (c[k] === 'space' && line.indexOf('\t') >= 0) continue; // preserve missing tab fields
+      if (splitter(c[k])(line).length === h.n) return c[k];
+    }
     return h.sep;
   }
 
@@ -144,7 +148,17 @@ Y.readers = (function () {
       var j, sep = h.sep;
       for (j = i + 1; j < L.length; j++) {
         var t0 = L[j].trim();
-        if (/^[-+.]?\d/.test(t0)) { sep = dataSep(L[j], h); break; }
+        if (/^[-+.]?\d/.test(t0)) {
+          // Some three-column files pad only their headings with extra tabs.
+          // Compact the HEADER only when the data row has exactly three fields;
+          // never collapse empty numeric fields (a missing value must stay missing).
+          var compact = parseHeader(L[i], true);
+          if (h.sep === 'tab' && compact && compact.n === 3 && h.n > compact.n) {
+            var candidate = dataSep(L[j], compact);
+            if (splitter(candidate)(L[j]).length === compact.n) h = compact;
+          }
+          sep = dataSep(L[j], h); break;
+        }
         if (nameLine(t0) || parseHeader(L[j])) break;
       }
       var split = splitter(sep), dc = sep !== 'comma', rows = [];
