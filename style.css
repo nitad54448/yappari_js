@@ -392,7 +392,7 @@ dialog.xl { width: min(1000px, 96vw); }
 /* ---------- navigation: workspaces on top, plot views inside EIS ---------- */
 .top { gap: 22px; }
 .tabs button { font-size: 13.5px; padding: 9px 14px 10px; letter-spacing: 0.01em; }
-.settings-btn {
+.settings-btn, .fit-btn {
   margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid transparent; background: none; color: var(--ink-2); padding: 5px 9px;
 }
@@ -461,12 +461,12 @@ body.resizing .plot-canvas { pointer-events: none; }
 .fit-target b { color: var(--ink); }
 .fit-target code { color: var(--ink); font-size: 12.5px; }
 .fit-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 8px; }
+.fit-row.fit-number { grid-template-columns: 104px minmax(0, 1fr); }
 .fit-lbl { color: var(--ink-2); }
 .fit-row .seg { justify-self: start; }
 .fit-row .seg button { padding: 5px 14px; }
 .fit-mode-hint { margin: -4px 0 0 72px; }
-.fit-go { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 4px; }
-.fit-go .primary { padding: 9px 10px; font-size: 13.5px; }
+.fit-go { display: flex; gap: 8px; margin-top: 4px; }
 
 .drt-pane .drt-view .drt-peaks { max-height: none; min-height: 0; flex: 1 1 auto; overflow: auto; padding: 0 4px; }
 .side .fitbar.on { align-items: stretch; }
@@ -482,8 +482,8 @@ body.resizing .plot-canvas { pointer-events: none; }
 .top .menu-btn:hover { color: var(--ink); border-color: var(--rule); }
 .top .menu-btn[aria-expanded="true"] { color: var(--blue); border-color: var(--blue); background: var(--blue-tint); }
 .top .settings-btn { margin-left: 6px; }
-.top .menus + .settings-btn { position: relative; }
-.top .menus + .settings-btn::before { content: ""; position: absolute; left: -5px; top: 5px; bottom: 5px; width: 1px; background: var(--rule); }
+.top .fit-btn { margin-left: 0; border-color: transparent; color: var(--blue); background: var(--blue-tint); flex-shrink: 0; }
+.top .fit-btn:enabled:hover { border-color: var(--blue); background: var(--blue-tint); }
 .side-tabs { padding-top: 4px; }
 @media (max-width: 920px) { .top .menus { margin-left: 0; } }
 

@@ -35,16 +35,16 @@
   }
   Y.app = { showTab: showTab, tab: function () { return curTab; }, fitMode: fitMode };
 
-  // fit bar: individual or global fit, and the fit method (same setting as in Settings)
+  // Fit mode; the controls in the Fit panel share the Settings form binding.
   function fitMode() { return Y.state.load('fitmode') === 'global' ? 'global' : 'single'; }
   function syncFitbar() {
     var g = fitMode() === 'global';
     document.querySelectorAll('[data-fitmode]').forEach(function (b) { b.setAttribute('aria-pressed', String((b.getAttribute('data-fitmode') === 'global') === g)); });
-    $('#btn-fit').textContent = g ? 'Global fit of selected' : 'Fit selected';
+    var button = $('#btn-fit');
+    button.dataset.tip = g ? 'Global fit of selected datasets (F9)' : 'Fit selected datasets (F9)';
+    Y.ui.able(button, Y.cmd.why('fit'));
     $('#fit-mode-hint').textContent = g ? 'One fit of all selected datasets. Parameters ticked “shared” in Settings get one value for all, the others one value per dataset.'
                                         : 'Each selected dataset is fitted on its own, in parallel.';
-    $('#fit-method').value = S.settings.method;
-    $('#fit-weight').value = S.settings.weight;
   }
   function syncTarget() {
     var n = S.sel.size, f = Y.state.first(), why = n && S.model.prog && !S.busy ? Y.cmd.why('fit') : '';   // reasons not shown otherwise
@@ -141,9 +141,6 @@
     document.querySelectorAll('[data-fitmode]').forEach(function (b) {
       b.addEventListener('click', function () { Y.state.store('fitmode', b.getAttribute('data-fitmode')); syncFitbar(); syncTarget(); Y.cmd.syncButtons(); });
     });
-    $('#fit-method').addEventListener('change', function () { Y.state.setSetting('method', $('#fit-method').value); });
-    $('#fit-weight').addEventListener('change', function () { Y.state.setSetting('weight', $('#fit-weight').value); });
-    Y.bus.on('settings', function (k) { if (k === '*' || k === 'method' || k === 'weight') syncFitbar(); });
     Y.bus.on('selection', syncTarget); Y.bus.on('datasets', syncTarget); Y.bus.on('model', syncTarget);
     Y.bus.on('params', syncTarget); Y.bus.on('busy', syncTarget);
     var sideTabs = Array.prototype.slice.call(document.querySelectorAll('[data-side]'));

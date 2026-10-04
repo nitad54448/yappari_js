@@ -117,7 +117,8 @@ Y.defineCore('globalfit', function (Y) {
       var f = total(X, R);
       if (!(f < Infinity)) throw new Error('the model gives non-finite values at the start values');
       var mu = -1, nu = 2, it, conv = 0, needJ = true, msg = 'iteration limit reached';
-      var Xn = new Float64Array(nX), st = new Float64Array(nX), maxIter = Math.max(1, job.maxIter | 0), tol = job.tol > 0 ? job.tol : 1e-12;
+      if (!Number.isInteger(job.maxIter) || job.maxIter < 1 || job.maxIter > 65535) throw new Error('Maximum iterations must be an integer from 1 to 65535');
+      var Xn = new Float64Array(nX), st = new Float64Array(nX), maxIter = job.maxIter, tol = job.tol > 0 ? job.tol : 1e-12;
       for (it = 0; it < maxIter; it++) {
         if (needJ) {
           blocks(false); needJ = false;

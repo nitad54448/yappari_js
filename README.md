@@ -43,9 +43,9 @@ circuit, the element start values and the layout (tabs, side panel width) are re
 3. **Select a dataset** in the side panel (**Datasets** tab).
 4. **Set start values** in the **Parameters** tab: type a value or turn the mouse wheel over it. Tick the
    parameters to fit.
-5. **Fit**: **Fit** tab → *Fit selected* (or F9 from anywhere).
+5. **Fit**: *Fit* in the top bar (or F9 from anywhere).
 6. **Many spectra**: once one dataset fits well, *Parameters → Copy these values to: All datasets*, select all
-   datasets (Ctrl+A in the list) and press *Fit selected*: they are fitted in parallel, each from its own start
+   datasets (Ctrl+A in the list) and press *Fit*: they are fitted in parallel, each from its own start
    values. Switch the mode to **Global** to fit them together with shared parameters.
 7. **Save**: *File → Save parameters of selected*, *Save data of selected…*, *Report of selected datasets* or
    *Save project* (Ctrl+S).
@@ -96,7 +96,7 @@ the plots must be plain values (#hex, rgb(), rgba()).
 
 Items that cannot run in the current situation are greyed out, and their tooltip says why: no data loaded, no dataset
 selected, no circuit, no masked points to unmask, no labels to clear, nothing to undo, a fit running, and so on. The
-*Fit selected*, *Copy these values to*, *Label frequency*, *Clear labels*, *Save PNG* and DRT buttons follow the same
+*Fit*, *Copy these values to*, *Label frequency*, *Clear labels*, *Save PNG* and DRT buttons follow the same
 rules. The command line and the keyboard shortcuts still run the commands, which then say in the status line why not.
 
 **Side panel**
@@ -105,7 +105,7 @@ rules. The command line and the keyboard shortcuts still run the commands, which
 |---|---|
 | **Datasets** | All datasets, newest on top. Colour square = plot colour; dot on the right = fit status (green converged, amber iteration limit, red failed). Selected datasets are amber. |
 | **Parameters** | Values of the first selected dataset: name, value, unit, standard error (%), fit tick box. Below: χ²w, χ²red, R², weights, fit status. At the bottom: *Copy these values to All datasets / Selected datasets*. |
-| **Fit** | What will be fitted (number of selected datasets, circuit), mode **Individual** or **Global**, method, weights, *Fit selected* and *Stop*. |
+| **Fit** | What will be fitted (number of selected datasets, circuit), mode **Individual** or **Global**, method, weights, max iterations, min χ² step (relative tolerance) and *Stop*. The **Fit** button is in the top bar, immediately left of Settings. All four fit settings stay synchronized with Settings. |
 
 Drag the **left edge of the side panel** to resize it (arrow keys when it has the focus; double-click resets).
 The **?** at the bottom left lists the commands of the command line. The progress bar appears in the status bar
@@ -497,7 +497,7 @@ oldest are dropped first), and are lost when the page is closed: *Save project* 
 |---|---|---|---|
 | Fit | Method | TRDL | See [Methods](#methods) (also in the Fit tab). |
 | | Weight of each point | 1/\|Z\| | See [Quantity minimised](#quantity-minimised) (also in the Fit tab). |
-| | Maximum iterations | 2500 | Per fit. |
+| | Maximum iterations | 2500 | Integer from 1 to 65535 (u16 > 0), synchronized with the Fit panel. |
 | | Stop when χ² changes less than | 10⁻¹² | Relative change between two iterations. |
 | Data files | Column separator | Detect automatically | 3-column files and saved data. |
 | | Use measured standard deviations as weights | off | w = 1/σ² when the file has σ. |
@@ -638,8 +638,8 @@ The composite elements of the LabVIEW version (Randles variants, M00x) are templ
 * Methods: trust-region dogleg with bounds (TRDL, default), Levenberg–Marquardt with or without bounds,
   Nelder–Mead with bounds. Parameters spanning decades (R, C, Q, τ …) are fitted as ln p internally; the result is
   the same, convergence from poor start values is better.
-* Batch fits run in parallel Web Workers. Fit selected uses each dataset's own start values; the usual route for
-  many spectra is: fit one, Clone parameters to all, select all, Fit selected.
+* Batch fits run in parallel Web Workers. The top-bar Fit button uses each dataset's own start values; the usual route for
+  many spectra is: fit one, Clone parameters to all, select all, click Fit.
 * Global fit: one fit of all selected datasets. Each parameter is shared (one value) or local (one value per
   dataset), set in Settings; all shared is the LabVIEW behaviour. Start values: shared ones from the first
   selected dataset, local ones from each dataset.

@@ -131,7 +131,7 @@ Y.paramsPanel = (function () {
       { key: 'method', label: 'Method', type: 'select', options: [['TRDL', 'Trust-region dogleg, bounded'], ['LMB', 'Levenberg–Marquardt, bounded'], ['LM', 'Levenberg–Marquardt, no bounds'], ['NM', 'Nelder–Mead, bounded']] },
       { key: 'weight', label: 'Weight of each point', type: 'select', options: [['mod', '1/|Z|'], ['mod2', '1/|Z|²'], ['unit', '1 (no weighting)']],
         hint: 'χ²w = Σ w·[(Zr − Zr calc)² + (Zi − Zi calc)²]' },
-      { key: 'maxIter', label: 'Maximum iterations', type: 'int', min: 1 },
+      { key: 'maxIter', label: 'Maximum iterations', type: 'int', min: 1, max: 65535, strict: true, hint: 'Whole number from 1 to 65535 (unsigned 16-bit).' },
       { key: 'tol', label: 'Stop when χ² changes less than', type: 'num', positive: true, hint: 'Relative change between two iterations.' }] },
     { legend: 'Data files', fields: [
       { key: 'sep', label: 'Column separator, 3-column files and saved data', type: 'select',
@@ -168,7 +168,12 @@ Y.paramsPanel = (function () {
   function syncSettings() {
     document.querySelectorAll('[data-set]').forEach(function (e) {
       var v = S.settings[e.getAttribute('data-set')];
-      if (e.type === 'checkbox') e.checked = !!v; else if (document.activeElement !== e) e.value = v;
+      if (e.type === 'checkbox') e.checked = !!v;
+      else if (document.activeElement !== e) {
+        e.value = v;
+        e.classList.remove('invalid');
+        e.removeAttribute('aria-invalid');
+      }
     });
   }
   function onSetting(e) {
@@ -178,11 +183,13 @@ Y.paramsPanel = (function () {
     if (el.type === 'checkbox') v = el.checked;
     else if (f.type === 'int' || f.type === 'num') {
       v = Y.ui.parseNum(el.value);
-      if (f.type === 'int') v = Math.round(v);
-      var bad = !isFinite(v) || (f.min != null && v < f.min) || (f.positive && !(v > 0));
+      if (f.type === 'int' && !f.strict) v = Math.round(v);
+      var bad = !isFinite(v) || (f.min != null && v < f.min) || (f.max != null && v > f.max) || (f.strict && !Number.isInteger(v)) || (f.positive && !(v > 0));
       el.classList.toggle('invalid', bad);
-      if (bad) { Y.ui.toast(f.label + ': enter a valid number.', 'warn'); return; }
+      if (bad) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
+      if (bad) { Y.ui.toast(f.label + (f.strict ? ': enter a whole number from 1 to 65535.' : ': enter a valid number.'), 'warn'); return; }
     } else v = el.value;
+    if (f.type === 'int' || f.type === 'num') el.value = v;
     Y.state.setSetting(k, v);
     if (k === 'method') renderValues();
   }
@@ -263,6 +270,7 @@ Y.paramsPanel = (function () {
 
   function bindTab() {
     $('#settings-form').addEventListener('change', onSetting);
+    $('#sp-fit').addEventListener('change', onSetting);
     $('#limits').addEventListener('change', onLimit);
     $('#elem-defaults').addEventListener('change', onElem);
     $('#set-save').addEventListener('click', function () {

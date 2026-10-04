@@ -469,7 +469,8 @@ Y.defineCore('fit', function (Y) {
       if (prog.names.length !== job.p.length) throw new Error('parameter count does not match the circuit');
       var P = new Problem(job, prog);
       if (P.n < 1) return { id: job.id, ok: false, msg: 'no data points left (all masked?)' };
-      var o = { maxIter: Math.max(1, job.maxIter | 0), tol: job.tol > 0 ? job.tol : 1e-12 };
+      if (!Number.isInteger(job.maxIter) || job.maxIter < 1 || job.maxIter > 65535) throw new Error('Maximum iterations must be an integer from 1 to 65535');
+      var o = { maxIter: job.maxIter, tol: job.tol > 0 ? job.tol : 1e-12 };
       var x = P.initialX(), res;
       if (!x.length) { P.resid(x, new Float64Array(2 * P.n)); res = { x: x, it: 0, msg: 'no free parameters: statistics only' }; }
       else if (job.method === 'NM') res = nelderMead(P, x, o);

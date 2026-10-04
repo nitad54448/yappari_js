@@ -44,7 +44,7 @@ Y.state = (function () {
 
   function restore() {
     var st = load('settings');
-    if (st) Object.keys(st).forEach(function (k) { if (k in S.settings) S.settings[k] = st[k]; });
+    if (st) S.settings = cleanSettings(st);
     var ov = load('elements');
     if (ov) Y.elementOverrides = ov;
     var m = load('model');
@@ -54,12 +54,14 @@ Y.state = (function () {
   }
 
   // ---------------------------------------------------------------- settings
+  function validMaxIter(v) { return Number.isInteger(v) && v >= 1 && v <= 65535; }
   function setSetting(key, val) {
+    if (key === 'maxIter' && !validMaxIter(val)) return;
     S.settings[key] = val;
     store('settings', S.settings);
     Y.bus.emit('settings', key);
   }
-  function replaceSettings(st) { S.settings = Object.assign(defaults(), st); store('settings', S.settings); Y.bus.emit('settings', '*'); }
+  function replaceSettings(st) { S.settings = cleanSettings(st); store('settings', S.settings); Y.bus.emit('settings', '*'); }
   function resetSettings() { S.settings = defaults(); store('settings', S.settings); Y.bus.emit('settings', '*'); }
   function saveElementOverrides() { store('elements', Y.elementOverrides); }
   // settings from a file: known keys with the type of their default (finite numbers only), on top of base (the
@@ -72,7 +74,7 @@ Y.state = (function () {
     });
     if (!(st.method in Y.fit.methods)) st.method = d0.method;
     if (!(st.weight in Y.fit.weightModes)) st.weight = d0.weight;
-    if (!(st.maxIter >= 1)) st.maxIter = d0.maxIter;
+    if (!validMaxIter(st.maxIter)) st.maxIter = d0.maxIter;
     if (!(st.tol > 0)) st.tol = d0.tol;
     return st;
   }

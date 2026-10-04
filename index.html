@@ -21,6 +21,7 @@
     <button type="button" class="menu-btn" data-menu="data" aria-haspopup="menu" aria-expanded="false">Data</button>
     <button type="button" class="menu-btn" data-menu="analysis" aria-haspopup="menu" aria-expanded="false">Analysis</button>
   </div>
+  <button type="button" id="btn-fit" class="fit-btn" title="Fit selected datasets (F9)" aria-keyshortcuts="F9"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4 2.5v11L13 8z"/></svg><span>Fit</span></button>
   <button type="button" role="tab" data-tab="params" class="settings-btn" title="Fit, data and plot settings, parameter limits, start values"><svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M11.3 1.5l.4 2.3c.6.2 1.1.5 1.6.9l2.2-.8 1.3 2.2-1.8 1.5c.1.6.1 1.2 0 1.8l1.8 1.5-1.3 2.2-2.2-.8c-.5.4-1 .7-1.6.9l-.4 2.3H8.7l-.4-2.3c-.6-.2-1.1-.5-1.6-.9l-2.2.8-1.3-2.2L5 9.4c-.1-.6-.1-1.2 0-1.8L3.2 6.1l1.3-2.2 2.2.8c.5-.4 1-.7 1.6-.9l.4-2.3h2.6zM10 6.3a2.2 2.2 0 100 4.4 2.2 2.2 0 000-4.4z" transform="translate(0 1.5)"/></svg><span>Settings</span></button>
   <button type="button" id="theme-toggle" class="theme-switch" role="switch" aria-checked="false"><span class="track" aria-hidden="true"><i></i></span><span>Dark</span></button>
 </header>
@@ -133,8 +134,8 @@
         <ol>
           <li>File, read data, or drop files on the window. New datasets appear at the top of the list.</li>
           <li>Build the circuit in the Model tab by clicking elements, or type a circuit code.</li>
-          <li>Select a dataset, set start values (mouse wheel over a parameter), tick the parameters to fit, then Fit selected in the Fit panel (or F9). Switch the mode to Global for one fit with shared parameters.</li>
-          <li>For many spectra: in Parameters, copy the values to all datasets; select all with Ctrl+A in the list; Fit selected.</li>
+          <li>Select a dataset, set start values (mouse wheel over a parameter), tick the parameters to fit, then click Fit in the top bar (or press F9). Switch the mode to Global for one fit with shared parameters.</li>
+          <li>For many spectra: in Parameters, copy the values to all datasets; select all with Ctrl+A in the list; click Fit in the top bar.</li>
           <li>Save parameters, data, a report or the whole project from the File menu.</li>
         </ol>
         <h2>Circuit code</h2>
@@ -182,11 +183,13 @@
         </div>
       </div>
       <p class="hint fit-mode-hint" id="fit-mode-hint"></p>
-      <label class="fit-row"><span class="fit-lbl">Method</span><select id="fit-method"><option value="TRDL">Trust-region dogleg, bounded</option><option value="LMB">Levenberg–Marquardt, bounded</option><option value="LM">Levenberg–Marquardt, no bounds</option><option value="NM">Nelder–Mead, bounded</option></select></label>
-      <label class="fit-row"><span class="fit-lbl">Weights</span><select id="fit-weight"><option value="mod">1/|Z|</option><option value="mod2">1/|Z|²</option><option value="unit">1 (no weighting)</option></select></label>
-      <p class="hint">Iterations, tolerance and parameter limits are in Settings. F9 fits from anywhere.</p>
+      <label class="fit-row"><span class="fit-lbl">Method</span><select id="fit-method" data-set="method"><option value="TRDL">Trust-region dogleg, bounded</option><option value="LMB">Levenberg–Marquardt, bounded</option><option value="LM">Levenberg–Marquardt, no bounds</option><option value="NM">Nelder–Mead, bounded</option></select></label>
+      <label class="fit-row"><span class="fit-lbl">Weights</span><select id="fit-weight" data-set="weight"><option value="mod">1/|Z|</option><option value="mod2">1/|Z|²</option><option value="unit">1 (no weighting)</option></select></label>
+      <label class="fit-row fit-number"><span class="fit-lbl">Max iterations</span><input id="fit-max-iter" data-set="maxIter" inputmode="numeric" spellcheck="false" autocomplete="off"></label>
+      <label class="fit-row fit-number"><span class="fit-lbl">Min χ² step</span><input id="fit-tol" data-set="tol" inputmode="decimal" spellcheck="false" autocomplete="off" aria-describedby="fit-tol-hint"></label>
+      <p class="hint" id="fit-tol-hint">Min χ² step is the relative χ² change tolerance. These controls share their values with Settings.</p>
+      <p class="hint">Click Fit in the top bar or press F9 to fit the selected datasets. Parameter limits are in Settings.</p>
       <div class="fit-go">
-        <button type="button" id="btn-fit" class="primary">Fit selected</button>
         <button type="button" id="btn-stop" hidden>Stop</button>
       </div>
     </section>
