@@ -10,12 +10,16 @@ Y.report = (function () {
     var a = Math.abs(v);
     return a >= 1e-3 && a < 1e5 ? String(+v.toPrecision(6)) : v.toExponential(4).replace('e', 'E');
   }
-  var CSS = 'body{font:14px/1.45 "Segoe UI",system-ui,sans-serif;color:#1f2933;max-width:1180px;margin:24px auto;padding:0 20px}' +
-    'h1{font-size:22px;margin:0 0 2px}h2{font-size:17px;margin:30px 0 6px;padding-top:12px;border-top:1px solid #d3d9de}' +
-    'table{border-collapse:collapse;margin:6px 0 12px}td,th{padding:3px 14px 3px 0;text-align:left;font-variant-numeric:tabular-nums;vertical-align:top}' +
-    'th{color:#52606d;font-weight:600}.imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}' +
-    '.imgs img{width:100%;border:1px solid #e6eaed}.muted{color:#52606d}code{font-family:Consolas,monospace;font-size:15px}' +
-    'svg{max-width:100%;height:auto}@media print{section{break-inside:avoid-page}}';
+  // colours and fonts from the light theme of style.css (reports are always light); the layout is the report's own
+  function css() {
+    var T = Y.theme.get('light');
+    return 'body{font:14px/1.45 ' + T.font + ';color:' + T.ink + ';background:' + T.panel + ';max-width:1180px;margin:24px auto;padding:0 20px}' +
+      'h1{font-size:22px;margin:0 0 2px}h2{font-size:17px;margin:30px 0 6px;padding-top:12px;border-top:1px solid ' + T.rule + '}' +
+      'table{border-collapse:collapse;margin:6px 0 12px}td,th{padding:3px 14px 3px 0;text-align:left;font-variant-numeric:tabular-nums;vertical-align:top}' +
+      'th{color:' + T.ink2 + ';font-weight:600}.imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}' +
+      '.imgs img{width:100%;border:1px solid ' + T.rule2 + '}.muted{color:' + T.ink2 + '}code{font-family:' + T.fontCode + ';font-size:15px}' +
+      'svg{max-width:100%;height:auto}@media print{section{break-inside:avoid-page}}';
+  }
 
   function head(list) {
     var fs = Y.state.fitSummary(list), names = Y.state.names();
@@ -48,7 +52,7 @@ Y.report = (function () {
   }
 
   function build(list) {
-    return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Yappari report</title><style>' + CSS + '</style></head><body>' +
+    return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Yappari report</title><style>' + css() + '</style></head><body>' +
       head(list) + list.map(section).join('') + '</body></html>';
   }
 

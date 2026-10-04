@@ -1,6 +1,7 @@
 /*  Application state and event bus.
  *  Events: 'datasets' (list changed), 'selection', 'params' (values / fit flags), 'model', 'settings',
- *          'data' (points changed: mask, delete, noise ...), 'stats' (fit results), 'busy'
+ *          'data' (points changed: mask, delete, noise ...), 'stats' (fit results), 'busy',
+ *          'labels' (frequency labels added or removed), 'theme' (light or dark switched)
  *
  *  Dataset: { id, name, f, zr, zi (Float64Array), mask (Uint8Array, 1 = hidden & not fitted),
  *             p: {name: value}, fit: {name: bool}, stats: null | {...}, calc/curve: cached model values }
@@ -27,7 +28,7 @@ Y.state = (function () {
   function defaults() {
     return { sep: 'auto', method: 'TRDL', weight: 'mod', maxIter: 2500, tol: 1e-12,
              simStart: 1e-3, simEnd: 1e6, simPoints: 128, maxPlots: 60, legendMax: 24,
-             nyqEqual: true, resid: 'abs', phase: 'deg', view3d: 'nyq', useSigma: false, theme: 'system', contrib: false, showFit: true, showData: true,
+             nyqEqual: true, nyqSquare: false, resid: 'abs', phase: 'deg', view3d: 'nyq', useSigma: false, theme: 'system', contrib: false, showFit: true, showData: true,
              drtMethod: 'tikhonov', drtSource: 'both', drtLambda: -3, drtIter: 5, drtX: 'f' };
   }
 
@@ -61,6 +62,20 @@ Y.state = (function () {
   function replaceSettings(st) { S.settings = Object.assign(defaults(), st); store('settings', S.settings); Y.bus.emit('settings', '*'); }
   function resetSettings() { S.settings = defaults(); store('settings', S.settings); Y.bus.emit('settings', '*'); }
   function saveElementOverrides() { store('elements', Y.elementOverrides); }
+  // settings from a file: known keys with the type of their default (finite numbers only), on top of base (the
+  // defaults when omitted); an unknown fit method or weight, or bad iterations or tolerance, fall back to the default
+  function cleanSettings(src, base) {
+    var st = Object.assign(defaults(), base || {}), d0 = defaults();
+    if (src && typeof src === 'object' && !Array.isArray(src)) Object.keys(src).forEach(function (k) {
+      var v = src[k];
+      if (k in d0 && typeof v === typeof d0[k] && !(typeof v === 'number' && !isFinite(v))) st[k] = v;
+    });
+    if (!(st.method in Y.fit.methods)) st.method = d0.method;
+    if (!(st.weight in Y.fit.weightModes)) st.weight = d0.weight;
+    if (!(st.maxIter >= 1)) st.maxIter = d0.maxIter;
+    if (!(st.tol > 0)) st.tol = d0.tol;
+    return st;
+  }
 
   // ---------------------------------------------------------------- model
   function names() { return S.model.prog ? S.model.prog.names : []; }
@@ -329,19 +344,8 @@ Y.state = (function () {
       return a;
     }
     // settings: known keys with the type of the default; anything else keeps the default value
-    var settings = defaults();
-    if (doc.settings != null) {
-      if (!isObj(doc.settings)) bad('settings');
-      Object.keys(doc.settings).forEach(function (k) {
-        var v = doc.settings[k];
-        if (k in settings && typeof v === typeof settings[k] && !(typeof v === 'number' && !isFinite(v))) settings[k] = v;
-      });
-      var d0 = defaults();
-      if (!(settings.method in Y.fit.methods)) settings.method = d0.method;
-      if (!(settings.weight in Y.fit.weightModes)) settings.weight = d0.weight;
-      if (!(settings.maxIter >= 1)) settings.maxIter = d0.maxIter;
-      if (!(settings.tol > 0)) settings.tol = d0.tol;
-    }
+    if (doc.settings != null && !isObj(doc.settings)) bad('settings');
+    var settings = cleanSettings(doc.settings);
     // circuit
     var m = doc.model == null ? {} : doc.model, tree = null, prog = null;
     if (!isObj(m)) bad('model');
@@ -462,7 +466,7 @@ Y.state = (function () {
   function setBusy(b) { S.busy = b; Y.bus.emit('busy', b); }
 
   return {
-    S: S, defaults: defaults, restore: restore, store: store, load: load,
+    S: S, defaults: defaults, cleanSettings: cleanSettings, restore: restore, store: store, load: load,
     setSetting: setSetting, resetSettings: resetSettings, replaceSettings: replaceSettings, saveElementOverrides: saveElementOverrides,
     names: names, setModel: setModel, setLimit: setLimit, setShared: setShared,
     makeDataset: makeDataset, addDatasets: addDatasets, byId: byId, removeDatasets: removeDatasets, clearAll: clearAll,

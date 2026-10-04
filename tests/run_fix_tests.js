@@ -147,4 +147,15 @@ module.exports = function (Y, ok, close) {
     const st = S.datasets[0].stats;
     ok(Number.isNaN(st.r2) && Number.isNaN(st.chi2red) && st.chi2w === 1, 'null statistics restored as NaN');
   }
+
+  // ---------- settings files: values of the wrong type are ignored, missing keys keep the current values
+  {
+    const d = Y.state.defaults();
+    ok(d.nyqSquare === false, 'square Nyquist plot is off by default');
+    const st = Y.state.cleanSettings({ maxIter: 'abc', nyqEqual: 'false', nyqSquare: true, tol: -1, method: 'XX', bogus: 1, simPoints: Infinity },
+                                     Object.assign({}, d, { maxPlots: 7 }));
+    ok(st.maxIter === d.maxIter && st.nyqEqual === d.nyqEqual && st.nyqSquare === true && st.tol === d.tol && st.method === d.method &&
+       !('bogus' in st) && st.simPoints === d.simPoints && st.maxPlots === 7, 'settings file cleaned (wrong types ignored, other keys kept)');
+    ok(Y.state.cleanSettings(null).method === d.method && Y.state.cleanSettings([1, 2]).maxIter === d.maxIter, 'no settings object: defaults');
+  }
 };

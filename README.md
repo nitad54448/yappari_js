@@ -81,6 +81,11 @@ circuit, the element start values and the layout (tabs, side panel width) are re
 
 The **Dark** switch toggles dark mode; the first choice follows the system setting.
 
+All colours, fonts and sizes come from the variables at the top of `style.css`: the page, the plots (dataset colours
+`--series-1…`, contributions `--part-1…`, DRT `--drt-…`, font sizes, marker size, line width), the circuit drawing and the
+report, which always uses the light values. The dark theme is one block that overrides some of them. Colours read by
+the plots must be plain values (#hex, rgb(), rgba()).
+
 **Menus** (header, left of Settings)
 
 | Menu | Items |
@@ -88,6 +93,11 @@ The **Dark** switch toggles dark mode; the first choice follows the system setti
 | **File** | Read: 3 columns · MFLI csv · MFLI ZView .txt / ZView .z · VersaStudio .par · Table with column headers · Custom format. Open project · Save project. Save parameters of selected · Save data of selected · Report of selected datasets. Load 24 demo spectra. |
 | **Data** | Undo the last command. Mask points in the current view · Unmask selected datasets · Delete points in the current view · Delete selected datasets. Normalize · Negate Zi. Add random noise · Spline to a log frequency grid · Smooth (Savitzky–Golay) · Average selected datasets. Simulate spectrum. |
 | **Analysis** | Show / Save the DRT of selected datasets · DRT λ search. Z-HIT of selected datasets. Label a frequency on the Nyquist plot · Clear Nyquist labels. Command line help. |
+
+Items that cannot run in the current situation are greyed out, and their tooltip says why: no data loaded, no dataset
+selected, no circuit, no masked points to unmask, no labels to clear, nothing to undo, a fit running, and so on. The
+*Fit selected*, *Copy these values to*, *Label frequency*, *Clear labels*, *Save PNG* and DRT buttons follow the same
+rules. The command line and the keyboard shortcuts still run the commands, which then say in the status line why not.
 
 **Side panel**
 
@@ -324,7 +334,8 @@ with a common geometric capacitance, or spectra where a shared n of a CPE is wan
 | **3D** | Zr or f | dataset index | −Zi, Zr, Zi, model or differences (View selector) |
 
 Residuals are $Z - Z^\text{calc}$, absolute (unit of Z) or relative (% of |Z|), set in Settings. The Nyquist plot
-uses the same scale on both axes unless unticked in Settings. Large selections are thinned out evenly for drawing
+uses the same scale on both axes unless unticked in Settings. *Square* (Nyquist toolbar or Settings) makes its frame
+and the saved image square, so that with the same scale both axes span the same range. Large selections are thinned out evenly for drawing
 (*Datasets drawn at most*, Settings); fits always use all datasets.
 
 ### What is drawn: Show Data / Fit / Contributions
@@ -355,7 +366,7 @@ plot (with its residual plot).
 
 ### Masked points
 
-*Data → Mask points in the current view* masks the unmasked points inside the visible rectangle of the current plot
+*Data → Mask points in the current view* masks the unmasked points inside the visible rectangle of the plot on screen (Nyquist, Zr, Zi or |Z|, θ)
 (zoom on the points first). Masked points stay on the plots, hollow and pale, and do not count for autoscale; fits,
 DRT, Z-HIT and saved data leave them out. *Unmask selected datasets* brings them back. *Delete points in the current
 view* removes them for good.
@@ -493,6 +504,7 @@ oldest are dropped first), and are lost when the page is closed: *Save project* 
 | Simulation | Start, end frequency, points | 10⁻³ Hz, 10⁶ Hz, 128 | Log-spaced grid for *Simulate spectrum*. |
 | Plots | Datasets drawn at most | 60 | Larger selections are thinned out for drawing. |
 | | Same scale on both Nyquist axes | on | |
+| | Square Nyquist plot | off | Square frame and saved image, also in the Nyquist toolbar. |
 | | Residuals | Absolute | Or relative, % of \|Z\|. |
 | | Phase unit | Degrees | Or radians. |
 | Limits | Min, max, shared | per element | For the current circuit; *shared* is used by the global fit. |
@@ -547,7 +559,7 @@ datasets. Numbers accept SI prefixes where a frequency is expected (`1k`, `2.5M`
 
 ```
 index.html            page layout
-style.css             all styles (light and dark)
+style.css             the whole look: page, plots, circuit drawing and report (light and dark)
 js/core/namespace.js  global object Y; Y.defineCore keeps the source of DOM-free modules for the workers
 js/core/elements.js   element library: parameters, start values, limits, Z(ω)
 js/core/circuit.js    circuit code parser and printer, tree editing, compiler, vectorised evaluator
@@ -561,7 +573,7 @@ js/io/writers.js      data, parameters, project files, downloads
 js/state.js           datasets, selection, circuit, parameters, settings, event bus
 js/history.js         restore points, undo
 js/workers.js         Web Worker pool built from a Blob (works from file://), main-thread fallback
-js/ui/*.js            plots (canvas 2D and 3D), schematic, Model tab, DRT tab, panels, dialogs, menus, report
+js/ui/*.js            theme (reads style.css), plots (canvas 2D and 3D), schematic, Model tab, DRT tab, panels, dialogs, menus, report
 js/app.js             start-up, tabs, side panel, fit bar
 files/                example data files and custom-format definitions (Yappari 5.1 XML)
 config/definitions/   custom-format definitions in JSON

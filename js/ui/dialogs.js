@@ -143,7 +143,8 @@ Y.ui = (function () {
     if (openFor) openFor.setAttribute('aria-expanded', 'false');
     openFor = null;
   }
-  // items: [{label, act}] or {sep: true}
+  // items: [{label, act, off}] or {sep: true}. off: why the item cannot run now. It is then greyed out with the reason
+  // as tooltip, stays reachable with the arrow keys (aria-disabled, as in the WAI-ARIA menu pattern) and does nothing.
   function menu(anchor, items) {
     var pop = $('#menu-pop');
     if (openFor === anchor) { closeMenu(); return; }
@@ -151,7 +152,8 @@ Y.ui = (function () {
     items.forEach(function (it) {
       if (it.sep) { pop.appendChild(h('hr')); return; }
       var b = h('button', { type: 'button', role: 'menuitem', text: it.label });
-      b.addEventListener('click', function () { closeMenu(); it.act(); });
+      if (it.off) { b.setAttribute('aria-disabled', 'true'); b.title = it.off; }
+      b.addEventListener('click', function () { if (it.off) return; closeMenu(); it.act(); });
       pop.appendChild(b);
     });
     pop.hidden = false;
@@ -160,7 +162,7 @@ Y.ui = (function () {
     pop.style.left = Math.round(Math.max(8, Math.min(window.innerWidth - pw - 8, r.left))) + 'px';
     openFor = anchor;
     anchor.setAttribute('aria-expanded', 'true');
-    var first = pop.querySelector('button');
+    var first = pop.querySelector('button:not([aria-disabled="true"])') || pop.querySelector('button');
     if (first) first.focus();
   }
   document.addEventListener('mousedown', function (e) {
@@ -176,6 +178,14 @@ Y.ui = (function () {
       bs[(i + (e.key === 'ArrowDown' ? 1 : -1) + bs.length) % bs.length].focus();
     }
   });
+
+  // a button that runs a command: enabled, or disabled with the reason as tooltip (its own tooltip comes back later)
+  function able(el, reason) {
+    if (!el) return;
+    if (el.dataset.tip == null) el.dataset.tip = el.getAttribute('title') || '';
+    el.disabled = !!reason;
+    if (reason) el.title = reason; else if (el.dataset.tip) el.title = el.dataset.tip; else el.removeAttribute('title');
+  }
 
   // ---------------------------------------------------------------- files
   function pickFiles(o) {
@@ -207,6 +217,6 @@ Y.ui = (function () {
   }
 
   return { modal: modal, prompt: prompt, confirm: confirm, fieldHTML: fieldHTML, collect: collect, toast: toast, log: log,
-           menu: menu, closeMenu: closeMenu, pickFiles: pickFiles, readText: readText, progress: progress,
+           menu: menu, closeMenu: closeMenu, able: able, pickFiles: pickFiles, readText: readText, progress: progress,
            esc: esc, h: h, parseNum: parseNum };
 })();

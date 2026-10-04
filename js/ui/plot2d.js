@@ -1,7 +1,10 @@
 /*  Plot2D - canvas plot for impedance data.
  *  new Y.Plot2D(hostElement | null, opts)   (null host = offscreen, give opts.width / opts.height)
- *  opts: xlog, ylog, equal (same scale on both axes), xlabel, ylabel, legend, tooltip(series, i) -> html,
- *        onView(view) called after the user changes the view, onInteract()
+ *  opts: xlog, ylog, equal (same scale on both axes), square (square canvas and frame, centred in the host),
+ *        xlabel, ylabel, legend, tooltip(series, i) -> html,
+ *        onView(view) called after the user changes the view, onInteract(), theme ('light': the light theme whatever
+ *        the page shows, for reports). Colours, fonts and sizes come from style.css (Y.theme); the size and width of a
+ *        series are given for 3.2 px markers and 1.5 px lines and scale with --plot-marker-size and --plot-line-width.
  *  series: { name, group, x, y (arrays, data units), color, mode 'markers'|'lines', size, width,
  *            legend (show entry), hover (tooltip on its points) }
  *  The view is stored in axis units (log10 for log axes).
@@ -13,12 +16,6 @@ Y.Plot2D = (function () {
   var SUP = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
   function sup(n) { return String(n).split('').map(function (c) { return SUP[c] || c; }).join(''); }
 
-  function theme() {
-    var cs = getComputedStyle(document.documentElement), g = function (n, d) { return (cs.getPropertyValue(n) || '').trim() || d; };
-    return { bg: g('--plot-bg', '#fff'), grid: g('--plot-grid', '#e6eaed'), minor: g('--plot-minor', '#f1f3f5'),
-             axis: g('--plot-axis', '#9aa5b1'), ink: g('--ink', '#1f2933'), ink2: g('--ink-2', '#52606d'),
-             font: g('--font-ui', 'system-ui, sans-serif'), sel: g('--amber', '#f2b231') };
-  }
 
   function niceStep(span, target) {
     var raw = span / Math.max(target, 1), mag = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / mag;
@@ -54,7 +51,7 @@ Y.Plot2D = (function () {
   }
 
   function Plot2D(host, opts) {
-    this.o = Object.assign({ xlog: false, ylog: false, equal: false, xlabel: '', ylabel: '', legend: true, legendMax: 24,
+    this.o = Object.assign({ xlog: false, ylog: false, equal: false, square: false, xlabel: '', ylabel: '', legend: true, legendMax: 24,
                              tooltip: null, onView: null, onInteract: null, empty: '' }, opts || {});
     this.host = host; this.series = []; this.view = null; this.auto = true; this.hidden = new Set();
     this.canvas = document.createElement('canvas');
@@ -76,11 +73,18 @@ Y.Plot2D = (function () {
   P.resize = function () {
     var w = this.host ? this.host.clientWidth : this.o.width, h = this.host ? this.host.clientHeight : this.o.height;
     if (!w || !h) return;
+    var T = Y.theme.get(this.o.theme), k = T.fontSize / 11, kt = T.titleSize / 12;      // margins follow the font sizes
+    var m = this.o.margin || { l: Math.round(46 * k + 18 * kt), r: Math.round(14 * k), t: Math.round(12 * k), b: Math.round(this.o.xlabel ? 24 * k + 16 * kt : 24 * k) }, ox = 0;
+    if (this.o.square) {                     // square canvas holding a square frame; the spare margin goes above (or right)
+      var s = Math.max(Math.min(w, h), 120), side = s - Math.max(m.l + m.r, m.t + m.b);
+      m = { l: m.l, r: s - side - m.l, t: s - side - m.b, b: m.b };
+      if (this.host) ox = Math.max(0, Math.floor((w - s) / 2));          // centred across the host
+      w = h = s;
+    }
     var dpr = this.host ? (window.devicePixelRatio || 1) : (this.o.scale || 1);
     this.W = w; this.H = h; this.dpr = dpr;
     this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr);
-    if (this.host) { this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px'; }
-    var m = this.o.margin || { l: 64, r: 14, t: 12, b: this.o.xlabel ? 40 : 24 };
+    if (this.host) { this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px'; this.canvas.style.marginLeft = ox ? ox + 'px' : ''; }
     this.box = { x0: m.l, x1: w - m.r, y0: m.t, y1: h - m.b };
     if (this.view && this.auto) { this.autoscale(true); return; }
     if (this.view && this.o.equal) this._equalize('center');
@@ -164,10 +168,10 @@ Y.Plot2D = (function () {
   // ---------------------------------------------------------------- drawing
   P.draw = function () {
     if (!this.W || !this.view) return;
-    var c = this.ctx, T = theme(), b = this.box, self = this;
+    var c = this.ctx, T = this._T = Y.theme.get(this.o.theme), b = this.box, self = this;
     c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     c.fillStyle = T.bg; c.fillRect(0, 0, this.W, this.H);
-    c.font = '11px ' + T.font; c.lineWidth = 1;
+    c.font = T.fontSize + 'px ' + T.font; c.lineWidth = 1;
 
     var xt = this.o.xlog ? logTicks(this.view.x0, this.view.x1, Math.max(2, (b.x1 - b.x0) / 70)) : linTicks(this.view.x0, this.view.x1, Math.max(2, (b.x1 - b.x0) / 80));
     var yt = this.o.ylog ? logTicks(this.view.y0, this.view.y1, Math.max(2, (b.y1 - b.y0) / 40)) : linTicks(this.view.y0, this.view.y1, Math.max(2, (b.y1 - b.y0) / 45));
@@ -189,13 +193,13 @@ Y.Plot2D = (function () {
     xt.ticks.forEach(function (v, i) { var p = self.px(v); if (p >= b.x0 - 1 && p <= b.x1 + 1) c.fillText(xt.labels[i], p, b.y1 + 5); });
     c.textAlign = 'right'; c.textBaseline = 'middle';
     yt.ticks.forEach(function (v, i) { var p = self.py(v); if (p >= b.y0 - 1 && p <= b.y1 + 1) c.fillText(yt.labels[i], b.x0 - 6, p); });
-    if (xt.exp) { c.textAlign = 'right'; c.textBaseline = 'top'; c.fillText('×10' + sup(xt.exp), b.x1, b.y1 + 19); }
-    if (yt.exp) { c.textAlign = 'left'; c.textBaseline = 'bottom'; c.fillText('×10' + sup(yt.exp), b.x0 + 2, b.y0 - 1 > 10 ? b.y0 - 1 : b.y0 + 12); }
+    if (xt.exp) { c.textAlign = 'right'; c.textBaseline = 'top'; c.fillText('×10' + sup(xt.exp), b.x1, b.y1 + 8 + T.fontSize); }
+    if (yt.exp) { c.textAlign = 'left'; c.textBaseline = 'bottom'; c.fillText('×10' + sup(yt.exp), b.x0 + 2, b.y0 - 1 > T.fontSize - 1 ? b.y0 - 1 : b.y0 + T.fontSize + 1); }
     // axis titles
-    c.fillStyle = T.ink; c.font = '12px ' + T.font;
+    c.fillStyle = T.ink; c.font = T.titleSize + 'px ' + T.font;
     if (this.o.xlabel) { c.textAlign = 'center'; c.textBaseline = 'bottom'; c.fillText(this.o.xlabel, (b.x0 + b.x1) / 2, this.H - 4); }
     if (this.o.ylabel) {
-      c.save(); c.translate(13, (b.y0 + b.y1) / 2); c.rotate(-Math.PI / 2);
+      c.save(); c.translate(7 + T.titleSize / 2, (b.y0 + b.y1) / 2); c.rotate(-Math.PI / 2);
       c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(this.o.ylabel, 0, 0); c.restore();
     }
     // data
@@ -207,17 +211,18 @@ Y.Plot2D = (function () {
     c.restore();
     this._notes(c, T);
     if (this.hoverPt) {
-      c.strokeStyle = T.ink; c.lineWidth = 1.5;
-      c.strokeRect(this.hoverPt[0] - 4.5, this.hoverPt[1] - 4.5, 9, 9);
+      var hb = 4.5 * T.ms;
+      c.strokeStyle = T.ink; c.lineWidth = 1.5 * T.ls;
+      c.strokeRect(this.hoverPt[0] - hb, this.hoverPt[1] - hb, 2 * hb, 2 * hb);
     }
     if (!this.series.length && this.o.empty) {
-      c.fillStyle = T.ink2; c.font = '13px ' + T.font; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillStyle = T.ink2; c.font = Math.round(T.titleSize * 13 / 12) + 'px ' + T.font; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText(this.o.empty, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2);
     }
     this._legend(c, T);
     if (this.drag && this.drag.mode === 'zoom' && this.drag.moved) {
       var d = this.drag;
-      c.fillStyle = 'rgba(36,87,166,0.08)'; c.strokeStyle = 'rgba(36,87,166,0.8)'; c.lineWidth = 1;
+      c.fillStyle = T.zoomFill; c.strokeStyle = T.zoomLine; c.lineWidth = 1;
       var rx = Math.min(d.x, d.cx), ry = Math.min(d.y, d.cy), rw = Math.abs(d.cx - d.x), rh = Math.abs(d.cy - d.y);
       if (rh < 5) { ry = b.y0; rh = b.y1 - b.y0; } else if (rw < 5) { rx = b.x0; rw = b.x1 - b.x0; }
       c.fillRect(rx, ry, rw, rh); c.strokeRect(rx + 0.5, ry + 0.5, rw, rh);
@@ -236,10 +241,10 @@ Y.Plot2D = (function () {
     if (!groups.length) return;
     var max = this.o.legendMax, more = groups.length - max;
     if (more > 0) groups = groups.slice(0, max);
-    c.font = '11px ' + T.font;
+    c.font = T.fontSize + 'px ' + T.font;
     var wMax = 0;
     groups.forEach(function (g) { wMax = Math.max(wMax, c.measureText(g.name).width); });
-    var lh = 15, w = Math.min(wMax + 30, 220), h = groups.length * lh + 8 + (more > 0 ? lh : 0);
+    var lh = T.fontSize + 4, w = Math.min(wMax + 30, 220), h = groups.length * lh + 8 + (more > 0 ? lh : 0);
     var x = this.box.x1 - w - 6, y = this.box.y0 + 6;
     if (h > this.box.y1 - this.box.y0 - 12) return;          // no room
     c.globalAlpha = 0.9; c.fillStyle = T.bg; c.fillRect(x, y, w, h); c.globalAlpha = 1;
@@ -248,8 +253,8 @@ Y.Plot2D = (function () {
     groups.forEach(function (g, i) {
       var yy = y + 4 + i * lh + lh / 2, off = self.hidden.has(g.group) || (g.parent != null && self.hidden.has(g.parent));
       c.globalAlpha = off ? 0.35 : 1;
-      c.strokeStyle = g.color; c.lineWidth = 1.5; c.setLineDash(g.dash || []); c.beginPath(); c.moveTo(x + 6, yy); c.lineTo(x + 20, yy); c.stroke(); c.setLineDash([]);
-      if (g.marker) { c.fillStyle = g.color; c.fillRect(x + 11.5, yy - 1.75, 3.5, 3.5); }
+      c.strokeStyle = g.color; c.lineWidth = 1.5 * T.ls; c.setLineDash((g.dash || []).map(function (v) { return v * T.ls; })); c.beginPath(); c.moveTo(x + 6, yy); c.lineTo(x + 20, yy); c.stroke(); c.setLineDash([]);
+      if (g.marker) { var mk = 3.5 * T.ms; c.fillStyle = g.color; c.fillRect(x + 13.25 - mk / 2, yy - mk / 2, mk, mk); }
       c.fillStyle = T.ink;
       var name = g.name;
       while (c.measureText(name).width > w - 30 && name.length > 4) name = name.slice(0, -2);
@@ -274,7 +279,7 @@ Y.Plot2D = (function () {
       self.drag = { mode: pan ? 'pan' : 'zoom', x: p[0], y: p[1], cx: p[0], cy: p[1], v: Object.assign({}, self.view), moved: false };
       e.preventDefault();
     });
-    window.addEventListener('mousemove', function (e) {
+    window.addEventListener('mousemove', self._winMove = function (e) {
       var d = self.drag;
       if (!d) return;
       var p = pos(e);
@@ -287,7 +292,7 @@ Y.Plot2D = (function () {
       }
       self.draw();
     });
-    window.addEventListener('mouseup', function () {
+    window.addEventListener('mouseup', self._winUp = function () {
       var d = self.drag;
       if (!d) return;
       self.drag = null;
@@ -340,10 +345,12 @@ Y.Plot2D = (function () {
     this.draw();
     this.tip.innerHTML = this.o.tooltip(best.s, best.i);
     this.tip.hidden = false;
-    var tw = this.tip.offsetWidth, th = this.tip.offsetHeight;
-    var x = best.X + 12, y = best.Yp + 12;
-    if (x + tw > this.W) x = best.X - tw - 12;
-    if (y + th > this.H) y = best.Yp - th - 12;
+    // in host coordinates: a square plot sits centred in its host
+    var tw = this.tip.offsetWidth, th = this.tip.offsetHeight, ox = this.canvas.offsetLeft, oy = this.canvas.offsetTop;
+    var hw = this.host.clientWidth || this.W, hh = this.host.clientHeight || this.H;
+    var x = ox + best.X + 12, y = oy + best.Yp + 12;
+    if (x + tw > hw) x = ox + best.X - tw - 12;
+    if (y + th > hh) y = oy + best.Yp - th - 12;
     this.tip.style.left = Math.max(0, x) + 'px'; this.tip.style.top = Math.max(0, y) + 'px';
   };
 
@@ -358,14 +365,14 @@ Y.Plot2D = (function () {
     c.beginPath(); c.moveTo(pts[0][0], base);
     pts.forEach(function (q) { c.lineTo(q[0], q[1]); });
     c.lineTo(pts[pts.length - 1][0], base); c.closePath();
-    c.globalAlpha = 0.3; c.fillStyle = s.color; c.fill(); c.globalAlpha = 1;
+    c.globalAlpha = this._T.area; c.fillStyle = s.color; c.fill(); c.globalAlpha = 1;
     c.beginPath();
     pts.forEach(function (q, k) { if (k) c.lineTo(q[0], q[1]); else c.moveTo(q[0], q[1]); });
-    c.strokeStyle = s.color; c.lineWidth = s.width || 1.4; c.stroke();
+    c.strokeStyle = s.color; c.lineWidth = (s.width || 1.4) * this._T.ls; c.stroke();
   };
   P._line = function (c, s) {
-    var prev = null, pen = false, i, p;
-    c.lineWidth = s.width || 1.5; c.setLineDash(s.dash || []);
+    var prev = null, pen = false, i, p, ls = this._T.ls;
+    c.lineWidth = (s.width || 1.5) * ls; c.setLineDash((s.dash || []).map(function (v) { return v * ls; }));
     if (s.colors) {                                          // one colour per segment (contributions)
       for (i = 0; i < s.x.length; i++) {
         p = this._xy(s, i);
@@ -385,9 +392,9 @@ Y.Plot2D = (function () {
     c.setLineDash([]);
   };
   P._markers = function (c, s) {
-    var sz = s.size || 3.2, h = sz / 2, i, p;
+    var T = this._T, sz = (s.size || 3.2) * T.ms, h = sz / 2, i, p;
     if (s.ex || s.ey) {                                      // error bars: plus or minus one standard deviation
-      c.strokeStyle = s.color; c.lineWidth = 1; c.globalAlpha = 0.5; c.beginPath();
+      c.strokeStyle = s.color; c.lineWidth = 1; c.globalAlpha = T.errorbar; c.beginPath();
       for (i = 0; i < s.x.length; i++) {
         p = this._xy(s, i);
         if (!p) continue;
@@ -398,7 +405,7 @@ Y.Plot2D = (function () {
       c.stroke(); c.globalAlpha = 1;
     }
     if (s.hollow) {                                          // masked points: hollow and pale
-      c.strokeStyle = s.color; c.lineWidth = 1; c.globalAlpha = s.alpha || 1;
+      c.strokeStyle = s.color; c.lineWidth = 1; c.globalAlpha = s.alpha != null ? s.alpha : T.masked;
       for (i = 0; i < s.x.length; i++) { p = this._xy(s, i); if (p) c.strokeRect(p[0] - h - 0.5, p[1] - h - 0.5, sz + 1, sz + 1); }
       c.globalAlpha = 1;
       return;
@@ -410,14 +417,14 @@ Y.Plot2D = (function () {
   P._notes = function (c, T) {
     if (!this.notes || !this.notes.length) return;
     var b = this.box, self = this;
-    c.font = '11px ' + T.font; c.textBaseline = 'bottom'; c.textAlign = 'left'; c.lineJoin = 'round';
+    c.font = T.fontSize + 'px ' + T.font; c.textBaseline = 'bottom'; c.textAlign = 'left'; c.lineJoin = 'round';
     this.notes.forEach(function (nt) {
       var a = self.tx(nt.x), bb = self.ty(nt.y);
       if (!isFinite(a) || !isFinite(bb)) return;
       var X = self.px(a), Yp = self.py(bb);
       if (X < b.x0 || X > b.x1 || Yp < b.y0 || Yp > b.y1) return;
-      c.fillStyle = nt.color; c.beginPath(); c.arc(X, Yp, 3.2, 0, 2 * Math.PI); c.fill();
-      var tw = c.measureText(nt.text).width, tx = X + 7 + tw > b.x1 ? X - 7 - tw : X + 7, ty = Yp - 17 < b.y0 ? Yp + 17 : Yp - 5;
+      c.fillStyle = nt.color; c.beginPath(); c.arc(X, Yp, 3.2 * T.ms, 0, 2 * Math.PI); c.fill();
+      var tw = c.measureText(nt.text).width, tx = X + 7 + tw > b.x1 ? X - 7 - tw : X + 7, ty = Yp - T.fontSize - 6 < b.y0 ? Yp + T.fontSize + 6 : Yp - 5;
       c.lineWidth = 3; c.strokeStyle = T.bg; c.strokeText(nt.text, tx, ty);
       c.fillStyle = nt.color; c.fillText(nt.text, tx, ty);
     });
@@ -442,6 +449,13 @@ Y.Plot2D = (function () {
   };
 
   P.toDataURL = function () { return this.canvas.toDataURL('image/png'); };
+
+  // for plots in dialogs: drops the window listeners and the resize observer once the plot is gone
+  P.destroy = function () {
+    if (this._winMove) window.removeEventListener('mousemove', this._winMove);
+    if (this._winUp) window.removeEventListener('mouseup', this._winUp);
+    if (this.ro) this.ro.disconnect();
+  };
 
   // static helper for reports: render series offscreen and return a PNG data URL
   Plot2D.image = function (series, opts, w, h) {

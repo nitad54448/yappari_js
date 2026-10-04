@@ -80,12 +80,11 @@ Y.Plot3D = (function () {
 
   P.draw = function () {
     if (!this.W) return;
-    var c = this.ctx, cs = getComputedStyle(document.documentElement), self = this;
-    var col = function (n, d) { return (cs.getPropertyValue(n) || '').trim() || d; };
-    var bg = col('--plot-bg', '#fff'), grid = col('--plot-grid', '#e6eaed'), ink = col('--ink', '#1f2933'), ink2 = col('--ink-2', '#52606d'), font = col('--font-ui', 'system-ui');
+    var c = this.ctx, T = Y.theme.get(), self = this;                     // colours, fonts and sizes from style.css
+    var bg = T.bg, grid = T.grid, ink = T.ink, ink2 = T.ink2, font = T.font, fs = T.fontSize + 'px ', ts = T.titleSize + 'px ';
     c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     c.fillStyle = bg; c.fillRect(0, 0, this.W, this.H);
-    c.font = '11px ' + font;
+    c.font = fs + font;
     if (!this.data || !this.data.x.length) {
       c.fillStyle = ink2; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText('Select datasets to see them in 3D', this.W / 2, this.H / 2);
@@ -108,7 +107,7 @@ Y.Plot3D = (function () {
     ty.forEach(function (v) { var w = self._n(v, self.ry); line(self._p(-1, w, floorW), self._p(1, w, floorW)); line(self._p(backU, w, -1), self._p(backU, w, 1)); });
     tz.forEach(function (v) { var w = self._n(v, self.rz); line(self._p(-1, backV, w), self._p(1, backV, w)); line(self._p(backU, -1, w), self._p(backU, 1, w)); });
     c.stroke();
-    c.strokeStyle = col('--plot-axis', '#9aa5b1'); c.beginPath();
+    c.strokeStyle = T.axis; c.beginPath();
     [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(function (q, k, arr) {
       var r = arr[(k + 1) % 4];
       line(self._p(q[0], q[1], floorW), self._p(r[0], r[1], floorW));
@@ -126,7 +125,7 @@ Y.Plot3D = (function () {
       sx[k] = p[0]; sy[k] = p[1]; dep[k] = p[2]; ci[k] = Math.round((w + 1) / 2 * 63); order.push(k);
     }
     if (!this.dragging || order.length < 60000) order.sort(function (a, b) { return dep[b] - dep[a]; });
-    var sz = n > 50000 ? 1.6 : n > 8000 ? 2.2 : 3;
+    var sz = (n > 50000 ? 1.6 : n > 8000 ? 2.2 : 3) * T.ms;
     order.forEach(function (k2) { c.fillStyle = JET[ci[k2]]; c.fillRect(sx[k2] - sz / 2, sy[k2] - sz / 2, sz, sz); });
 
     // tick labels on the front edges
@@ -136,15 +135,15 @@ Y.Plot3D = (function () {
     ty.forEach(function (v) { var p = self._p(frontU * 1.12, self._n(v, self.ry), floorW); c.textAlign = 'center'; c.fillText(fmt(v), p[0], p[1] + 4); });
     var zEdge = self._p(-backU, backV, 0)[0] < self._p(backU, -backV, 0)[0] ? [-backU, backV] : [backU, -backV];
     tz.forEach(function (v) { var p = self._p(zEdge[0], zEdge[1], self._n(v, self.rz)); c.textAlign = 'right'; c.fillText(fmt(v), p[0] - 6, p[1]); });
-    c.fillStyle = ink; c.font = '12px ' + font; c.textAlign = 'center';
+    c.fillStyle = ink; c.font = ts + font; c.textAlign = 'center';
     var lx = self._p(0, frontV * 1.35, floorW), ly = self._p(frontU * 1.35, 0, floorW), lz = self._p(zEdge[0], zEdge[1], 1.18);
     c.fillText(d.labels.x, lx[0], lx[1] + 6); c.fillText(d.labels.y, ly[0], ly[1] + 6); c.fillText(d.labels.z, lz[0], lz[1] - 6);
 
     // colour bar
     var bx = this.W - 64, by = 30, bh = this.H - 70;
     for (var j = 0; j < bh; j++) { c.fillStyle = JET[Math.round((1 - j / bh) * 63)]; c.fillRect(bx, by + j, 14, 1.5); }
-    c.strokeStyle = col('--plot-axis', '#9aa5b1'); c.strokeRect(bx + 0.5, by + 0.5, 14, bh);
-    c.fillStyle = ink2; c.font = '11px ' + font; c.textAlign = 'left';
+    c.strokeStyle = T.axis; c.strokeRect(bx + 0.5, by + 0.5, 14, bh);
+    c.fillStyle = ink2; c.font = fs + font; c.textAlign = 'left';
     c.fillText(fmt(this.rz.hi), bx + 18, by + 4); c.fillText(fmt((this.rz.hi + this.rz.lo) / 2), bx + 18, by + bh / 2); c.fillText(fmt(this.rz.lo), bx + 18, by + bh - 2);
   };
 

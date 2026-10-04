@@ -16,6 +16,15 @@ with sync_playwright() as p:
     pg.wait_for_timeout(500)
     print('workers:', pg.evaluate('Y.pool.usingWorkers()'), pg.evaluate('Y.pool.size()'), '|', status(pg))
     shot(pg, '0_start')
+    # menus follow the situation: with no data and no circuit only reading, the demo and help are available
+    def menu_state(name):
+        pg.click('[data-menu="%s"]' % name)
+        r = pg.eval_on_selector_all('#menu-pop button', 'bs => bs.map(b => [b.textContent, b.getAttribute("aria-disabled") === "true", b.title])')
+        pg.keyboard.press('Escape')
+        return r
+    items = [m for n in ('file', 'data', 'analysis') for m in menu_state(n)]
+    print('no data: available', [m[0] for m in items if not m[1]], '| greyed out: %d' % sum(1 for m in items if m[1]))
+    print('  Fit button disabled:', pg.evaluate("document.getElementById('btn-fit').disabled"), '|', pg.get_attribute('#btn-fit', 'title'))
     # read a 3-column file through the real menu and file chooser
     tmp = '/tmp/yappari_cell.dat'
     with open(tmp, 'w') as fh:
@@ -215,6 +224,66 @@ with sync_playwright() as p:
     pg.click('#theme-toggle'); pg.wait_for_timeout(100)
     pg.emulate_media(color_scheme='dark'); pg.click('[data-tab="model"]'); pg.wait_for_timeout(300); shot(pg, '9_dark_model')
     pg.evaluate("Y.app.showTab('nyq')"); pg.evaluate('Y.state.selectAll()'); pg.wait_for_timeout(300); shot(pg, '9_dark_nyq')
+    # ---- menus and buttons follow the situation; square Nyquist plot
+    pg.emulate_media(color_scheme='light')
+    pg.evaluate("Y.cmd.runCommand('select>>^demo_03$')"); pg.evaluate("Y.app.showTab('nyq')"); pg.wait_for_timeout(200)
+    unm = lambda: [m for m in menu_state('data') if m[0].startswith('Unmask')][0]
+    a = unm(); pg.evaluate("Y.state.first().mask[2] = 1; Y.bus.emit('data')"); pg.wait_for_timeout(50); b2 = unm()
+    pg.evaluate("Y.state.first().mask[2] = 0; Y.bus.emit('data')")
+    print('Unmask without masked points: %s (%s); with one: %s' % ('greyed' if a[1] else 'available', a[2], 'greyed' if b2[1] else 'available'))
+    lab = lambda: pg.evaluate("document.querySelector('[data-plot-action=unlabel]').disabled")
+    l0 = lab(); pg.evaluate("Y.cmd.runCommand('label>>1k')"); pg.wait_for_timeout(100); l1 = lab()
+    print('Clear labels disabled without labels: %s, with one: %s' % (l0, l1))
+    pg.evaluate("Y.app.showTab('model')")
+    mk = [m for m in menu_state('data') if m[0].startswith('Mask')][0]
+    pg.evaluate("void Y.cmd.inView(false)"); pg.wait_for_timeout(150)
+    print('mask with the Model tab open: %s (%s) | command: %s' % ('greyed' if mk[1] else 'available', mk[2], status(pg)))
+    pg.evaluate("Y.app.showTab('nyq')"); pg.evaluate("Y.app.showSide('fit')"); pg.click('[data-fitmode="global"]'); pg.wait_for_timeout(100)
+    print('global fit, one dataset: Fit disabled %s |' % pg.evaluate("document.getElementById('btn-fit').disabled"), pg.inner_text('#fit-target').split('\n')[-1])
+    pg.click('[data-fitmode="single"]')
+    pg.evaluate("window._f = Object.assign({}, Y.state.first().fit); Y.state.names().forEach(n => Y.state.setFit(n, false))"); pg.wait_for_timeout(100)
+    print('no parameter ticked: Fit disabled %s |' % pg.evaluate("document.getElementById('btn-fit').disabled"), pg.get_attribute('#btn-fit', 'title'))
+    pg.evaluate("Object.keys(window._f).forEach(n => Y.state.setFit(n, window._f[n]))"); pg.wait_for_timeout(100)
+    print('  ticked again: Fit disabled', pg.evaluate("document.getElementById('btn-fit').disabled"))
+    # square Nyquist plot: square canvas and frame, centred in the pane; the saved PNG and the report image are square too
+    pg.check('#nyq-square'); pg.wait_for_timeout(300)
+    sq = pg.evaluate("""() => { const p = Y.plots._plots.nyq, b = p.box, h = document.getElementById('nyq-host');
+        return { canvas: [p.W, p.H], frame: [Math.round(b.x1 - b.x0), Math.round(b.y1 - b.y0)], host: [h.clientWidth, h.clientHeight], left: p.canvas.offsetLeft,
+                 settingsBox: document.getElementById('set_nyqSquare').checked, spans: [+(p.view.x1 - p.view.x0).toPrecision(4), +(p.view.y1 - p.view.y0).toPrecision(4)] }; }""")
+    print('square Nyquist:', sq)
+    tip = pg.evaluate("""() => { const p = Y.plots._plots.nyq, s = p.visibleSeries().find(x => x.hover && x.x.length), q = p._xy(s, 0); p._hover(q);
+        return [Math.round(parseFloat(p.tip.style.left) - p.canvas.offsetLeft - q[0]), Math.round(parseFloat(p.tip.style.top) - q[1])]; }""")
+    print('  tooltip offset from its point (12, or -(width + 12) near the edge):', tip)
+    from PIL import Image as PILImage
+    with pg.expect_download() as dl:
+        pg.click('#ptools [data-plot-action="png"]')
+    print('  PNG size:', PILImage.open(dl.value.path()).size)
+    rep = pg.evaluate("""() => new Promise(r => { const im = new Image(); im.onload = () => r([im.naturalWidth, im.naturalHeight]); im.src = Y.plots.imagesFor(Y.state.first(), 560, 360).nyq; })""")
+    print('  report Nyquist image:', rep)
+    shot(pg, 'f_square')
+    pg.uncheck('#nyq-square'); pg.wait_for_timeout(200)
+    print('  unticked: canvas and margin', pg.evaluate("[Y.plots._plots.nyq.W, Y.plots._plots.nyq.H, Y.plots._plots.nyq.canvas.style.marginLeft || '0']"))
+    # ---- the look comes from style.css only: "system" resolved, dataset colours and font sizes follow the variables,
+    #      the side panel resets to --side-w, reports stay light while the page is dark
+    pg.emulate_media(color_scheme='dark'); pg.evaluate("Y.state.setSetting('theme', 'system')"); pg.wait_for_timeout(150)
+    t_dark = pg.evaluate("document.documentElement.dataset.theme")
+    pg.emulate_media(color_scheme='light'); pg.wait_for_timeout(150)
+    print('theme "system" resolved to: %s in dark, %s in light' % (t_dark, pg.evaluate("document.documentElement.dataset.theme")))
+    pg.evaluate("Y.app.showTab('nyq')"); pg.wait_for_timeout(150)
+    css = pg.evaluate("""() => { const r = document.documentElement, d = Y.state.S.datasets[0], n = (d.id - 1) % Y.theme.get().series.length + 1, P = Y.plots._plots.nyq;
+        const m0 = P.box.x0; r.style.setProperty('--series-' + n, '#ff00ff'); r.style.setProperty('--plot-font-size', '16px'); Y.theme.refresh(); Y.bus.emit('theme'); P.resize();
+        const out = { color: Y.plots.color(d), swatch: getComputedStyle(document.querySelector('.ds[data-id="' + d.id + '"] .sw')).backgroundColor, margin: [m0, P.box.x0] };
+        r.style.removeProperty('--series-' + n); r.style.removeProperty('--plot-font-size'); Y.theme.refresh(); Y.bus.emit('theme'); P.resize();
+        out.back = P.box.x0; return out; }""")
+    print('variables decide: dataset colour %s, list square %s, left margin %s -> %s' % (css['color'], css['swatch'], css['margin'], css['back']))
+    pg.dblclick('#side-grip'); pg.wait_for_timeout(100)
+    print('side panel after double-click: %d px' % pg.evaluate("Math.round(document.querySelector('.side').getBoundingClientRect().width)"))
+    pg.evaluate("Y.state.setSetting('theme', 'dark')"); pg.wait_for_timeout(150)
+    rl = pg.evaluate("""() => new Promise(res => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+        const x = c.getContext('2d'); x.drawImage(im, 0, 0); res([Array.from(x.getImageData(3, 3, 1, 1).data), /color:#1f2933/.test(Y.report.build([Y.state.first()]))]); };
+        im.src = Y.plots.imagesFor(Y.state.first(), 560, 360).nyq; })""")
+    print('dark page: report image corner %s, report text in light ink: %s' % (rl[0], rl[1]))
+    pg.evaluate("Y.state.setSetting('theme', 'light')")
     b.close()
 print('\n'.join(logs) if logs else 'no console errors or warnings')
 from PIL import Image

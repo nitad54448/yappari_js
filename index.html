@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Yappari JS, impedance spectroscopy fitting</title>
 <link rel="stylesheet" href="style.css">
-<script>try { var t = JSON.parse(localStorage.getItem('yappari.settings') || '{}').theme; if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
+<script>(function () { var t; try { t = JSON.parse(localStorage.getItem('yappari.settings') || '{}').theme; } catch (e) {} if (t !== 'dark' && t !== 'light') t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; document.documentElement.setAttribute('data-theme', t); })();</script>
 </head>
 <body>
 <header class="top">
@@ -45,6 +45,7 @@
         <button type="button" data-plot-action="label">Label frequency…</button>
         <button type="button" data-plot-action="unlabel">Clear labels</button>
         <label class="chk"><input type="checkbox" id="label-click"> Click labels a point</label>
+        <label class="chk" title="Square frame and saved image. With the same scale on both axes (Settings), both axes span the same range."><input type="checkbox" id="nyq-square"> Square</label>
       </span>
       <span class="pt-group pt-show" id="pt-show"><span class="pt-lbl">Show</span>
         <label class="chk pt-key" title="Measured points"><input type="checkbox" id="data-toggle"><i class="key-dots" aria-hidden="true"></i>Data</label>
@@ -222,6 +223,7 @@
 <script src="js/history.js"></script>
 <script src="js/workers.js"></script>
 <script src="js/ui/dialogs.js"></script>
+<script src="js/ui/theme.js"></script>
 <script src="js/ui/plot2d.js"></script>
 <script src="js/ui/plot3d.js"></script>
 <script src="js/ui/plots.js"></script>

@@ -196,6 +196,7 @@ Y.cmd = (function () {
         var now = performance.now();
         if (now - last > 300) { last = now; Y.bus.emit('stats'); }
       }, function (done, total) { ui.progress(done, total); });
+      syncButtons();                                     // Stop can stop it now
       results = await running.promise;
     } finally {
       running = null;
@@ -239,6 +240,7 @@ Y.cmd = (function () {
     var res;
     try {
       running = Y.pool.globalFit(job);
+      syncButtons();
       res = await running.promise;
     } finally {
       running = null;
@@ -272,7 +274,7 @@ Y.cmd = (function () {
   // ---------------------------------------------------------------- points and datasets
   async function inView(remove) {
     if (!idle() || !haveSel()) return;
-    var vf = Y.plots.viewFor(Y.plots.current());
+    var vf = Y.plots.viewFor(Y.app.tab());                 // the plot on screen, not one left zoomed in another tab
     if (!vf) { ui.toast('Open the Nyquist, Zr, Zi or |Z|, θ plot, zoom on the points, then run this again.', 'warn'); return; }
     var list = sel(), flags = list.map(function (ds) { return Y.dataops.inView(ds, vf.kind, vf.v); });
     var total = flags.reduce(function (a, f) { return a + f.count; }, 0);
@@ -479,6 +481,7 @@ Y.cmd = (function () {
       if (!ds.notes.some(function (v) { return Math.abs(v / ds.f[k] - 1) < 1e-9; })) { ds.notes.push(ds.f[k]); n++; }
     });
     Y.plots.refresh(false);
+    Y.bus.emit('labels');
     ui.toast('Labelled the point nearest to ' + Y.plots.fmtF(fv, 4) + ' in ' + plural(n, 'dataset') + '.', 'ok');
   }
   async function labelDialog() {
@@ -492,6 +495,7 @@ Y.cmd = (function () {
     snapshot('clear labels');
     sel().forEach(function (ds) { ds.notes = []; });
     Y.plots.refresh(false);
+    Y.bus.emit('labels');
     ui.toast('Labels removed from the selected datasets.', 'info');
   }
   function showTab(t) { Y.app.showTab(t); }
@@ -516,6 +520,77 @@ Y.cmd = (function () {
     ui.toast('Z-HIT, measured |Z| against |Z| rebuilt from the phase. ' + lines.slice(0, 2).join('; ') + (lines.length > 2 ? ' …' : '') +
       '. New datasets zh_… are selected with the originals.', 'ok');
   }
+
+  // ---------------------------------------------------------------- availability
+  // why(id): why a command cannot run now, '' when it can. Menus grey such items out and the buttons that run the same
+  // commands are disabled, with the reason as tooltip. The commands keep their own checks for the command line and keys.
+  var NO_DATA = 'No data loaded yet. Use File, or drop files on the window.', NO_SEL = 'No dataset selected.',
+      NO_MODEL = 'No circuit yet. Build one in the Model tab.', BUSY = 'Not while a fit is running.';
+  function noSel() { return !S.datasets.length ? NO_DATA : !S.sel.size ? NO_SEL : ''; }
+  function idleSel() { return S.busy ? BUSY : noSel(); }
+  function withModel() { return noSel() || (S.model.prog ? '' : NO_MODEL); }
+  function anyMasked(list) { return list.some(function (ds) { for (var k = 0; k < ds.mask.length; k++) if (ds.mask[k]) return true; return false; }); }
+  function anyLabels(list) { return list.some(function (ds) { return !!(ds.notes && ds.notes.length); }); }
+  function anyInView(list, vf) {
+    var v = vf.v;
+    return list.some(function (ds) {
+      for (var k = 0; k < ds.f.length; k++) {
+        if (ds.mask[k]) continue;
+        var c = Y.dataops.coords(ds, k, vf.kind);
+        if (c[0] >= v.x0 && c[0] <= v.x1 && c[1] >= v.y0 && c[1] <= v.y1) return true;
+      }
+      return false;
+    });
+  }
+  function inViewWhy() {
+    var r = idleSel();
+    if (r) return r;
+    var vf = Y.plots.viewFor(Y.app.tab());
+    if (!vf) return 'Open the Nyquist, Zr, Zi or |Z|, θ plot first.';
+    return anyInView(sel(), vf) ? '' : 'No unmasked point of the selected datasets in the current view.';
+  }
+  function fitWhy() {
+    if (S.busy) return BUSY;
+    var r = withModel();
+    if (r) return r;
+    var g = !!(Y.app && Y.app.fitMode && Y.app.fitMode() === 'global'), list = sel(), names = Y.state.names();
+    if (g && list.length < 2) return 'A global fit needs at least two selected datasets.';
+    var ticked = g ? names.some(function (n) { return list[0].fit[n]; })
+                   : list.some(function (ds) { return names.some(function (n) { return ds.fit[n]; }); });
+    return ticked ? '' : 'Tick “fit” next to at least one parameter (Parameters tab).';
+  }
+  var WHY = {
+    read: function () { return S.busy ? BUSY : ''; },                           // reading files, opening a project, demo
+    saveProject: function () { return S.datasets.length || S.model.prog ? '' : 'Nothing to save yet.'; },
+    withModel: withModel,                                                       // save parameters, report
+    selection: noSel,                                                           // save data, DRT view and search, labels, PNG
+    edit: idleSel,                                                              // commands that change the selected datasets
+    undo: function () { return S.busy ? BUSY : Y.history.count() ? '' : 'Nothing to undo.'; },
+    inView: inViewWhy,
+    unmask: function () { return idleSel() || (anyMasked(sel()) ? '' : 'No masked points in the selected datasets.'); },
+    average: function () { return S.busy ? BUSY : !S.datasets.length ? NO_DATA : S.sel.size < 2 ? 'Select at least two datasets.' : ''; },
+    simulate: function () { return S.busy ? BUSY : S.model.prog ? '' : NO_MODEL; },
+    unlabel: function () { return noSel() || (anyLabels(sel()) ? '' : 'No frequency labels on the selected datasets.'); },
+    fit: fitWhy,
+    cloneAll: function () { return S.busy ? BUSY : withModel() || (S.datasets.length > 1 ? '' : 'There is only one dataset.'); },
+    cloneSel: function () { return S.busy ? BUSY : withModel() || (S.sel.size > 1 ? '' : 'Select the datasets to copy to as well.'); },
+    stop: function () { return running ? '' : 'Only fits can be stopped.'; }
+  };
+  function why(id) { var f = WHY[id]; return f ? f() || '' : ''; }
+
+  // buttons that run the same commands as menu items, kept in step with the state
+  var BUTTONS = [['#btn-fit', 'fit'], ['#btn-stop', 'stop'], ['#clone-all', 'cloneAll'], ['#clone-sel', 'cloneSel'],
+                 ['[data-plot-action="label"]', 'selection'], ['[data-plot-action="unlabel"]', 'unlabel'],
+                 ['[data-plot-action="png"]', 'selection'], ['#drt-search', 'selection'], ['#drt-all', 'edit']];
+  var syncRaf = 0;
+  function syncButtons() {
+    if (syncRaf) { cancelAnimationFrame(syncRaf); syncRaf = 0; }
+    BUTTONS.forEach(function (b) {
+      var r = why(b[1]);
+      document.querySelectorAll(b[0]).forEach(function (el) { ui.able(el, r); });
+    });
+  }
+  function scheduleSync() { if (!syncRaf) syncRaf = requestAnimationFrame(function () { syncRaf = 0; syncButtons(); }); }
 
   // ---------------------------------------------------------------- command line
   var HELP = [
@@ -596,39 +671,43 @@ Y.cmd = (function () {
 
   // ---------------------------------------------------------------- menus
   function init() {
-    var M = {
-      file: [['3 columns: f, Zr, Zi…', function () { read('three'); }],
-             ['MFLI csv…', function () { read('mfli'); }],
-             ['MFLI ZView .txt, ZView .z…', function () { read('zview'); }],
-             ['VersaStudio .par…', function () { read('versa'); }],
-             ['Table with column headers (EC-Lab, Gamry, saved data)…', function () { read('table'); }],
-             ['Custom format, Yappari 5.1 definition…', customDialog], null,
-             ['Open project…', function () { read('project'); }], ['Save project', saveProject], null,
-             ['Save parameters of selected', saveParams], ['Save data of selected…', saveData],
-             ['Report of selected datasets', report], null,
-             ['Load 24 demo spectra', demo]],
-      data: [['Undo the last command', undo], null,
-             ['Mask points in the current view', function () { inView(false); }], ['Unmask selected datasets', unmask],
-             ['Delete points in the current view…', function () { inView(true); }], ['Delete selected datasets…', deleteDatasets], null,
-             ['Normalize: area, resistivity or factor…', correction], ['Negate Zi', negateZi], null,
-             ['Add random noise…', noise], ['Spline to a log frequency grid…', spline],
-             ['Smooth (Savitzky–Golay)…', smooth], ['Average selected datasets', average], null,
-             ['Simulate spectrum', simulate]],
-      analysis: [['Show the DRT of selected datasets', drtSelected], ['Save the DRT of selected datasets…', drtSave],
-                 ['DRT λ search…', function () { Y.drtTab.searchDialog(); }], null,
-                 ['Z-HIT of selected datasets', zhitSelected], null,
-                 ['Label a frequency on the Nyquist plot…', labelDialog], ['Clear Nyquist labels', clearLabels], null,
+    var M = {                                  // label, command, availability rule (see WHY)
+      file: [['3 columns: f, Zr, Zi…', function () { read('three'); }, 'read'],
+             ['MFLI csv…', function () { read('mfli'); }, 'read'],
+             ['MFLI ZView .txt, ZView .z…', function () { read('zview'); }, 'read'],
+             ['VersaStudio .par…', function () { read('versa'); }, 'read'],
+             ['Table with column headers (EC-Lab, Gamry, saved data)…', function () { read('table'); }, 'read'],
+             ['Custom format, Yappari 5.1 definition…', customDialog, 'read'], null,
+             ['Open project…', function () { read('project'); }, 'read'], ['Save project', saveProject, 'saveProject'], null,
+             ['Save parameters of selected', saveParams, 'withModel'], ['Save data of selected…', saveData, 'selection'],
+             ['Report of selected datasets', report, 'withModel'], null,
+             ['Load 24 demo spectra', demo, 'read']],
+      data: [['Undo the last command', undo, 'undo'], null,
+             ['Mask points in the current view', function () { inView(false); }, 'inView'], ['Unmask selected datasets', unmask, 'unmask'],
+             ['Delete points in the current view…', function () { inView(true); }, 'inView'], ['Delete selected datasets…', deleteDatasets, 'edit'], null,
+             ['Normalize: area, resistivity or factor…', correction, 'edit'], ['Negate Zi', negateZi, 'edit'], null,
+             ['Add random noise…', noise, 'edit'], ['Spline to a log frequency grid…', spline, 'edit'],
+             ['Smooth (Savitzky–Golay)…', smooth, 'edit'], ['Average selected datasets', average, 'average'], null,
+             ['Simulate spectrum', simulate, 'simulate']],
+      analysis: [['Show the DRT of selected datasets', drtSelected, 'selection'], ['Save the DRT of selected datasets…', drtSave, 'edit'],
+                 ['DRT λ search…', function () { Y.drtTab.searchDialog(); }, 'selection'], null,
+                 ['Z-HIT of selected datasets', zhitSelected, 'edit'], null,
+                 ['Label a frequency on the Nyquist plot…', labelDialog, 'selection'], ['Clear Nyquist labels', clearLabels, 'unlabel'], null,
                  ['Command line help', showHelp]]
     };
     document.querySelectorAll('[data-menu]').forEach(function (b) {
       b.addEventListener('click', function () {
-        ui.menu(b, M[b.getAttribute('data-menu')].map(function (it) { return it ? { label: it[0], act: it[1] } : { sep: true }; }));
+        ui.menu(b, M[b.getAttribute('data-menu')].map(function (it) { return it ? { label: it[0], act: it[1], off: why(it[2]) } : { sep: true }; }));
       });
     });
+    ['datasets', 'selection', 'model', 'params', 'data', 'labels'].forEach(function (ev) { Y.bus.on(ev, scheduleSync); });
+    Y.bus.on('busy', syncButtons);
+    syncButtons();
   }
 
   return { init: init, readFiles: readFiles, fitSelected: fitSelected, globalFit: globalFit, stop: stop, cloneTo: cloneTo, undo: undo,
            labelDialog: labelDialog, clearLabels: clearLabels, addLabels: addLabels, zhitSelected: zhitSelected, drtSelected: drtSelected,
            inView: inView, unmask: unmask, deleteDatasets: deleteDatasets, simulate: simulate, demo: demo,
-           runCommand: runCommand, saveProject: saveProject, saveParams: saveParams, showHelp: showHelp };
+           runCommand: runCommand, saveProject: saveProject, saveParams: saveParams, showHelp: showHelp,
+           why: why, syncButtons: syncButtons };
 })();

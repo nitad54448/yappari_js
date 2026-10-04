@@ -110,15 +110,20 @@ Y.schematic = (function () {
     svg.innerHTML = m.body;
   }
 
-  var CSS = '.w{stroke:#52606d;stroke-width:1.6}.sym{fill:#2457a6}.sym-line{stroke:#2457a6;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}' +
-    '.sym-box{fill:#fff;stroke:#2457a6;stroke-width:2}.sym-txt{fill:#2457a6;font:600 11px sans-serif;text-anchor:middle}' +
-    '.lbl{fill:#1f2933;font:12px sans-serif;text-anchor:middle}.hit,.grp{fill:none;stroke:none}.node{fill:#52606d}.term{fill:#fff;stroke:#52606d;stroke-width:1.6}';
+  // styles of the standalone SVG in the report, from the light theme of style.css
+  function reportCSS() {
+    var T = Y.theme.get('light'), s = T.schematic;
+    return '.w{stroke:' + T.ink2 + ';stroke-width:' + s.wire + '}.sym{fill:' + T.blue + '}.sym-line{stroke:' + T.blue + ';stroke-width:' + s.line +
+      ';fill:none;stroke-linecap:round;stroke-linejoin:round}.sym-box{fill:' + T.panel + ';stroke:' + T.blue + ';stroke-width:' + s.box +
+      '}.sym-txt{fill:' + T.blue + ';font:600 ' + s.symbol + ' ' + T.font + ';text-anchor:middle}.lbl{fill:' + T.ink + ';font:' + s.font + ' ' + T.font +
+      ';text-anchor:middle}.hit,.grp{fill:none;stroke:none}.node{fill:' + T.ink2 + '}.term{fill:' + T.panel + ';stroke:' + T.ink2 + ';stroke-width:' + s.wire + '}';
+  }
 
   // standalone SVG (report)
   function svgString(tree) {
     var m = markup(tree, null);
     if (!m) return '';
-    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + m.w + '" height="' + m.h + '" viewBox="0 0 ' + m.w + ' ' + m.h + '"><style>' + CSS + '</style>' + m.body + '</svg>';
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + m.w + '" height="' + m.h + '" viewBox="0 0 ' + m.w + ' ' + m.h + '"><style>' + reportCSS() + '</style>' + m.body + '</svg>';
   }
   // palette icon
   function icon(k) { return '<svg viewBox="0 0 64 28" width="40" height="18" aria-hidden="true">' + symbol(k, 0, 32, 14) + '</svg>'; }

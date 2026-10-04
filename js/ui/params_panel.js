@@ -146,6 +146,7 @@ Y.paramsPanel = (function () {
     { legend: 'Plots', fields: [
       { key: 'maxPlots', label: 'Datasets drawn at most', type: 'int', min: 1, hint: 'Larger selections are thinned out evenly for drawing; fits use all of them.' },
       { key: 'nyqEqual', label: 'Same scale on both Nyquist axes', type: 'check' },
+      { key: 'nyqSquare', label: 'Square Nyquist plot', type: 'check', hint: 'Square frame and saved image, also in the Nyquist toolbar. With the same scale on both axes, both axes span the same range.' },
       { key: 'resid', label: 'Residuals', type: 'select', options: [['abs', 'Absolute, in the unit of Z'], ['rel', 'Relative, % of |Z|']] },
       { key: 'phase', label: 'Phase unit', type: 'select', options: [['deg', 'Degrees'], ['rad', 'Radians']] }] }
   ];
@@ -242,6 +243,24 @@ Y.paramsPanel = (function () {
     Y.ui.toast('Saved: new ' + k + ' elements start with these values.', 'info');
   }
 
+  // element start values from a settings file: numbers for the value and the limits, true or false for fit
+  function cleanOverrides(o) {
+    var out = {};
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return out;
+    Object.keys(o).forEach(function (k) {
+      if (Y.elementKinds.indexOf(k) < 0 || !Array.isArray(o[k])) return;
+      out[k] = o[k].map(function (e) {
+        var r = {};
+        if (e && typeof e === 'object') {
+          ['def', 'min', 'max'].forEach(function (f) { if (typeof e[f] === 'number' && isFinite(e[f])) r[f] = e[f]; });
+          if (typeof e.fit === 'boolean') r.fit = e.fit;
+        }
+        return r;
+      });
+    });
+    return out;
+  }
+
   function bindTab() {
     $('#settings-form').addEventListener('change', onSetting);
     $('#limits').addEventListener('change', onLimit);
@@ -255,9 +274,10 @@ Y.paramsPanel = (function () {
         return Y.ui.readText(fs[0]).then(function (t) {
           var doc = JSON.parse(t);
           if (!doc || doc.format !== 'yappari-js-settings') throw new Error('this is not a Yappari JS settings file');
-          Object.keys(doc.settings || {}).forEach(function (k) { if (k in S.settings) S.settings[k] = doc.settings[k]; });
+          var st = Y.state.cleanSettings(doc.settings, S.settings);             // values of the wrong type are ignored
+          Object.keys(st).forEach(function (k) { S.settings[k] = st[k]; });
           Y.state.store('settings', S.settings);
-          Y.elementOverrides = doc.elements || {};
+          Y.elementOverrides = cleanOverrides(doc.elements);
           Y.state.saveElementOverrides();
           renderElementDefaults();
           Y.bus.emit('settings', '*');

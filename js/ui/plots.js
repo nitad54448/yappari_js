@@ -5,12 +5,12 @@
 Y.plots = (function () {
   'use strict';
   var S = Y.state.S, P = {}, current = 'nyq', dirty = { nyq: true, zr: true, zi: true, bode: true, d3: true }, raf = 0, bodeLast = 'mod';
-  var PALETTE = ['#2457a6', '#d1495b', '#2e9e6a', '#7a4fb5', '#d98a00', '#00999a', '#b0368c', '#5c7a29', '#c2571a', '#3a86ff', '#8d6e63', '#556270'];
   var needAuto = { nyq: true, zr: true, zi: true, bode: true, d3: true };
-  var PART_COLORS = ['#d1495b', '#2e9e6a', '#7a4fb5', '#d98a00', '#00999a', '#b0368c', '#3a86ff', '#8d6e63'];
 
   function $(s) { return document.querySelector(s); }
-  function color(ds) { return PALETTE[(ds.id - 1) % PALETTE.length]; }
+  // dataset colours, in turn, from --series-1, --series-2 ... of style.css; colorVar gives the CSS form for HTML
+  function color(ds, theme) { var p = Y.theme.get(theme).series; return p[(ds.id - 1) % p.length]; }
+  function colorVar(ds) { return Y.theme.seriesVar(ds.id - 1); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   function fmtF(f, digits) {
@@ -65,7 +65,7 @@ Y.plots = (function () {
     var showFit = opts.report || S.settings.showFit !== false, showData = opts.report || S.settings.showData !== false;
     var main = [], res = [], lmax = S.settings.legendMax, rel = S.settings.resid === 'rel', ps = phaseScale();
     list.forEach(function (ds, n) {
-      var col = color(ds), idx = [], k;
+      var col = color(ds, opts.report ? 'light' : null), idx = [], k;
       for (k = 0; k < ds.f.length; k++) if (!ds.mask[k]) idx.push(k);
       var X = new Float64Array(idx.length), Yv = new Float64Array(idx.length);
       idx.forEach(function (kk, i) {
@@ -84,7 +84,7 @@ Y.plots = (function () {
       if (midx.length && showData) {
         var MX = new Float64Array(midx.length), MY = new Float64Array(midx.length);
         midx.forEach(function (kk, i) { var c = Y.dataops.coords(ds, kk, kind); MX[i] = c[0]; MY[i] = kind === 'phase' ? c[1] * ps : c[1]; });
-        main.push({ name: ds.name, group: ds.id, x: MX, y: MY, color: col, mode: 'markers', hollow: true, alpha: 0.45, noAuto: true,
+        main.push({ name: ds.name, group: ds.id, x: MX, y: MY, color: col, mode: 'markers', hollow: true, noAuto: true,
                     hover: true, masked: true, ds: ds, idx: midx, size: opts.size });
       }
       var cv = Y.state.curveFor(ds);
@@ -107,7 +107,7 @@ Y.plots = (function () {
           y: Float64Array.from(midx, function (kk) {
             var obs = kind === 'zr' ? ds.zr[kk] : ds.zi[kk], mod = kind === 'zr' ? calc.re[kk] : calc.im[kk];
             return rel ? 100 * (obs - mod) / Math.hypot(ds.zr[kk], ds.zi[kk]) : obs - mod;
-          }), color: col, mode: 'markers', hollow: true, alpha: 0.45, noAuto: true, hover: true, masked: true, ds: ds, idx: midx, size: 3 });
+          }), color: col, mode: 'markers', hollow: true, noAuto: true, hover: true, masked: true, ds: ds, idx: midx, size: 3 });
       }
     });
     return { main: main, res: res };
@@ -118,13 +118,13 @@ Y.plots = (function () {
   // exactly; on the Nyquist plot the model curve takes the colour of the part with the largest |Zi| at each
   // frequency, and each part is drawn alone, shifted along Zr as if the relaxations were separate.
   function partsOf(ds, f) {
-    var tree = S.model.tree;
+    var tree = S.model.tree, pc = Y.theme.get().parts;
     if (!tree) return [];
     return (tree.t === 's' ? tree.c : [tree]).map(function (node, i) {
       var prog = Y.circuit.compile(node), z = Y.circuit.impedance(prog, f, Float64Array.from(prog.names, function (nm) { return ds.p[nm]; }));
       var imax = 0, zmax = 0, kmax = 0;
       for (var k = 0; k < f.length; k++) { var a = Math.abs(z.im[k]); if (a > imax) { imax = a; kmax = k; } zmax = Math.max(zmax, Math.hypot(z.re[k], z.im[k])); }
-      return { label: Y.circuit.toCDC(node, true).replace(/^\[(.*)\]$/, '$1'), color: PART_COLORS[i % PART_COLORS.length],
+      return { label: Y.circuit.toCDC(node, true).replace(/^\[(.*)\]$/, '$1'), color: pc[i % pc.length],
                re: z.re, im: z.im, resistive: !(imax > 1e-9 * zmax), kmax: kmax, i: i };
     });
   }
@@ -187,6 +187,7 @@ Y.plots = (function () {
     var at = ds.notes.findIndex(function (v) { return Math.abs(v / fk - 1) < 1e-9; });
     if (at >= 0) ds.notes.splice(at, 1); else ds.notes.push(fk);
     refresh(false);
+    Y.bus.emit('labels');
   }
 
   function linkX(a, b) {
@@ -196,7 +197,7 @@ Y.plots = (function () {
 
   function init() {
     var lm = S.settings.legendMax;
-    P.nyq = new Y.Plot2D($('#nyq-host'), { xlabel: 'Zr /Ω', ylabel: '−Zi /Ω', equal: S.settings.nyqEqual, tooltip: tooltip, legendMax: lm, empty: 'Select one or more datasets',
+    P.nyq = new Y.Plot2D($('#nyq-host'), { xlabel: 'Zr /Ω', ylabel: '−Zi /Ω', equal: S.settings.nyqEqual, square: !!S.settings.nyqSquare, tooltip: tooltip, legendMax: lm, empty: 'Select one or more datasets',
                                            onPointClick: toggleNote, pointClickActive: function () { var c = $('#label-click'); return !!(c && c.checked); } });
     P.zr = new Y.Plot2D($('#zr-host'), { xlog: true, ylabel: 'Zr /Ω', tooltip: tooltip, legendMax: lm, empty: 'Select one or more datasets' });
     P.zrRes = new Y.Plot2D($('#zr-res'), { xlog: true, xlabel: 'f /Hz', ylabel: residLabel('Zr'), legend: false, tooltip: tooltip });
@@ -212,11 +213,11 @@ Y.plots = (function () {
     if (sel3) { sel3.value = S.settings.view3d; sel3.addEventListener('change', function () { Y.state.setSetting('view3d', sel3.value); }); }
 
     ['selection', 'datasets', 'model', 'data'].forEach(function (ev) { Y.bus.on(ev, function () { refresh(true); }); });
-    ['params', 'stats'].forEach(function (ev) { Y.bus.on(ev, function () { refresh(false); }); });
+    ['params', 'stats', 'theme'].forEach(function (ev) { Y.bus.on(ev, function () { refresh(false); }); });
     Y.bus.on('settings', function (key) {
-      P.nyq.setOptions({ equal: S.settings.nyqEqual, legendMax: S.settings.legendMax });
+      P.nyq.setOptions({ equal: S.settings.nyqEqual, square: !!S.settings.nyqSquare, legendMax: S.settings.legendMax });
       P.zrRes.o.ylabel = residLabel('Zr'); P.ziRes.o.ylabel = residLabel('Zi'); P.ph.o.ylabel = phaseLabel();
-      refresh(key === 'maxPlots' || key === 'nyqEqual' || key === 'phase' || key === 'resid' || key === '*' || key === 'view3d');
+      refresh(key === 'maxPlots' || key === 'nyqEqual' || key === 'nyqSquare' || key === 'phase' || key === 'resid' || key === '*' || key === 'view3d');
     });
     document.querySelectorAll('[data-plot-action]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -354,17 +355,20 @@ Y.plots = (function () {
     document.body.appendChild(a); a.click(); a.remove();
   }
 
-  // static images of one dataset for the report
+  // static images of one dataset for the report, always in the light theme of style.css
   function imagesFor(ds, w, h) {
-    var uz = ' /' + Y.state.zUnit(ds);
+    var uz = ' /' + Y.state.zUnit(ds), L = Y.theme.get('light');
     var one = [ds], out = {}, nq = build('nyq', one, { size: 4, width: 1.6, noContrib: true, report: true }), zr = build('zr', one, { size: 4, noContrib: true, report: true }), zi = build('zi', one, { size: 4, noContrib: true, report: true });
-    out.nyq = Y.Plot2D.image(nq.main, { xlabel: 'Zr' + uz, ylabel: '−Zi' + uz, equal: S.settings.nyqEqual, legend: false }, w, h);
-    out.zr = Y.Plot2D.image(zr.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zr' + uz, legend: false }, w, h);
-    out.zi = Y.Plot2D.image(zi.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zi' + uz, legend: false }, w, h);
-    out.mod = Y.Plot2D.image(build('mod', one, { size: 4, report: true }).main, { xlog: true, ylog: true, xlabel: 'f /Hz', ylabel: '|Z|' + uz, legend: false }, w, h);
-    out.ph = Y.Plot2D.image(build('phase', one, { size: 4, report: true }).main, { xlog: true, xlabel: 'f /Hz', ylabel: phaseLabel(), legend: false }, w, h);
-    if (zr.res.length) out.res = Y.Plot2D.image(zr.res.concat(zi.res.map(function (s) { return Object.assign({}, s, { color: '#d1495b' }); })),
-      { xlog: true, xlabel: 'f /Hz', ylabel: 'residuals (Zr blue, Zi red)', legend: false }, w, Math.round(h * 0.6));
+    function img(series, o, hh) { return Y.Plot2D.image(series, Object.assign({ legend: false, theme: 'light' }, o), w, hh || h); }
+    out.nyq = img(nq.main, { xlabel: 'Zr' + uz, ylabel: '−Zi' + uz, equal: S.settings.nyqEqual, square: !!S.settings.nyqSquare });
+    out.zr = img(zr.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zr' + uz });
+    out.zi = img(zi.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zi' + uz });
+    out.mod = img(build('mod', one, { size: 4, report: true }).main, { xlog: true, ylog: true, xlabel: 'f /Hz', ylabel: '|Z|' + uz });
+    out.ph = img(build('phase', one, { size: 4, report: true }).main, { xlog: true, xlabel: 'f /Hz', ylabel: phaseLabel() });
+    // residuals of Zr and Zi in the two report colours (not the dataset colour, which can be either of them), named in a legend
+    function tint(list, c, name) { return list.map(function (s, i) { return Object.assign({}, s, { color: c, group: name, name: name, legend: i === 0 }); }); }
+    if (zr.res.length) out.res = img(tint(zr.res, L.reportZr, 'Zr − calc').concat(tint(zi.res, L.reportZi, 'Zi − calc')),
+      { xlog: true, xlabel: 'f /Hz', ylabel: S.settings.resid === 'rel' ? 'residuals /%|Z|' : 'residuals' + uz, legend: true }, Math.round(h * 0.6));
     return out;
   }
 
@@ -374,6 +378,6 @@ Y.plots = (function () {
   }
 
   return { init: init, show: show, refresh: refresh, viewFor: viewFor, color: color, plotted: plotted, redrawAll: redrawAll, _plots: P,
-           PART_COLORS: PART_COLORS, nearestPoint: nearestPoint,
+           colorVar: colorVar, nearestPoint: nearestPoint,
            imagesFor: imagesFor, current: function () { return current; }, fmtF: fmtF, fmtZ: fmtZ };
 })();

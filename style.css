@@ -1,6 +1,11 @@
 /* Yappari JS stylesheet: tokens, layout, then components.
+   This file decides the whole look. The canvas plots, the dataset colours, the circuit drawing and the HTML report
+   read the variables below (js/ui/theme.js); the JavaScript keeps no colours, fonts or sizes of its own.
+   Variables read by the plots must be plain values (#hex, rgb(), rgba(), px): canvas cannot evaluate var() or color-mix().
+   The page always carries data-theme="light" or "dark" (the script resolves "follow the system"), so the dark theme
+   is the single block after this one. Reports always use the light values.
    Selected datasets are amber, as in the LabVIEW Yappari; circuit elements are drawn in ink blue. */
-:root {
+:root, [data-theme="light"] {
   --paper: #f3f5f4;
   --panel: #ffffff;
   --ink: #1f2933;
@@ -26,26 +31,43 @@
   --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-code: "Cascadia Mono", ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;
   --font-kana: "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", "Noto Sans CJK JP", Meiryo, sans-serif;
-  --side-w: 350px;
+  --side-w: 350px;            /* side panel: default width, narrowest, widest (share of the window) */
+  --side-min: 260px;
+  --side-max: 60%;
+  /* plots (canvas) */
+  --plot-zoom-fill: rgba(36, 87, 166, 0.08);
+  --plot-zoom-line: rgba(36, 87, 166, 0.8);
+  --plot-font-size: 11px;     /* tick labels, legend, frequency labels; the margins follow */
+  --plot-title-size: 12px;    /* axis titles */
+  --plot-marker-size: 3.2px;  /* data points; all markers and lines of the plots scale with these two */
+  --plot-line-width: 1.5px;
+  --plot-masked-opacity: 0.45;
+  --plot-area-opacity: 0.3;
+  --plot-errorbar-opacity: 0.5;
+  /* dataset colours, used in turn (add or remove entries, numbered from 1 without gaps) */
+  --series-1: #2457a6; --series-2: #d1495b; --series-3: #2e9e6a; --series-4: #7a4fb5;
+  --series-5: #d98a00; --series-6: #00999a; --series-7: #b0368c; --series-8: #5c7a29;
+  --series-9: #c2571a; --series-10: #3a86ff; --series-11: #8d6e63; --series-12: #556270;
+  /* contributions of the parts in series, on the plots and in the circuit drawing, used in turn */
+  --part-1: #d1495b; --part-2: #2e9e6a; --part-3: #7a4fb5; --part-4: #d98a00;
+  --part-5: #00999a; --part-6: #b0368c; --part-7: #3a86ff; --part-8: #8d6e63;
+  /* DRT tab: distribution of one dataset, Zr and Zi, λ search curves and the chosen value */
+  --drt-g: #2e9e6a; --drt-zr: #d1495b; --drt-zi: #2457a6;
+  --drt-misfit: #00999a; --drt-cv: #d98a00; --drt-chosen: #d1495b;
+  /* report: residuals of Zr and Zi */
+  --report-zr: #2457a6; --report-zi: #d1495b;
+  /* circuit drawing: line widths and text sizes */
+  --schematic-wire: 1.6px; --schematic-line: 2.2px; --schematic-box: 2px;
+  --schematic-font-size: 12px; --schematic-symbol-size: 11px;
   color-scheme: light;
 }
-:root[data-theme="dark"] {
-    --paper: #14181c; --panel: #1b2025; --ink: #e3e7ea; --ink-2: #a7b2bc; --ink-3: #75818c;
-    --rule: #2f363d; --rule-2: #252b31; --blue: #7ea6e6; --blue-2: #9bbbee; --blue-tint: #1f2b3d; --on-blue: #0f1620;
-    --amber: #f2b231; --amber-tint: #3b3017; --ok: #5cb88a; --warn: #e0a740; --err: #f07a7a;
-    --plot-bg: #1b2025; --plot-grid: #2b3238; --plot-minor: #22282e; --plot-axis: #5d6873;
-    --grid-major: rgba(126, 166, 230, 0.13); --grid-minor: rgba(126, 166, 230, 0.05);
-    color-scheme: dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #14181c; --panel: #1b2025; --ink: #e3e7ea; --ink-2: #a7b2bc; --ink-3: #75818c;
-    --rule: #2f363d; --rule-2: #252b31; --blue: #7ea6e6; --blue-2: #9bbbee; --blue-tint: #1f2b3d; --on-blue: #0f1620;
-    --amber: #f2b231; --amber-tint: #3b3017; --ok: #5cb88a; --warn: #e0a740; --err: #f07a7a;
-    --plot-bg: #1b2025; --plot-grid: #2b3238; --plot-minor: #22282e; --plot-axis: #5d6873;
-    --grid-major: rgba(126, 166, 230, 0.13); --grid-minor: rgba(126, 166, 230, 0.05);
-    color-scheme: dark;
-  }
+[data-theme="dark"] {
+  --paper: #14181c; --panel: #1b2025; --ink: #e3e7ea; --ink-2: #a7b2bc; --ink-3: #75818c;
+  --rule: #2f363d; --rule-2: #252b31; --blue: #7ea6e6; --blue-2: #9bbbee; --blue-tint: #1f2b3d; --on-blue: #0f1620;
+  --amber: #f2b231; --amber-tint: #3b3017; --ok: #5cb88a; --warn: #e0a740; --err: #f07a7a;
+  --plot-bg: #1b2025; --plot-grid: #2b3238; --plot-minor: #22282e; --plot-axis: #5d6873;
+  --grid-major: rgba(126, 166, 230, 0.13); --grid-minor: rgba(126, 166, 230, 0.05);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -155,14 +177,14 @@ body.busy .plot-canvas { cursor: progress; }
 }
 .schematic:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 .schematic svg { display: block; margin: auto; }
-.schematic .w, .palette .w { stroke: var(--ink-2); stroke-width: 1.6; }
+.schematic .w, .palette .w { stroke: var(--ink-2); stroke-width: var(--schematic-wire); }
 .schematic .sym, .palette .sym { fill: var(--blue); }
-.schematic .sym-line, .palette .sym-line { stroke: var(--blue); stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.schematic .sym-box, .palette .sym-box { fill: var(--panel); stroke: var(--blue); stroke-width: 2; }
-.schematic .sym-txt, .palette .sym-txt { fill: var(--blue); font: 600 11px var(--font-ui); text-anchor: middle; }
-.schematic .lbl { fill: var(--ink); font: 12px var(--font-ui); text-anchor: middle; }
+.schematic .sym-line, .palette .sym-line { stroke: var(--blue); stroke-width: var(--schematic-line); fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.schematic .sym-box, .palette .sym-box { fill: var(--panel); stroke: var(--blue); stroke-width: var(--schematic-box); }
+.schematic .sym-txt, .palette .sym-txt { fill: var(--blue); font: 600 var(--schematic-symbol-size) var(--font-ui); text-anchor: middle; }
+.schematic .lbl { fill: var(--ink); font: var(--schematic-font-size) var(--font-ui); text-anchor: middle; }
 .schematic .node { fill: var(--ink-2); }
-.schematic .term { fill: var(--panel); stroke: var(--ink-2); stroke-width: 1.6; }
+.schematic .term { fill: var(--panel); stroke: var(--ink-2); stroke-width: var(--schematic-wire); }
 .schematic .empty { fill: var(--ink-2); font: 13px var(--font-ui); text-anchor: middle; }
 .schematic .hit { fill: transparent; cursor: pointer; }
 .schematic .el:hover .hit { fill: var(--blue-tint); }
@@ -471,3 +493,11 @@ body.resizing .plot-canvas { pointer-events: none; }
 .status { grid-template-columns: auto minmax(220px, 30%) minmax(0, 1fr) auto; }
 .status .progress { grid-column: auto; width: 220px; }
 @media (max-width: 920px) { .status { grid-template-columns: auto minmax(0, 1fr); } .status .progress { grid-column: 1 / -1; width: auto; } }
+
+/* commands that cannot run now: greyed menu items (still reachable with the arrow keys), reason in the tooltip */
+.menu-pop button[aria-disabled="true"] { color: var(--ink-3); cursor: default; }
+.menu-pop button[aria-disabled="true"]:hover { background: none; }
+.menu-pop button[aria-disabled="true"]:focus { background: var(--rule-2); }
+button.primary:disabled:hover { background: var(--blue); border-color: var(--blue); }
+button:not(.primary):disabled:hover { border-color: var(--rule); }
+.fit-target .why-not { color: var(--warn); }

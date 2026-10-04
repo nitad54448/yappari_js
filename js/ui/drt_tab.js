@@ -5,7 +5,6 @@
 Y.drtTab = (function () {
   'use strict';
   var S = Y.state.S, P = {}, timer = 0, lastId = null, current = null;
-  var GREEN = '#2e9e6a', RED = '#d1495b', BLUE = '#2457a6', TEAL = '#00999a', AMBER = '#d98a00';
   function $(s) { return document.querySelector(s); }
   function esc(s) { return Y.ui.esc(s); }
   function fmt(v) {
@@ -67,6 +66,7 @@ Y.drtTab = (function () {
     $('#drt-all').addEventListener('click', saveSelected);
     ['selection', 'data', 'datasets'].forEach(function (ev) { Y.bus.on(ev, function () { if (visible()) schedule(); }); });
     Y.bus.on('settings', function (k) { if (k === '*') { syncControls(); if (visible()) schedule(); } });
+    Y.bus.on('theme', function () { if (current) render(false); });
     [P.res, P.g, P.z].forEach(function (p) { p.setOptions({ xlabel: xLabel() }); });
     syncControls();
   }
@@ -99,7 +99,7 @@ Y.drtTab = (function () {
 
   function render(auto) {
     if (!current) return;
-    var r = current.r, xf = S.settings.drtX !== 'tau', multi = current.all.length > 1, name = current.ds.name;
+    var r = current.r, xf = S.settings.drtX !== 'tau', multi = current.all.length > 1, name = current.ds.name, C = Y.theme.get().drt;
     var xs = xf ? r.f : Float64Array.from(r.f, function (f) { return 1 / (2 * Math.PI * f); });
     var u = Y.state.zUnit(current.ds);
     P.res.o.ylabel = '|ΔZ| /' + u; P.z.o.ylabel = 'Zr, −Zi /' + u;
@@ -107,16 +107,16 @@ Y.drtTab = (function () {
     P.g.o.legend = multi;
     P.g.setSeries(current.all.map(function (it) {
       return { name: it.ds.name, group: 'g' + it.ds.id, x: Float64Array.from(it.r.tau, function (t) { return xf ? 1 / (2 * Math.PI * t) : t; }), y: it.r.g,
-               color: multi ? Y.plots.color(it.ds) : GREEN, mode: multi ? 'lines' : 'area', width: multi ? 1.6 : 1.4, hover: true, legend: true, r: it.r };
+               color: multi ? Y.plots.color(it.ds) : C.g, mode: multi ? 'lines' : 'area', width: multi ? 1.6 : 1.4, hover: true, legend: true, r: it.r };
     }), !auto);
     P.z.setSeries([
-      { name: 'Zr, ' + name, group: 'zr', x: xs, fq: r.f, y: r.zrExp, color: RED, mode: 'markers', hover: true, legend: true },
-      { group: 'zr', x: xs, fq: r.f, y: r.zr, color: RED, mode: 'lines' },
-      { name: '−Zi, ' + name, group: 'zi', x: xs, fq: r.f, y: neg(r.ziExp), color: BLUE, mode: 'markers', hover: true, legend: true },
-      { group: 'zi', x: xs, fq: r.f, y: neg(r.zi), color: BLUE, mode: 'lines' }], !auto);
+      { name: 'Zr, ' + name, group: 'zr', x: xs, fq: r.f, y: r.zrExp, color: C.zr, mode: 'markers', hover: true, legend: true },
+      { group: 'zr', x: xs, fq: r.f, y: r.zr, color: C.zr, mode: 'lines' },
+      { name: '−Zi, ' + name, group: 'zi', x: xs, fq: r.f, y: neg(r.ziExp), color: C.zi, mode: 'markers', hover: true, legend: true },
+      { group: 'zi', x: xs, fq: r.f, y: neg(r.zi), color: C.zi, mode: 'lines' }], !auto);
     P.res.setSeries([
-      { name: '|Zr − Zr drt|', group: 'r', x: xs, fq: r.f, y: absDiff(r.zrExp, r.zr), color: RED, mode: 'markers', hover: true, legend: true, size: 3 },
-      { name: '|Zi − Zi drt|', group: 'i', x: xs, fq: r.f, y: absDiff(r.ziExp, r.zi), color: BLUE, mode: 'markers', hover: true, legend: true, size: 3 }], !auto);
+      { name: '|Zr − Zr drt|', group: 'r', x: xs, fq: r.f, y: absDiff(r.zrExp, r.zr), color: C.zr, mode: 'markers', hover: true, legend: true, size: 3 },
+      { name: '|Zi − Zi drt|', group: 'i', x: xs, fq: r.f, y: absDiff(r.ziExp, r.zi), color: C.zi, mode: 'markers', hover: true, legend: true, size: 3 }], !auto);
     var rows = r.peaks.map(function (p, k) {
       return '<tr><td>' + (k + 1) + '</td><td>' + fmt(p.f) + '</td><td>' + fmt(p.tau) + '</td><td>' + fmt(p.R) + '</td><td>' + fmt(p.C) + '</td><td>' + (100 * p.share).toFixed(1) + ' %</td></tr>';
     }).join('');
@@ -172,14 +172,14 @@ Y.drtTab = (function () {
       what + '. The suggestion is the strongest regularisation whose misfit stays within 10 % of the best one. Click the plot to choose another value.</p>' +
       '<div class="dlg-plot" id="scan-plot"></div><p class="scan-msg" id="scan-msg">Computing…</p>';
     function draw() {
-      var res = sc.result, err = Array.from(res.err, function (v) { return 100 * v; }), cv = Array.from(res.cv, function (v) { return 100 * v; });
+      var C = Y.theme.get().drt, res = sc.result, err = Array.from(res.err, function (v) { return 100 * v; }), cv = Array.from(res.cv, function (v) { return 100 * v; });
       var all = err.concat(cv).filter(function (v) { return v > 0 && isFinite(v); });
       var lo = Math.min.apply(null, all), hi = Math.max.apply(null, all), series = [
-        { name: 'misfit', group: 'e', x: values, y: err, color: TEAL, mode: 'lines', legend: true },
-        { name: 'misfit', group: 'e', x: values, y: err, color: TEAL, mode: 'markers', hover: true },
-        { name: 're–im cross-validation', group: 'c', x: values, y: cv, color: AMBER, mode: 'lines', legend: true },
-        { name: 're–im cross-validation', group: 'c', x: values, y: cv, color: AMBER, mode: 'markers', hover: true }];
-      if (chosen >= 0) series.push({ name: 'chosen', group: 'x', x: [values[chosen], values[chosen]], y: [lo, hi], color: RED, mode: 'lines', width: 1.5, legend: true });
+        { name: 'misfit', group: 'e', x: values, y: err, color: C.misfit, mode: 'lines', legend: true },
+        { name: 'misfit', group: 'e', x: values, y: err, color: C.misfit, mode: 'markers', hover: true },
+        { name: 're–im cross-validation', group: 'c', x: values, y: cv, color: C.cv, mode: 'lines', legend: true },
+        { name: 're–im cross-validation', group: 'c', x: values, y: cv, color: C.cv, mode: 'markers', hover: true }];
+      if (chosen >= 0) series.push({ name: 'chosen', group: 'x', x: [values[chosen], values[chosen]], y: [lo, hi], color: C.chosen, mode: 'lines', width: 1.5, legend: true });
       plot.setSeries(series, true);
       $('#scan-msg').textContent = chosen >= 0 ? 'Chosen: ' + (isGold ? values[chosen] + ' iterations' : 'λ = ' + fmt(values[chosen])) + ', misfit ' + err[chosen].toFixed(2) + ' %.' : '';
     }
@@ -203,6 +203,7 @@ Y.drtTab = (function () {
       }
     }).then(function (v) {
       closed = true;
+      if (plot) plot.destroy();
       if (v == null) return;
       Y.state.setSetting(isGold ? 'drtIter' : 'drtLambda', Math.log10(v));
       syncControls(); schedule(true);

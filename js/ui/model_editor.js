@@ -32,8 +32,16 @@ Y.modelEditor = (function () {
   }
   function draw() {
     if (!nodeFromKey(selKey)) selKey = null;
-    Y.schematic.render($('#schematic'), S.model.tree, selKey, S.settings.contrib ? Y.plots.PART_COLORS : null);
+    Y.schematic.render($('#schematic'), S.model.tree, selKey, S.settings.contrib ? Y.theme.partVars() : null);
     hint();
+    syncButtons();
+  }
+  // Delete, Undo and Clear only when they have something to act on
+  function syncButtons() {
+    var busy = S.busy ? 'Not while a fit is running.' : '';
+    Y.ui.able($('#node-del'), busy || (selKey != null ? '' : 'Click an element or a group in the drawing first.'));
+    Y.ui.able($('#node-undo'), busy || (undoStack.length ? '' : 'Nothing to undo in the circuit.'));
+    Y.ui.able($('#node-clear'), busy || (S.model.tree ? '' : 'No circuit to clear.'));
   }
   function sync() {
     var inp = $('#cdc');
@@ -161,7 +169,7 @@ Y.modelEditor = (function () {
       '<p class="note">Equations as in Yappari 5.1 (help/theory.md). For large B, Wo and Ws tend to W with an Aw larger by √2, because W is written with √ω and Wo, Ws with √(jω).</p>';
     Y.bus.on('model', sync);
     Y.bus.on('settings', function (k) { if (k === 'contrib' || k === '*') draw(); });
-    Y.bus.on('busy', function (b) { $('#pane-model').classList.toggle('locked', !!b); });
+    Y.bus.on('busy', function (b) { $('#pane-model').classList.toggle('locked', !!b); syncButtons(); });
     sync();
   }
 

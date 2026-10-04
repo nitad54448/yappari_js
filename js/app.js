@@ -35,7 +35,7 @@
     if (tab === 'drt') Y.drtTab.show();
     Y.state.store('tab', tab);
   }
-  Y.app = { showTab: showTab, tab: function () { return curTab; } };
+  Y.app = { showTab: showTab, tab: function () { return curTab; }, fitMode: fitMode };
 
   // fit bar: individual or global fit, and the fit method (same setting as in Settings)
   function fitMode() { return Y.state.load('fitmode') === 'global' ? 'global' : 'single'; }
@@ -49,10 +49,11 @@
     $('#fit-weight').value = S.settings.weight;
   }
   function syncTarget() {
-    var n = S.sel.size, f = Y.state.first();
+    var n = S.sel.size, f = Y.state.first(), why = n && S.model.prog && !S.busy ? Y.cmd.why('fit') : '';   // reasons not shown otherwise
     $('#fit-target').innerHTML = !S.datasets.length ? 'No datasets yet.' :
       (n ? '<b>' + n + '</b> of ' + S.datasets.length + ' datasets selected' + (n === 1 && f ? ': ' + esc(f.name) : '') : 'No dataset selected. Choose some in Datasets.') +
-      (S.model.cdc ? '<br>Circuit <code>' + esc(S.model.cdc) + '</code>' : '<br>No circuit yet, build one in Model.');
+      (S.model.cdc ? '<br>Circuit <code>' + esc(S.model.cdc) + '</code>' : '<br>No circuit yet, build one in Model.') +
+      (why ? '<br><span class="why-not">' + esc(why) + '</span>' : '');
   }
   function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
@@ -68,13 +69,19 @@
   }
   Y.app.showSide = showSide;
   // side panel width: drag the left edge, arrow keys when focused, double-click to reset; remembered
-  var SIDE_MIN = 260, SIDE_DEF = 350;
+  // widths from style.css: --side-w (default), --side-min, --side-max (share of the window), read before a stored width applies
+  var SIDE_MIN = 0, SIDE_DEF = 0, SIDE_MAX = 1;
+  function sideVars() {
+    var cs = getComputedStyle(document.documentElement), v = function (n) { return parseFloat(cs.getPropertyValue(n)); };
+    SIDE_DEF = v('--side-w') || 0; SIDE_MIN = v('--side-min') || 0; SIDE_MAX = (v('--side-max') || 100) / 100;
+  }
   function setSide(w, save) {
-    w = Math.round(Math.max(SIDE_MIN, Math.min(w, window.innerWidth * 0.6)));
+    w = Math.round(Math.max(SIDE_MIN, Math.min(w, window.innerWidth * SIDE_MAX)));
     document.documentElement.style.setProperty('--side-w', w + 'px');
     if (save) Y.state.store('sidew', w);
   }
   function initGrip() {
+    sideVars();
     var g = $('#side-grip'), w0 = Y.state.load('sidew');
     if (w0) setSide(w0, false);
     g.addEventListener('pointerdown', function (e) {
@@ -87,7 +94,7 @@
       }
       g.addEventListener('pointermove', mv); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
     });
-    g.addEventListener('dblclick', function () { setSide(SIDE_DEF, true); });
+    g.addEventListener('dblclick', function () { if (SIDE_DEF) setSide(SIDE_DEF, true); });
     g.addEventListener('keydown', function (e) {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       e.preventDefault();
@@ -134,12 +141,13 @@
 
     $('#btn-fit').addEventListener('click', runFit);
     document.querySelectorAll('[data-fitmode]').forEach(function (b) {
-      b.addEventListener('click', function () { Y.state.store('fitmode', b.getAttribute('data-fitmode')); syncFitbar(); });
+      b.addEventListener('click', function () { Y.state.store('fitmode', b.getAttribute('data-fitmode')); syncFitbar(); syncTarget(); Y.cmd.syncButtons(); });
     });
     $('#fit-method').addEventListener('change', function () { Y.state.setSetting('method', $('#fit-method').value); });
     $('#fit-weight').addEventListener('change', function () { Y.state.setSetting('weight', $('#fit-weight').value); });
     Y.bus.on('settings', function (k) { if (k === '*' || k === 'method' || k === 'weight') syncFitbar(); });
     Y.bus.on('selection', syncTarget); Y.bus.on('datasets', syncTarget); Y.bus.on('model', syncTarget);
+    Y.bus.on('params', syncTarget); Y.bus.on('busy', syncTarget);
     var sideTabs = Array.prototype.slice.call(document.querySelectorAll('[data-side]'));
     sideTabs.forEach(function (b) { b.addEventListener('click', function () { showSide(b.getAttribute('data-side')); }); });
     $('.side-tabs').addEventListener('keydown', function (e) {
@@ -157,8 +165,7 @@
     $('#btn-stop').addEventListener('click', function () { Y.cmd.stop(); });
     Y.bus.on('busy', function (b) {
       document.body.classList.toggle('busy', !!b);
-      $('#btn-fit').disabled = !!b;
-      $('#btn-stop').hidden = !b;
+      $('#btn-stop').hidden = !b;                  // the Fit button follows Y.cmd.why('fit')
     });
 
     var hist = Y.state.load('history') || [], hi = hist.length, cl = $('#cmdline');
@@ -195,20 +202,22 @@
     // dark mode: the switch sets light or dark; the first choice follows the system
     function isDark() { var t = S.settings.theme; return t === 'dark' || (t !== 'light' && !!window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); }
     function applyTheme() {
-      var t = S.settings.theme;
-      if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); else document.documentElement.removeAttribute('data-theme');
+      // "follow the system" is resolved here, so the page always carries data-theme and style.css has one dark block
+      document.documentElement.setAttribute('data-theme', isDark() ? 'dark' : 'light');
       $('#theme-toggle').setAttribute('aria-checked', String(isDark()));
+      Y.theme.refresh(); Y.bus.emit('theme');
       Y.plots.redrawAll();
     }
     $('#theme-toggle').addEventListener('click', function () { Y.state.setSetting('theme', isDark() ? 'light' : 'dark'); });
     if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { if (S.settings.theme !== 'dark' && S.settings.theme !== 'light') applyTheme(); });
     // contributions: one setting, two check boxes (plots and Model tab)
     var cb = [$('#contrib-toggle'), $('#contrib-model')];
-    function syncContrib() { cb.forEach(function (c) { c.checked = !!S.settings.contrib; }); $('#fit-toggle').checked = S.settings.showFit !== false; $('#data-toggle').checked = S.settings.showData !== false; }
+    function syncContrib() { cb.forEach(function (c) { c.checked = !!S.settings.contrib; }); $('#fit-toggle').checked = S.settings.showFit !== false; $('#data-toggle').checked = S.settings.showData !== false; $('#nyq-square').checked = !!S.settings.nyqSquare; }
+    $('#nyq-square').addEventListener('change', function () { Y.state.setSetting('nyqSquare', $('#nyq-square').checked); });
     $('#data-toggle').addEventListener('change', function () { Y.state.setSetting('showData', $('#data-toggle').checked); });
     $('#fit-toggle').addEventListener('change', function () { Y.state.setSetting('showFit', $('#fit-toggle').checked); });
     cb.forEach(function (c) { c.addEventListener('change', function () { Y.state.setSetting('contrib', c.checked); }); });
-    Y.bus.on('settings', function (k) { if (k === '*' || k === 'theme') applyTheme(); if (k === '*' || k === 'contrib' || k === 'showFit' || k === 'showData') syncContrib(); });
+    Y.bus.on('settings', function (k) { if (k === '*' || k === 'theme') applyTheme(); if (k === '*' || k === 'contrib' || k === 'showFit' || k === 'showData' || k === 'nyqSquare') syncContrib(); });
     applyTheme(); syncContrib();
 
     $('#about-version').textContent = Y.version;
