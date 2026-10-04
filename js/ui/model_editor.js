@@ -56,7 +56,7 @@ Y.modelEditor = (function () {
     return true;
   }
   function commit(tree, focus) {
-    undoStack.push(S.model.cdc);
+    undoStack.push({ cdc: S.model.cdc, limits: JSON.parse(JSON.stringify(S.model.limits)), shared: Object.assign({}, S.model.shared) });
     if (undoStack.length > 100) undoStack.shift();
     Y.state.setModel(tree);
     var p = focus ? Y.circuit.findPath(S.model.tree, focus) : null;
@@ -98,8 +98,8 @@ Y.modelEditor = (function () {
   function undo() {
     if (!guard()) return;
     if (!undoStack.length) { Y.ui.toast('Nothing to undo.', 'info'); return; }
-    var cdc = undoStack.pop();
-    Y.state.setModel(cdc ? Y.circuit.parse(cdc) : null);
+    var saved = undoStack.pop();
+    Y.state.setModel(saved.cdc ? Y.circuit.parse(saved.cdc) : null, { limits: saved.limits, shared: saved.shared });
     selKey = null; sync(); msg('Undone.', '');
   }
   function clear() {

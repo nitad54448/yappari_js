@@ -341,6 +341,7 @@ Y.Plot2D = (function () {
       var p = pos(e);
       if (!inBox(p)) return;
       e.preventDefault();
+      if (self.o.onInteract) self.o.onInteract();
       var k = Math.exp(Math.max(-1, Math.min(1, e.deltaY * 0.0015))), ax = self.ix(p[0]), ay = self.iy(p[1]), v = self.view;
       self.view = { x0: ax + (v.x0 - ax) * k, x1: ax + (v.x1 - ax) * k, y0: ay + (v.y0 - ay) * k, y1: ay + (v.y1 - ay) * k };
       self.auto = false; self.draw();

@@ -295,21 +295,29 @@ Y.readers = (function () {
   // Each run of numeric lines is one dataset; with >= 6 columns the ZView layout is used
   // (Freq, Ampl, Bias, Time, Z', Z'' ...), otherwise f, Zr, Zi.
   function zview(text, fileName) {
-    var blocks = [], cur = null, base = baseName(fileName);
+    var blocks = [], cur = null, base = baseName(fileName), skipped = 0;
     lines(text).forEach(function (line) {
       var t = line.trim();
       if (!t) return;
-      var vals = t.split(/[,;\t ]+/).filter(Boolean).map(function (x) { return num(x, false); });
+      // Explicit delimiters preserve missing columns; only spaces may be collapsed.
+      var sep = line.indexOf('\t') >= 0 ? 'tab' : line.indexOf(';') >= 0 ? 'semicolon' : line.indexOf(',') >= 0 ? 'comma' : 'space';
+      var vals = numericFields(line, sep);
       var numeric = vals.length >= 3 && vals.every(function (v) { return isFinite(v); });
-      if (numeric) { if (!cur) { cur = []; blocks.push(cur); } cur.push(vals); } else cur = null;
+      if (numeric) { if (!cur) { cur = []; blocks.push(cur); } cur.push(vals); }
+      else if (incomplete(line, sep)) skipped++;     // a bad row must not split the sweep
+      else cur = null;
     });
     var out = [];
     blocks.forEach(function (b) {
-      var c = b[0].length >= 6 ? [0, 4, 5] : [0, 1, 2], f = [], zr = [], zi = [];
-      b.forEach(function (v) { if (v[c[0]] > 0 && v.length > c[2]) { f.push(v[c[0]]); zr.push(v[c[1]]); zi.push(v[c[2]]); } });
+      var c = b.some(function (v) { return v.length >= 6; }) ? [0, 4, 5] : [0, 1, 2], f = [], zr = [], zi = [];
+      b.forEach(function (v) {
+        if (v[c[0]] > 0 && v.length > c[2]) { f.push(v[c[0]]); zr.push(v[c[1]]); zi.push(v[c[2]]); }
+        else skipped++;
+      });
       if (f.length >= 2) out.push(pack(blocks.length > 1 ? base + '_' + out.length : base, f, zr, zi));
     });
     if (!out.length) throw new Error(base + ': no numeric data block found');
+    out.skipped = skipped;
     return out;
   }
 

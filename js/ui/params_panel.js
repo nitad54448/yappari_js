@@ -78,6 +78,14 @@ Y.paramsPanel = (function () {
       (short === 'converged' ? ' <span class="why">(' + esc(msg.replace(/^converged: /, '')) + ')</span>' : '') + '</dd></dl>';
   }
 
+  // Snapshot only real changes, including edits applied to several selected datasets.
+  function changeValue(n, v) {
+    if (!Y.state.selected().some(function (ds) { return ds.p[n] !== v; })) return;
+    Y.history.take('parameter ' + n);
+    Y.state.setParam(n, v);
+    Y.ui.toast(n + ' set to ' + fmtVal(v) + '.', 'info');
+  }
+
   function commitInput(inp) {
     var row = inp.closest('.prow'), n = row.getAttribute('data-name'), ds = Y.state.first();
     if (!ds) return;
@@ -87,7 +95,7 @@ Y.paramsPanel = (function () {
     if (!isFinite(v)) { inp.value = fmtVal(ds.p[n]); Y.ui.toast('Not a number: ' + n + ' unchanged.', 'warn'); return; }
     var c = clampVal(n, v);
     if (c !== v) Y.ui.toast(n + ' kept within its limits, ' + fmtVal(S.model.limits[n].min) + ' to ' + fmtVal(S.model.limits[n].max) + ' (see Settings).', 'warn');
-    Y.state.setParam(n, c);
+    changeValue(n, c);
   }
 
   function step(n, dir, e) {
@@ -97,7 +105,7 @@ Y.paramsPanel = (function () {
     if (pp.scale === 'log' && v > 0) v *= Math.pow(big ? 1.1 : fine ? 1.002 : 1.02, dir);
     else v += dir * (big ? 0.05 : fine ? 0.001 : 0.005);
     editing = null;
-    Y.state.setParam(n, clampVal(n, +v.toPrecision(12)));
+    changeValue(n, clampVal(n, +v.toPrecision(12)));
   }
 
   function bindList() {
@@ -121,7 +129,11 @@ Y.paramsPanel = (function () {
       if (!e.target.classList.contains('pf')) return;
       var n = e.target.closest('.prow').getAttribute('data-name'), ds = Y.state.first();
       if (S.busy) { e.target.checked = !!(ds && ds.fit[n]); Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }
-      Y.state.setFit(n, e.target.checked);
+      var on = e.target.checked;
+      if (!Y.state.selected().some(function (d) { return !!d.fit[n] !== on; })) return;
+      Y.history.take('fit flag ' + n);
+      Y.state.setFit(n, on);
+      Y.ui.toast(n + (on ? ' will be fitted.' : ' held fixed.'), 'info');
     });
   }
 

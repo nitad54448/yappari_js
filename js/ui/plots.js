@@ -183,11 +183,13 @@ Y.plots = (function () {
   function toggleNote(s, i) {
     if (!s.ds || !s.idx) return;
     var ds = s.ds, fk = ds.f[s.idx[i]];
+    Y.history.take('frequency label');
     ds.notes = ds.notes || [];
     var at = ds.notes.findIndex(function (v) { return Math.abs(v / fk - 1) < 1e-9; });
     if (at >= 0) ds.notes.splice(at, 1); else ds.notes.push(fk);
     refresh(false);
     Y.bus.emit('labels');
+    Y.ui.toast((at >= 0 ? 'Removed' : 'Added') + ' the label at ' + fmtF(fk) + ' in ' + ds.name + '.', 'info');
   }
 
   function linkX(a, b) {

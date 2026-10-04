@@ -103,6 +103,11 @@ Y.drtTab = (function () {
     var xs = xf ? r.f : Float64Array.from(r.f, function (f) { return 1 / (2 * Math.PI * f); });
     var u = Y.state.zUnit(current.ds);
     P.res.o.ylabel = '|ΔZ| /' + u; P.z.o.ylabel = 'Zr, −Zi /' + u;
+    // Also update after project/settings loads, not just dropdown changes.
+    [P.res, P.g, P.z].forEach(function (p) {
+      if (p.o.xlabel !== xLabel()) auto = true;  // a saved zoom uses the old units too
+      p.o.xlabel = xLabel();
+    });
     if (auto) [P.res, P.g, P.z].forEach(function (p) { p.auto = true; });
     P.g.o.legend = multi;
     P.g.setSeries(current.all.map(function (it) {
