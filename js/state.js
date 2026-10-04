@@ -3,7 +3,7 @@
  *          'data' (points changed: mask, delete, noise ...), 'stats' (fit results), 'busy',
  *          'labels' (frequency labels added or removed), 'theme' (light or dark switched)
  *
- *  Dataset: { id, name, f, zr, zi (Float64Array), mask (Uint8Array, 1 = hidden & not fitted),
+ *  Dataset: { id, name, f, zr, zi (Float64Array), mask (Uint8Array, 1 = left out of fits only, drawn hollow),
  *             p: {name: value}, fit: {name: bool}, stats: null | {...}, calc/curve: cached model values }
  *  Every dataset holds its own parameter values for the one circuit; limits and the global-fit
  *  "shared" flags are per parameter name, for all datasets (as in Yappari).
@@ -29,7 +29,7 @@ Y.state = (function () {
     return { sep: 'auto', method: 'TRDL', weight: 'mod', maxIter: 2500, tol: 1e-12,
              simStart: 1e-3, simEnd: 1e6, simPoints: 128, maxPlots: 60, legendMax: 24,
              nyqEqual: true, nyqSquare: false, resid: 'abs', phase: 'deg', view3d: 'nyq', useSigma: false, theme: 'system', contrib: false,
-             drtMethod: 'tikhonov', drtSource: 'both', drtLambda: -3, drtIter: 5, drtX: 'f' };
+             drtMethod: 'tikhonov', drtSource: 'both', drtLambda: -3, drtIter: Math.log10(5e4), drtX: 'f' };   // Gold: 50 000 iterations
   }
 
   var S = {
@@ -46,7 +46,7 @@ Y.state = (function () {
     var st = load('settings');
     if (st) S.settings = cleanSettings(st);
     var ov = load('elements');
-    if (ov) Y.elementOverrides = ov;
+    if (ov) Y.elementOverrides = cleanElementOverrides(ov);
     var m = load('model');
     if (m && m.cdc) {
       try { setModel(Y.circuit.parse(m.cdc), { limits: m.limits, shared: m.shared, quiet: true }); } catch (e) { /* ignore */ }
@@ -64,6 +64,35 @@ Y.state = (function () {
   function replaceSettings(st) { S.settings = cleanSettings(st); store('settings', S.settings); Y.bus.emit('settings', '*'); }
   function resetSettings() { S.settings = defaults(); store('settings', S.settings); Y.bus.emit('settings', '*'); }
   function saveElementOverrides() { store('elements', Y.elementOverrides); }
+
+  // start value and limits of new elements (Settings): ov = {def, min, max, fit} for parameter i of an element kind,
+  // missing values taken from the built-in ones. '' when usable, otherwise what is wrong.
+  function elementDefaultProblem(kind, i, ov) {
+    var b = Y.elements[kind].params[i], o = ov || {};
+    var def = o.def != null ? o.def : b.def, min = o.min != null ? o.min : b.min, max = o.max != null ? o.max : b.max;
+    if (!(min < max)) return 'min must be below max';
+    if (!(def >= min && def <= max)) return 'the start value must lie between min and max';
+    return '';
+  }
+  // overrides from a settings file or the browser: known kinds, finite numbers, true or false for fit; the numbers of
+  // a parameter whose start value and limits do not fit together are dropped (its built-in values apply)
+  function cleanElementOverrides(o) {
+    var out = {};
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return out;
+    Object.keys(o).forEach(function (k) {
+      if (Y.elementKinds.indexOf(k) < 0 || !Array.isArray(o[k])) return;
+      out[k] = o[k].slice(0, Y.elements[k].params.length).map(function (e, i) {
+        var r = {};
+        if (e && typeof e === 'object') {
+          ['def', 'min', 'max'].forEach(function (f) { if (typeof e[f] === 'number' && isFinite(e[f])) r[f] = e[f]; });
+          if (elementDefaultProblem(k, i, r)) { delete r.def; delete r.min; delete r.max; }
+          if (typeof e.fit === 'boolean') r.fit = e.fit;
+        }
+        return r;
+      });
+    });
+    return out;
+  }
   // settings from a file: known keys with the type of their default (finite numbers only), on top of base (the
   // defaults when omitted); an unknown fit method or weight, or bad iterations or tolerance, fall back to the default
   function cleanSettings(src, base) {
@@ -470,6 +499,7 @@ Y.state = (function () {
   return {
     S: S, defaults: defaults, cleanSettings: cleanSettings, restore: restore, store: store, load: load,
     setSetting: setSetting, resetSettings: resetSettings, replaceSettings: replaceSettings, saveElementOverrides: saveElementOverrides,
+    elementDefaultProblem: elementDefaultProblem, cleanElementOverrides: cleanElementOverrides,
     names: names, setModel: setModel, setLimit: setLimit, setShared: setShared,
     makeDataset: makeDataset, addDatasets: addDatasets, byId: byId, removeDatasets: removeDatasets, clearAll: clearAll,
     rename: rename, move: move,

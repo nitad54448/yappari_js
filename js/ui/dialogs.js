@@ -26,8 +26,12 @@ Y.ui = (function () {
 
   // ---------------------------------------------------------------- modal
   // o: {title, body (html | Node), wide, buttons: [{label, value | fn(body), primary, danger, left, close:false, onClick(body) -> false keeps it open}]}
+  // A dialog opened while another one is open replaces it; the one replaced resolves with null, as if cancelled,
+  // so code waiting for it goes on.
+  var closeOpen = null;
   function modal(o) {
     var dlg = $('#dlg');
+    if (closeOpen) closeOpen(null);
     if (dlg.open) dlg.close();
     dlg.innerHTML = '';
     dlg.className = o.size === 'xl' ? 'xl' : (o.wide ? 'wide' : '');
@@ -41,7 +45,8 @@ Y.ui = (function () {
     dlg.appendChild(box);
     return new Promise(function (resolve) {
       var done = false;
-      function finish(v) { if (done) return; done = true; dlg.close(); resolve(v); }
+      function finish(v) { if (done) return; done = true; if (closeOpen === finish) closeOpen = null; dlg.close(); resolve(v); }
+      closeOpen = finish;
       (o.buttons || [{ label: 'Close', value: null, primary: true }]).forEach(function (b) {
         var bt = h('button', { type: 'button', class: [b.primary ? 'primary' : '', b.danger ? 'danger' : '', b.left ? 'left' : ''].join(' ').trim(), text: b.label });
         bt.addEventListener('click', function () {

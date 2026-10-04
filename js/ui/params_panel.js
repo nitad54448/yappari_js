@@ -233,39 +233,24 @@ Y.paramsPanel = (function () {
         }).join('');
       }).join('') + '</tbody></table>';
   }
+  // start value, min and max must fit together (min < max, min <= start value <= max); otherwise nothing is saved
   function onElem(e) {
     var tr = e.target.closest('tr'), f = e.target.getAttribute('data-ef');
     if (!tr || !f) return;
     var k = tr.getAttribute('data-kind'), i = +tr.getAttribute('data-i');
-    var ov = Y.elementOverrides[k] = Y.elementOverrides[k] || [];
-    ov[i] = ov[i] || {};
-    if (f === 'fit') ov[i].fit = e.target.checked;
+    var next = Object.assign({}, (Y.elementOverrides[k] || [])[i] || {});
+    if (f === 'fit') next.fit = e.target.checked;
     else {
-      var v = Y.ui.parseNum(e.target.value);
-      e.target.classList.toggle('invalid', !isFinite(v));
-      if (!isFinite(v)) return;
-      ov[i][f] = v;
+      next[f] = Y.ui.parseNum(e.target.value);
+      var why = isFinite(next[f]) ? Y.state.elementDefaultProblem(k, i, next) : 'not a number';
+      e.target.classList.toggle('invalid', !!why);
+      if (why) { Y.ui.toast('Start values of ' + k + (Y.elements[k].params.length > 1 ? ' ' + Y.elements[k].params[i].label : '') + ': ' + why + '. Not saved.', 'warn'); return; }
     }
+    var ov = Y.elementOverrides[k] = Y.elementOverrides[k] || [];
+    ov[i] = next;
+    tr.querySelectorAll('[data-ef]').forEach(function (x) { x.classList.remove('invalid'); });
     Y.state.saveElementOverrides();
     Y.ui.toast('Saved: new ' + k + ' elements start with these values.', 'info');
-  }
-
-  // element start values from a settings file: numbers for the value and the limits, true or false for fit
-  function cleanOverrides(o) {
-    var out = {};
-    if (!o || typeof o !== 'object' || Array.isArray(o)) return out;
-    Object.keys(o).forEach(function (k) {
-      if (Y.elementKinds.indexOf(k) < 0 || !Array.isArray(o[k])) return;
-      out[k] = o[k].map(function (e) {
-        var r = {};
-        if (e && typeof e === 'object') {
-          ['def', 'min', 'max'].forEach(function (f) { if (typeof e[f] === 'number' && isFinite(e[f])) r[f] = e[f]; });
-          if (typeof e.fit === 'boolean') r.fit = e.fit;
-        }
-        return r;
-      });
-    });
-    return out;
   }
 
   function bindTab() {
@@ -285,7 +270,7 @@ Y.paramsPanel = (function () {
           var st = Y.state.cleanSettings(doc.settings, S.settings);             // values of the wrong type are ignored
           Object.keys(st).forEach(function (k) { S.settings[k] = st[k]; });
           Y.state.store('settings', S.settings);
-          Y.elementOverrides = cleanOverrides(doc.elements);
+          Y.elementOverrides = Y.state.cleanElementOverrides(doc.elements);   // values that do not fit together are dropped
           Y.state.saveElementOverrides();
           renderElementDefaults();
           Y.bus.emit('settings', '*');

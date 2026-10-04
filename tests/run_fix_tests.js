@@ -1,5 +1,8 @@
 /* Regression tests for the review fixes (LM damping, project loading, missing fields, normalization of
- * remembered values, space-separated export, fit metadata, null statistics); called from run_core_tests.js */
+ * remembered values, space-separated export, fit metadata, null statistics), and for the second review (MFLI csv
+ * recursion, endless tick loops, global-fit standard errors, fit status, model-only export, masked points in
+ * spline and smooth, DRT block in Save data, MFLI phase, element start values, Gold iterations);
+ * called from run_core_tests.js */
 'use strict';
 module.exports = function (Y, ok, close) {
   const S = Y.state.S;
@@ -157,5 +160,134 @@ module.exports = function (Y, ok, close) {
     ok(st.maxIter === d.maxIter && st.nyqEqual === d.nyqEqual && st.nyqSquare === true && st.tol === d.tol && st.method === d.method &&
        !('bogus' in st) && st.simPoints === d.simPoints && st.maxPlots === 7, 'settings file cleaned (wrong types ignored, other keys kept)');
     ok(Y.state.cleanSettings(null).method === d.method && Y.state.cleanSettings([1, 2]).maxIter === d.maxIter, 'no settings object: defaults');
+  }
+
+  // ======================================================================== second review
+  const sim = (cdc, pv, f) => Y.circuit.impedance(Y.circuit.compile(Y.circuit.parse(cdc)), f, Float64Array.from(pv));
+  const lcg = s => () => ((s = (1664525 * s + 1013904223) >>> 0) / 4294967296);
+  const limits = pr => ({ lo: Float64Array.from(pr.params.map(pp => Y.paramDefault(pp.kind, pp.pi).min)), hi: Float64Array.from(pr.params.map(pp => Y.paramDefault(pp.kind, pp.pi).max)) });
+  const noisy = (z, seed) => { const r = lcg(seed), zr = Float64Array.from(z.re), zi = Float64Array.from(z.im);
+    for (let k = 0; k < zr.length; k++) { const m = Math.hypot(zr[k], zi[k]); zr[k] += 0.005 * m * (2 * r() - 1); zi[k] += 0.005 * m * (2 * r() - 1); } return { zr, zi }; };
+
+  // ---------- 2. "fieldname" outside the chunk line: a one-column-per-field table, read without endless recursion
+  {
+    const t = '% LabOne, columns: chunk, timestamp, frequency, realz, imagz (no fieldname)\nchunk;timestamp;frequency;realz;imagz\n0;1;1000;10;-5\n0;2;100;20;-8\n';
+    let d = null, err = '';
+    try { d = Y.readers.auto(t, 'x.csv', 'auto'); } catch (e) { err = e.message; }
+    ok(d && d.length === 1 && d[0].f.length === 2 && d[0].zi[1] === -8, 'one-column-per-field LabOne table with "fieldname" in a comment' + (err ? ' (' + err + ')' : ''));
+    ok(Y.readers.mfliCsv(t, 'x.csv')[0].zr[0] === 10, 'MFLI csv menu on such a table reads it as a table');
+  }
+
+  // ---------- 3. tick loops end: a range below the floating-point resolution, a log axis zoomed far out
+  {
+    const vm = require('vm'), fs = require('fs'), path = require('path'), root = path.join(__dirname, '..');
+    const ctx2d = new Proxy({}, { get: (t, k) => k === 'measureText' ? () => ({ width: 10 }) : (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true; } });
+    const el = () => ({ getContext: () => ctx2d, style: {}, addEventListener() {}, appendChild() {}, toDataURL: () => '' });
+    const T = { fontSize: 11, titleSize: 12, ms: 1, ls: 1, font: 'sans-serif', series: ['#00f'], parts: ['#f00'] };
+    const sb = vm.createContext({ Y: { theme: { get: () => T } }, document: { createElement: el }, window: { addEventListener() {}, devicePixelRatio: 1 }, requestAnimationFrame: () => 0 });
+    ['js/ui/plot2d.js', 'js/ui/plot3d.js'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sb, { filename: f }));
+    const run = code => { try { return vm.runInContext(code, sb, { timeout: 5000 }); } catch (e) { return 'error: ' + e.message; } };
+    const flat = "[{ name: 'a', group: 1, x: [1, 2, 3], y: [100, 100.00000000000001, 100], mode: 'markers' }]";
+    const span = run(`var p = new Y.Plot2D(null, { width: 400, height: 300 }); p.setSeries(${flat}); p.view.y1 - p.view.y0`);
+    ok(Math.abs(span - 20) < 1e-9, 'values one ulp apart: plotted as one value, ±10 % (' + span + ')');
+    ok(run(`var q = new Y.Plot2D(null, { width: 400, height: 300, ylog: true }); q.setSeries(${flat}); 'done'`) === 'done', 'same on a log axis');
+    ok(run(`var z = new Y.Plot2D(null, { width: 400, height: 300, xlog: true }); z.setSeries([{ name: 'a', group: 1, x: [1, 10], y: [1, 2], mode: 'markers' }]);
+            z.view = { x0: -1e12, x1: 1e12, y0: 0, y1: 3 }; z.draw(); 'done'`) === 'done', 'log axis zoomed out to 10^±1e12 draws at once');
+    ok(run(`var d3 = new Y.Plot3D({ clientWidth: 600, clientHeight: 400, appendChild: function () {} });
+            d3.setData({ x: [1, 2, 3], y: [0, 1, 2], z: [100, 100.00000000000001, 100], labels: { x: 'x', y: 'y', z: 'z' } }); 'done'`) === 'done', '3D plot of values one ulp apart');
+  }
+
+  // ---------- 5. global fit: standard errors with a singular local block, and with a parameter on its limit
+  {
+    const f = Y.dataops.logspace(1e5, 1e-1, 41), A = Y.circuit.compile(Y.circuit.parse('R(RC)(RL)')), B = Y.circuit.compile(Y.circuit.parse('R(RC)'));
+    const setsA = [], setsB = [];
+    for (let i = 0; i < 4; i++) {
+      const z = noisy(sim('R(RC)', [20 + 10 * i, 1000, 1e-6], f), 10 + i);
+      setsA.push({ id: i, f, zr: z.zr, zi: z.zi, p: Float64Array.from([25 + 5 * i, 800, 2e-6, 100, 1e-15]) });   // R3 ‖ 1 fH: no effect at all
+      setsB.push({ id: i, f, zr: z.zr, zi: z.zi, p: Float64Array.from([25 + 5 * i, 800, 2e-6]) });
+    }
+    const ga = Y.globalFit.run(Object.assign({ cdc: A.cdc, sets: setsA, fit: Uint8Array.from([1, 1, 1, 1, 0]), shared: Uint8Array.from([0, 1, 1, 0, 1]), weight: 'mod', method: 'LMB', maxIter: 500, tol: 1e-12 }, limits(A)));
+    const gb = Y.globalFit.run(Object.assign({ cdc: B.cdc, sets: setsB, fit: Uint8Array.from([1, 1, 1]), shared: Uint8Array.from([0, 1, 1]), weight: 'mod', method: 'LMB', maxIter: 500, tol: 1e-12 }, limits(B)));
+    const ratio = j => (ga.sets[0].se[j] / Math.sqrt(ga.chi2red)) / (gb.sets[0].se[j] / Math.sqrt(gb.chi2red));
+    ok(Math.abs(ratio(1) - 1) < 1e-3 && Math.abs(ratio(2) - 1) < 1e-3, 'parameter without effect in a local block: shared SE as without it (' + ratio(1).toFixed(4) + ', ' + ratio(2).toFixed(4) + ')');
+    ok(ga.sets.every(s => isFinite(s.se[0]) && isNaN(s.se[3])), 'its own SE is missing, the other local SE of that dataset is kept');
+    const pr = Y.circuit.compile(Y.circuit.parse('R(RQ)')), L = limits(pr), sets = [];
+    L.hi[3] = 0.7;                                                          // n held against a limit below its true 0.88
+    for (let i = 0; i < 4; i++) { const z = noisy(sim('R(RQ)', [20 + 5 * i, 1000 * (1 + i), 2e-6, 0.88], f), 30 + i); sets.push({ id: i, f, zr: z.zr, zi: z.zi, p: Float64Array.from([30, 1500, 3e-6, 0.7]) }); }
+    const job = fit => Object.assign({ cdc: pr.cdc, sets, fit: Uint8Array.from(fit), shared: Uint8Array.from([0, 0, 1, 1]), weight: 'mod', method: 'LMB', maxIter: 2000, tol: 1e-12 }, L);
+    const g1 = Y.globalFit.run(job([1, 1, 1, 1])), g2 = Y.globalFit.run(job([1, 1, 1, 0]));
+    const rq = (g1.sets[1].se[2] / Math.sqrt(g1.chi2red)) / (g2.sets[1].se[2] / Math.sqrt(g2.chi2red));
+    ok(g1.sets[0].atBound[3] === 1 && Math.abs(rq - 1) < 0.01, 'shared parameter on its limit is left out of the covariance, like a fixed one (Q1 SE ratio ' + rq.toFixed(4) + ')');
+  }
+
+  // ---------- 6. only convergence is green
+  ok(Y.fit.status('singular system') === 'warn' && Y.fit.status('all fitted parameters are at their limits') === 'warn' &&
+     Y.fit.status('no free parameters: statistics only') === 'ok', 'singular system and parameters at their limits are warnings');
+
+  // ---------- 7. Save data with the model values only reads back
+  {
+    const ds = { name: 'm', f: Float64Array.from([1000, 100, 10]), zr: Float64Array.from([10, 20, 30]), zi: Float64Array.from([-1, -2, -3]), mask: new Uint8Array(3) };
+    const calc = () => ({ re: Float64Array.from([11, 21, 31]), im: Float64Array.from([-4, -5, -6]) });
+    for (const sep of ['tab', 'comma', 'semicolon', 'space']) {
+      let d = null; try { d = Y.readers.headerTable(Y.writers.dataText([ds], { sep, exp: false, calc: true }, calc), 'model.txt'); } catch (e) { /* d stays null */ }
+      ok(d && d[0].name === 'm' && d[0].zr[2] === 31 && d[0].zi[0] === -4, 'model-only export reads back, ' + sep);
+    }
+    const both = Y.readers.headerTable(Y.writers.dataText([ds], { sep: 'tab', calc: true }, calc), 'both.txt');
+    ok(both[0].zr[0] === 10, 'with measured and model columns the measured ones are read');
+  }
+
+  // ---------- 8. spline and smooth use masked points (masks are for fits only); average already did
+  {
+    const n = 21, fq = Y.dataops.logspace(1e4, 1, n), ds = { name: 'x', f: fq, zr: Float64Array.from(fq, (v, k) => 100 + k), zi: Float64Array.from(fq, (v, k) => -k), mask: new Uint8Array(n) };
+    ds.mask[0] = 1; ds.mask[10] = 1; ds.zr[10] = 500;
+    const sp = Y.dataops.spline(ds, 30), sm = Y.dataops.smooth(ds, 2, 1), k10 = sm.f.findIndex(v => Math.abs(v / fq[10] - 1) < 1e-9);
+    ok(Math.max(...sp.f) === 1e4 && sm.f.length === n && k10 >= 0 && sm.zr[k10] > 150, 'spline and smooth include masked points');
+    ok(Y.dataops.average([ds, ds]).zr[10] === 500, 'average includes masked points');
+    ok(Y.drt.compute(ds, { method: 'tikhonov', source: 'both', lambda: 1e-3 }).f.length === n && Y.drt.zhit(ds).f.length === n, 'the DRT and Z-HIT use masked points too');
+    // Save data writes masked points with a "masked" column; reading it back restores the masks
+    for (const sep of ['tab', 'comma', 'semicolon', 'space']) {
+      const d = Y.readers.headerTable(Y.writers.dataText([ds], { sep, calc: true }, x => ({ re: x.zr, im: x.zi })), 'm.txt')[0];
+      ok(d.f.length === n && d.mask && d.mask[0] === 1 && d.mask[10] === 1 && d.mask.reduce((a, m) => a + m, 0) === 2 && d.zr[10] === 500, 'masked points saved and read back as masked, ' + sep);
+    }
+    // in view: masking takes the unmasked points, deleting takes all of them
+    const v = { x0: 0, x1: 1e9, y0: -1e9, y1: 1e9 };
+    ok(Y.dataops.inView(ds, 'zr', v).count === n - 2 && Y.dataops.inView(ds, 'zr', v, true).count === n, 'points in view: unmasked ones to mask, all to delete');
+  }
+
+  // ---------- 9. Save data with the DRT of a dataset: the DRT tables are not read as more points
+  {
+    const ds = { name: 'd', f: Float64Array.from([1000, 100, 10]), zr: Float64Array.from([10, 20, 30]), zi: Float64Array.from([-1, -2, -3]), mask: new Uint8Array(3) };
+    ds.drt = { method: 'tikhonov', lambda: 1e-3, source: 'both', rinf: 10, rpol: 20, tau: Float64Array.from([1e-4, 1e-3, 1e-2, 1e-1]), g: Float64Array.from([0.1, 0.5, 0.3, 0.1]), f: ds.f, zr: ds.zr, zi: ds.zi };
+    const e = Object.assign({}, ds, { name: 'e' }), d = Y.readers.headerTable(Y.writers.dataText([ds, e], { sep: 'tab', drt: true }, () => null), 'drt.txt');
+    ok(d.length === 2 && d.every(x => x.f.length === 3), 'data + DRT export reads back with 3 points per dataset (' + d.map(x => x.f.length).join(',') + ')');
+  }
+
+  // ---------- 10. MFLI phasez is in radians, also beyond ±2π
+  {
+    const fq = [1e4, 1e3, 1e2], Z = [[100, -10], [80, -60], [-30, -90]], ph = Z.map(z => Math.atan2(z[1], z[0]));
+    ph[1] += 4 * Math.PI;
+    const row = (name, v) => ['0', '1', '3', name].concat(v.map(String)).join(';');
+    const m = Y.readers.mfliCsv(['chunk;timestamp;size;fieldname', row('frequency', fq), row('absz', Z.map(z => Math.hypot(z[0], z[1]))), row('phasez', ph)].join('\n'), 'p.csv')[0];
+    ok(Z.every((z, k) => Math.abs(m.zr[k] - z[0]) < 1e-9 && Math.abs(m.zi[k] - z[1]) < 1e-9), 'absz and phasez (radians) give Zr and Zi');
+  }
+
+  // ---------- 11. start values of new elements: min < max and min <= start value <= max
+  {
+    const P = Y.state.elementDefaultProblem;
+    ok(P('R', 0, { min: 10 }) === '' && P('R', 0, { min: 2e3, def: 1e4 }) === '' && P('R', 0, {}) === '', 'start values and limits that fit together are accepted');
+    ok(P('R', 0, { min: 1e11 }) !== '' && P('R', 0, { def: 1e11 }) !== '' && P('Q', 1, { min: 0.8, max: 0.5 }) !== '', 'min >= max, or a start value outside the limits, refused');
+    const c = Y.state.cleanElementOverrides({ R: [{ min: 1e11, fit: false }], Q: [{ def: 2e-9 }, { min: 0.5, max: 1 }], X: [{}] });
+    ok(!('min' in c.R[0]) && c.R[0].fit === false && c.Q[0].def === 2e-9 && c.Q[1].max === 1 && !('X' in c), 'settings file: values that do not fit together are dropped, the others kept');
+  }
+
+  // ---------- 13. Gold: 50 000 iterations by default and at the top of the search, which runs step by step
+  {
+    const gv = Y.drt.scanValues('gold', 25);
+    ok(gv[0] === 100 && gv[gv.length - 1] === 50000 && Math.round(10 ** Y.state.defaults().drtIter) === 50000, 'Gold iterations: search 100 to 50 000, default 50 000');
+    const f = Y.dataops.logspace(1e-1, 1e7, 61), z = sim('(RC)(RC)', [200, 48e-9, 100, 1e-6], f), ds = { name: 'g', f, zr: z.re, zi: z.im, mask: new Uint8Array(61) };
+    const vals = [300, 2000, 9000], sc = Y.drt.scanner(ds, { method: 'gold', source: 'both' }, vals);
+    for (let k = 0; k < sc.total; k++) sc.step(k);
+    ok(sc.total === 3 && vals.every((v, k) => Math.abs(sc.result.err[k] - Y.drt.compute(ds, { method: 'gold', source: 'both', iterations: v }).err) < 1e-12),
+       'stepwise Gold scan gives the misfit of a DRT with that many iterations');
   }
 };

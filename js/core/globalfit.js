@@ -16,6 +16,39 @@ Y.defineCore('globalfit', function (Y) {
   function dotCols(J, m, a, b) { var t = 0, ca = a * m, cb = b * m; for (var i = 0; i < m; i++) t += J[ca + i] * J[cb + i]; return t; }
   function dotColVec(J, m, a, r) { var t = 0, ca = a * m; for (var i = 0; i < m; i++) t += J[ca + i] * r[i]; return t; }
 
+  // Columns of a Gram matrix M (n x n, JᵀJ) that depend on the kept columns before them, found by a Cholesky that
+  // skips such columns (pivot not above 1e-12 of the diagonal). off: 1 = column already left out (on a limit); the
+  // dependent columns are added to it. Returns und: 1 for each parameter of a dependency (the dependent column and
+  // the earlier columns it is made of), whose value the data do not determine.
+  function dependent(M, n, off) {
+    var L = new Float64Array(n * n), und = new Uint8Array(n), c = new Float64Array(n), j, k, r, m, t;
+    for (j = 0; j < n; j++) {
+      if (off[j]) continue;
+      var s = M[j * n + j];
+      for (k = 0; k < j; k++) if (!off[k]) s -= L[j * n + k] * L[j * n + k];
+      if (!(s > 1e-12 * M[j * n + j])) {
+        off[j] = 1; und[j] = 1;
+        c.fill(0);                                                // column j = sum of c_k column k: L_KKᵀ c = row j of L
+        for (k = j - 1; k >= 0; k--) {
+          if (off[k]) continue;
+          t = L[j * n + k];
+          for (m = k + 1; m < j; m++) if (!off[m]) t -= L[m * n + k] * c[m];
+          c[k] = t / L[k * n + k];
+          if (Math.abs(c[k]) * Math.sqrt(M[k * n + k]) > 1e-6 * Math.sqrt(M[j * n + j])) und[k] = 1;
+        }
+        continue;
+      }
+      L[j * n + j] = Math.sqrt(s);
+      for (r = j + 1; r < n; r++) {
+        if (off[r]) continue;
+        t = M[r * n + j];
+        for (k = 0; k < j; k++) if (!off[k]) t -= L[r * n + k] * L[j * n + k];
+        L[r * n + j] = t / L[j * n + j];
+      }
+    }
+    return und;
+  }
+
   function run(job) {
     var t0 = Date.now();
     try {
@@ -114,6 +147,10 @@ Y.defineCore('globalfit', function (Y) {
         return true;
       }
 
+      function onBound(k) {
+        return bounded && (X[k] <= lo[k] + 1e-9 * (1 + Math.abs(lo[k])) || X[k] >= hi[k] - 1e-9 * (1 + Math.abs(hi[k])));
+      }
+
       var f = total(X, R);
       if (!(f < Infinity)) throw new Error('the model gives non-finite values at the start values');
       var mu = -1, nu = 2, it, conv = 0, needJ = true, msg = 'iteration limit reached';
@@ -163,18 +200,40 @@ Y.defineCore('globalfit', function (Y) {
         }
       }
 
-      // statistics
+      // statistics. As for a single fit, a parameter that ends on a limit is left out of the covariance (held fixed)
+      // and gets no SE. In a local block, columns that depend on the ones before them (parameters of one dataset that
+      // the data cannot tell apart, or that have no effect) are left out as well: the column space is the same, so
+      // the covariance of everything the data determine is unchanged, and only the parameters of that dependency get
+      // no SE. A singular shared block leaves every SE undetermined.
       var nPts = 0;
       probs.forEach(function (P) { nPts += 2 * P.n; });
       var dof = nPts - nX, chi2red = dof > 0 ? f / dof : NaN;
       var seS = new Float64Array(nS).fill(NaN), seL = probs.map(function () { return new Float64Array(nL).fill(NaN); });
       if (dof > 0) {
         blocks(true);
-        var Ssch = Float64Array.from(A), Z = [], Dinv = [];
+        var offS = new Uint8Array(nS), offL = [], undL = [];
+        for (a = 0; a < nS; a++) if (onBound(a)) {             // shared parameter on a limit: row and column removed
+          offS[a] = 1;
+          for (c = 0; c < nS; c++) { A[a * nS + c] = 0; A[c * nS + a] = 0; }
+          A[a * nS + a] = 1;
+          for (i = 0; i < nd && nL; i++) for (b = 0; b < nL; b++) B[i][a * nL + b] = 0;
+        }
+        for (i = 0; i < nd && nL; i++) {
+          var off = new Uint8Array(nL);
+          for (b = 0; b < nL; b++) if (onBound(nS + i * nL + b)) off[b] = 1;
+          undL.push(dependent(D[i], nL, off));                     // marks dependent columns in off as well
+          offL.push(off);
+          for (b = 0; b < nL; b++) if (off[b]) {
+            for (c = 0; c < nL; c++) { D[i][b * nL + c] = 0; D[i][c * nL + b] = 0; }
+            D[i][b * nL + b] = 1;
+            for (a = 0; a < nS; a++) B[i][a * nL + b] = 0;
+          }
+        }
+        var Ssch = Float64Array.from(A), Z = [], Dinv = [], sharedOK = true;
         for (i = 0; i < nd && nL; i++) {
           var Di = LA.invSPD(D[i], nL);
           Dinv.push(Di);
-          if (!Di) { Z.push(null); continue; }
+          if (!Di) { Z.push(null); sharedOK = false; continue; }   // cannot happen once dependent columns are out
           var Zi = new Float64Array(nL * nS);                   // D^-1 B^T
           for (b = 0; b < nL; b++) for (a = 0; a < nS; a++) {
             var t5 = 0;
@@ -188,11 +247,12 @@ Y.defineCore('globalfit', function (Y) {
             Ssch[a * nS + c] -= t6;
           }
         }
-        var Sinv = nS ? LA.invSPD(Ssch, nS) : new Float64Array(0);
-        if (Sinv) for (a = 0; a < nS; a++) seS[a] = Math.sqrt(Math.max(0, chi2red * Sinv[a * nS + a]));
+        var Sinv = !sharedOK ? null : nS ? LA.invSPD(Ssch, nS) : new Float64Array(0);
+        if (Sinv) for (a = 0; a < nS; a++) if (!offS[a]) seS[a] = Math.sqrt(Math.max(0, chi2red * Sinv[a * nS + a]));
         for (i = 0; i < nd && nL; i++) {
           if (!Dinv[i] || !Sinv) continue;
           for (b = 0; b < nL; b++) {
+            if (offL[i][b] || undL[i][b]) continue;
             var vv = Dinv[i][b * nL + b];
             for (a = 0; a < nS; a++) for (c = 0; c < nS; c++) vv += Z[i][b * nS + a] * Sinv[a * nS + c] * Z[i][b * nS + c];
             seL[i][b] = Math.sqrt(Math.max(0, chi2red * vv));

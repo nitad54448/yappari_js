@@ -13,10 +13,13 @@ Y.Plot3D = (function () {
   }
   var JET = []; for (var i = 0; i < 64; i++) JET.push(jet(i / 63));
 
+  // counted first and built from their index, so a range below the resolution of its values cannot loop forever
   function ticks(a, b, n) {
     var span = b - a || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / mag;
-    var st = (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag, out = [];
-    for (var v = Math.ceil(a / st) * st; v <= b + st * 1e-9; v += st) out.push(Math.abs(v) < st * 1e-9 ? 0 : v);
+    var st = (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag, out = [], s = Math.ceil(a / st) * st;
+    var cnt = Math.floor((b - s) / st + 1e-9) + 1;
+    if (!(cnt > 0) || !isFinite(cnt) || s + st === s) cnt = 0;
+    for (var i = 0; i < Math.min(cnt, 100); i++) { var v = s + i * st; out.push(Math.abs(v) < st * 1e-9 ? 0 : v); }
     return out;
   }
   function fmt(v) {
@@ -63,7 +66,12 @@ Y.Plot3D = (function () {
         rz.lo = Math.min(rz.lo, d.z[k]); rz.hi = Math.max(rz.hi, d.z[k]);
       }
     }
-    [rx, ry, rz].forEach(function (r) { if (!isFinite(r.lo)) { r.lo = 0; r.hi = 1; } if (r.lo === r.hi) { r.lo -= 0.5; r.hi += 0.5; } });
+    [rx, ry, rz].forEach(function (r) {
+      if (!isFinite(r.lo)) { r.lo = 0; r.hi = 1; }
+      if (r.hi - r.lo <= 1e-12 * Math.max(Math.abs(r.lo), Math.abs(r.hi))) {   // one value, or equal up to round-off
+        var c = (r.lo + r.hi) / 2, d = Math.abs(c) * 0.1 || 0.5; r.lo = c - d; r.hi = c + d;
+      }
+    });
     this.X = X; this.rx = rx; this.ry = ry; this.rz = rz;
     this.draw();
   };

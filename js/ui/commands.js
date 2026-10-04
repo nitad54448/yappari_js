@@ -181,7 +181,7 @@ Y.cmd = (function () {
     var b = Y.state.bounds(), cdc = S.model.cdc, jobs = list.map(function (ds) { return Y.state.jobFor(ds, b); });
     var nSig = jobs.filter(function (j) { return j.sr; }).length;
     snapshot('fit of ' + plural(list.length, 'dataset'));
-    var t0 = performance.now(), last = 0, nOk = 0, nMax = 0, nStall = 0, nBad = 0, results;
+    var t0 = performance.now(), last = 0, nOk = 0, nMax = 0, nStall = 0, nOther = 0, nBad = 0, results;
     Y.state.setBusy(true);
     ui.progress(0, jobs.length);
     try {
@@ -192,7 +192,8 @@ Y.cmd = (function () {
         var meta = Y.state.jobMeta(jobs[ji]);
         if (jobs[ji].sr) { meta.weight = 'sigma'; meta.sigma = jobs[ji].sigma; }
         if (r.p) Y.state.applyResult(ds, r, meta); else ds.stats = { ok: false, msg: r.msg };
-        if (!r.ok) nBad++; else if (/iteration limit/.test(r.msg)) nMax++; else if (Y.fit.status(r.msg) === 'warn') nStall++; else nOk++;
+        if (!r.ok) nBad++; else if (/iteration limit/.test(r.msg)) nMax++; else if (/^stopped/.test(r.msg)) nStall++;
+        else if (Y.fit.status(r.msg) === 'warn') nOther++; else nOk++;
         var now = performance.now();
         if (now - last > 300) { last = now; Y.bus.emit('stats'); }
       }, function (done, total) { ui.progress(done, total); });
@@ -212,8 +213,9 @@ Y.cmd = (function () {
     } else {
       ui.toast('Fitted ' + n + ' of ' + plural(list.length, 'dataset') + ' in ' + dt + ' s: ' + nOk + ' converged' +
         (nMax ? ', ' + nMax + ' stopped at the iteration limit' : '') + (nStall ? ', ' + nStall + ' stalled before a minimum' : '') +
+        (nOther ? ', ' + nOther + ' ended otherwise (singular system, or all fitted parameters at their limits)' : '') +
         (nBad ? ', ' + nBad + ' failed' : '') +
-        (S.settings.useSigma ? '; measured σ used for ' + nSig + ' of them' : '') + '.', nBad || nMax || nStall ? 'warn' : 'ok');
+        (S.settings.useSigma ? '; measured σ used for ' + nSig + ' of them' : '') + '.', nBad || nMax || nStall || nOther ? 'warn' : 'ok');
     }
   }
 
@@ -276,13 +278,15 @@ Y.cmd = (function () {
     if (!idle() || !haveSel()) return;
     var vf = Y.plots.viewFor(Y.app.tab());                 // the plot on screen, not one left zoomed in another tab
     if (!vf) { ui.toast('Open the Nyquist, Zr, Zi or |Z|, θ plot, zoom on the points, then run this again.', 'warn'); return; }
-    var list = sel(), flags = list.map(function (ds) { return Y.dataops.inView(ds, vf.kind, vf.v); });
-    var total = flags.reduce(function (a, f) { return a + f.count; }, 0);
-    var visible = list.reduce(function (a, ds) { var c = 0; for (var k = 0; k < ds.mask.length; k++) if (!ds.mask[k]) c++; return a + c; }, 0);
+    // mask: the unmasked points in view; delete: every point in view, masked or not
+    var list = sel(), flags = list.map(function (ds) { return Y.dataops.inView(ds, vf.kind, vf.v, remove); });
+    var total = flags.reduce(function (a, f) { return a + f.count; }, 0), nMasked = 0;
+    var visible = list.reduce(function (a, ds) { var c = 0; for (var k = 0; k < ds.mask.length; k++) if (remove || !ds.mask[k]) c++; return a + c; }, 0);
+    list.forEach(function (ds, i) { for (var k = 0; k < ds.mask.length; k++) if (flags[i][k] && ds.mask[k]) nMasked++; });
     if (!total) { ui.toast('No points of the selected datasets are inside the current view.', 'warn'); return; }
-    if (total === visible && !(await ui.confirm('All ' + total + ' visible points are inside the view. Zoom on the points to ' + (remove ? 'delete' : 'mask') + ' first, or continue to ' + (remove ? 'delete' : 'mask') + ' them all.', 'Continue', true, 'Every point is in view'))) return;
+    if (total === visible && !(await ui.confirm('All ' + total + (remove ? ' points' : ' unmasked points') + ' are inside the view. Zoom on the points to ' + (remove ? 'delete' : 'mask') + ' first, or continue to ' + (remove ? 'delete' : 'mask') + ' them all.', 'Continue', true, 'Every point is in view'))) return;
     if (remove) {
-      if (!(await ui.confirm('Delete ' + plural(total, 'point') + ' from ' + plural(list.length, 'dataset') + '? Deleted points cannot be restored; masked points can.', 'Delete points', true, 'Delete points'))) return;
+      if (!(await ui.confirm('Delete ' + plural(total, 'point') + (nMasked ? ' (' + nMasked + ' of them masked)' : '') + ' from ' + plural(list.length, 'dataset') + '? Deleted points cannot be restored; masked points can.', 'Delete points', true, 'Delete points'))) return;
       snapshot('delete points');
       list.forEach(function (ds, i) { Y.dataops.removePoints(ds, flags[i]); });
     } else { snapshot('mask'); list.forEach(function (ds, i) { for (var k = 0; k < ds.mask.length; k++) if (flags[i][k]) ds.mask[k] = 1; }); }
@@ -428,6 +432,7 @@ Y.cmd = (function () {
         options: [['tab', 'TAB'], ['semicolon', 'Semicolon'], ['comma', 'Comma'], ['space', 'Space']] }
     ], 'Save', 'One block per dataset; File, Table with column headers reads the file back.');
     if (!v) return;
+    if (!v.exp && !(v.calc && S.model.prog)) { ui.toast('Nothing to save: tick the measured or the model values (a model needs a circuit).', 'warn'); return; }
     var txt = Y.writers.dataText(sel(), { sep: v.sep, exp: v.exp, calc: v.calc && !!S.model.prog }, function (ds) { return Y.state.calcFor(ds); });
     Y.writers.download('yappari_data_' + Y.writers.fileStamp() + '.txt', txt);
     ui.toast('Saved the data of ' + plural(S.sel.size, 'dataset') + '.', 'ok');
@@ -450,8 +455,8 @@ Y.cmd = (function () {
       raws.push(d);
     }
     var setCircuit = !S.model.prog;
+    snapshot('demo spectra');                           // before the circuit is set: undo removes it again
     if (setCircuit) Y.state.setModel(tree);
-    snapshot('demo spectra');
     Y.state.addDatasets(raws);
     ui.toast('Added 24 simulated spectra of R(RQ)(RQ) with 1 % noise' + (setCircuit ? ', and set that circuit' : '') +
       '. Fit demo_00, clone its parameters to all, select all and fit.', 'ok');
@@ -509,7 +514,7 @@ Y.cmd = (function () {
         var r = Y.drt.zhit(ds);
         out.push({ name: 'zh_' + ds.name, f: r.f, zr: r.zr, zi: r.zi, p: Object.assign({}, ds.p), fit: Object.assign({}, ds.fit), norm: ds.norm });
         lines.push(ds.name + ': ' + (100 * r.rms).toFixed(2) + ' % rms, at most ' + (100 * r.max).toFixed(1) + ' % at ' + Y.plots.fmtF(r.fmax, 3) +
-          (r.gap ? ', each side of the gap from ' + Y.plots.fmtF(r.gap.f0, 3) + ' to ' + Y.plots.fmtF(r.gap.f1, 3) + ' (masked points) checked on its own' : ''));
+          (r.gap ? ', each side of the gap without points from ' + Y.plots.fmtF(r.gap.f0, 3) + ' to ' + Y.plots.fmtF(r.gap.f1, 3) + ' checked on its own' : ''));
       } catch (e) { ui.toast(ds.name + ': ' + e.message, 'err'); }
     });
     if (!out.length) return;
@@ -531,23 +536,23 @@ Y.cmd = (function () {
   function withModel() { return noSel() || (S.model.prog ? '' : NO_MODEL); }
   function anyMasked(list) { return list.some(function (ds) { for (var k = 0; k < ds.mask.length; k++) if (ds.mask[k]) return true; return false; }); }
   function anyLabels(list) { return list.some(function (ds) { return !!(ds.notes && ds.notes.length); }); }
-  function anyInView(list, vf) {
+  function anyInView(list, vf, withMasked) {
     var v = vf.v;
     return list.some(function (ds) {
       for (var k = 0; k < ds.f.length; k++) {
-        if (ds.mask[k]) continue;
+        if (ds.mask[k] && !withMasked) continue;
         var c = Y.dataops.coords(ds, k, vf.kind);
         if (c[0] >= v.x0 && c[0] <= v.x1 && c[1] >= v.y0 && c[1] <= v.y1) return true;
       }
       return false;
     });
   }
-  function inViewWhy() {
+  function inViewWhy(withMasked) {
     var r = idleSel();
     if (r) return r;
     var vf = Y.plots.viewFor(Y.app.tab());
     if (!vf) return 'Open the Nyquist, Zr, Zi or |Z|, θ plot first.';
-    return anyInView(sel(), vf) ? '' : 'No unmasked point of the selected datasets in the current view.';
+    return anyInView(sel(), vf, withMasked) ? '' : withMasked ? 'No point of the selected datasets in the current view.' : 'No unmasked point of the selected datasets in the current view.';
   }
   function fitWhy() {
     if (S.busy) return BUSY;
@@ -566,7 +571,8 @@ Y.cmd = (function () {
     selection: noSel,                                                           // save data, DRT view and search, labels, PNG
     edit: idleSel,                                                              // commands that change the selected datasets
     undo: function () { return S.busy ? BUSY : Y.history.count() ? '' : 'Nothing to undo.'; },
-    inView: inViewWhy,
+    inView: function () { return inViewWhy(false); },                         // mask: unmasked points in view
+    deleteInView: function () { return inViewWhy(true); },                    // delete: any point in view
     unmask: function () { return idleSel() || (anyMasked(sel()) ? '' : 'No masked points in the selected datasets.'); },
     average: function () { return S.busy ? BUSY : !S.datasets.length ? NO_DATA : S.sel.size < 2 ? 'Select at least two datasets.' : ''; },
     simulate: function () { return S.busy ? BUSY : S.model.prog ? '' : NO_MODEL; },
@@ -682,7 +688,7 @@ Y.cmd = (function () {
              ['Load 24 demo spectra', demo, 'read']],
       data: [['Undo the last command', undo, 'undo'], null,
              ['Mask points in the current view', function () { inView(false); }, 'inView'], ['Unmask selected datasets', unmask, 'unmask'],
-             ['Delete points in the current view…', function () { inView(true); }, 'inView'], ['Delete selected datasets…', deleteDatasets, 'edit'], null,
+             ['Delete points in the current view…', function () { inView(true); }, 'deleteInView'], ['Delete selected datasets…', deleteDatasets, 'edit'], null,
              ['Normalize: area, resistivity or factor…', correction, 'edit'], ['Negate Zi', negateZi, 'edit'], null,
              ['Add random noise…', noise, 'edit'], ['Spline to a log frequency grid…', spline, 'edit'],
              ['Smooth (Savitzky–Golay)…', smooth, 'edit'], ['Average selected datasets', average, 'average'], null,

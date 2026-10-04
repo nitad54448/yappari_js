@@ -1,5 +1,6 @@
 /*  Operations on datasets. A dataset here is any object with Float64Array f, zr, zi and Uint8Array mask
- *  (mask[k] = 1: point hidden and excluded from fits). DOM-free (also used by the Node tests).
+ *  (mask[k] = 1: point left out of fits). Masks apply to fits only: every operation here, and the DRT and
+ *  Z-HIT (js/core/drt.js), use masked points as well. DOM-free (also used by the Node tests).
  */
 Y.dataops = (function () {
   'use strict';
@@ -27,10 +28,10 @@ Y.dataops = (function () {
     for (var k = 0; k < ds.zr.length; k++) { ds.zr[k] *= factor; ds.zi[k] *= factor; if (ds.sr) ds.sr[k] *= Math.abs(factor); if (ds.si) ds.si[k] *= Math.abs(factor); }
   }
 
-  // unmasked points sorted by ascending frequency, duplicate frequencies averaged
+  // points sorted by ascending frequency, duplicate frequencies averaged; masked points included (masks are for fits)
   function cleanSorted(ds) {
     var idx = [];
-    for (var k = 0; k < ds.f.length; k++) if (!(ds.mask && ds.mask[k]) && ds.f[k] > 0 && isFinite(ds.zr[k]) && isFinite(ds.zi[k])) idx.push(k);
+    for (var k = 0; k < ds.f.length; k++) if (ds.f[k] > 0 && isFinite(ds.zr[k]) && isFinite(ds.zi[k])) idx.push(k);
     idx.sort(function (a, b) { return ds.f[a] - ds.f[b]; });
     var f = [], zr = [], zi = [], cnt = [];
     idx.forEach(function (k) {
@@ -65,7 +66,7 @@ Y.dataops = (function () {
     return a * y[lo] + b * y[hi] + ((a * a * a - a) * y2[lo] + (b * b * b - b) * y2[hi]) * h * h / 6;
   }
 
-  // cubic spline of Zr and Zi versus log10(f), resampled on n log-spaced frequencies
+  // cubic spline of Zr and Zi versus log10(f), resampled on n log-spaced frequencies (masked points included)
   function spline(ds, n) {
     var c = cleanSorted(ds), m = c.f.length;
     if (m < 3) throw new Error('spline needs at least 3 distinct frequencies');
@@ -80,7 +81,7 @@ Y.dataops = (function () {
   }
 
   // Savitzky-Golay: least-squares polynomial of degree deg on 2*side+1 neighbours (points taken as equally
-  // spaced, i.e. log-spaced frequencies); windows are shifted at the ends instead of shrunk
+  // spaced, i.e. log-spaced frequencies); windows are shifted at the ends instead of shrunk (masked points included)
   function smooth(ds, side, deg) {
     var c = cleanSorted(ds), n = c.f.length, w = 2 * side + 1;
     if (n < 3) throw new Error('smoothing needs at least 3 points');
@@ -106,7 +107,7 @@ Y.dataops = (function () {
     return descending(ds) ? reverseAll(out) : out;
   }
 
-  // point-by-point mean; all datasets must share the same frequencies
+  // point-by-point mean of every point, masked or not; all datasets must share the same frequencies
   function average(list) {
     if (list.length < 2) throw new Error('select at least two datasets to average');
     var n = list[0].f.length;
@@ -132,11 +133,12 @@ Y.dataops = (function () {
     return [NaN, NaN];
   }
 
-  // flags of the unmasked points inside the rectangle [x0,x1] x [y0,y1] (data units)
-  function inView(ds, kind, v) {
+  // flags of the points inside the rectangle [x0,x1] x [y0,y1] (data units): the unmasked ones (to mask them), or
+  // all of them with withMasked (to delete them)
+  function inView(ds, kind, v, withMasked) {
     var n = ds.f.length, out = new Uint8Array(n), cnt = 0;
     for (var k = 0; k < n; k++) {
-      if (ds.mask[k]) continue;
+      if (ds.mask[k] && !withMasked) continue;
       var c = coords(ds, k, kind);
       if (c[0] >= v.x0 && c[0] <= v.x1 && c[1] >= v.y0 && c[1] <= v.y1) { out[k] = 1; cnt++; }
     }

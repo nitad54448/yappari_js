@@ -1,8 +1,8 @@
 /*  Writers: text builders are DOM-free; download() uses the browser.
  *  Data export layout (read back by "Read data > Table with column headers"):
  *    #dataset <name>
- *    freq/Hz <sep> Zr <sep> Zi [<sep> Zr calc <sep> Zi calc]
- *    rows ...
+ *    freq/Hz <sep> Zr <sep> Zi [<sep> sigma_Zr <sep> sigma_Zi] [<sep> Zr_calc <sep> Zi_calc] [<sep> masked]
+ *    rows ...   (every point; masked ones have 1 in the masked column, which reading restores)
  */
 Y.writers = (function () {
   'use strict';
@@ -28,6 +28,7 @@ Y.writers = (function () {
   function dataText(list, opts, calcFor) {
     var s = SEP[opts.sep] || '\t', out = [], exp = opts.exp !== false;
     var anySig = exp && list.some(function (d) { return d.sr && d.si; });
+    var anyMask = list.some(function (d) { return d.mask && d.mask.some(function (m) { return m; }); });
     list.forEach(function (ds) {
       var calc = opts.calc ? calcFor(ds) : null, sig = anySig && ds.sr && ds.si;
       out.push('#dataset ' + ds.name);
@@ -37,13 +38,14 @@ Y.writers = (function () {
       // one token per column name, so a space-separated file reads back with the same columns
       if (anySig) head.push('sigma_Zr', 'sigma_Zi');
       if (calc) head.push('Zr_calc', 'Zi_calc');
+      if (anyMask) head.push('masked');
       out.push(head.join(s));
       for (var k = 0; k < ds.f.length; k++) {
-        if (ds.mask[k]) continue;
         var row = [e(ds.f[k])];
         if (exp) row.push(e(ds.zr[k]), e(ds.zi[k]));
         if (anySig) row.push(sig ? e(ds.sr[k]) : 'NaN', sig ? e(ds.si[k]) : 'NaN');
         if (calc) row.push(e(calc.re[k]), e(calc.im[k]));
+        if (anyMask) row.push(ds.mask && ds.mask[k] ? '1' : '0');
         out.push(row.join(s));
       }
       out.push('');

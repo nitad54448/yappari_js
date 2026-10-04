@@ -1,5 +1,5 @@
 /*  File readers. Each returns an array of { name, f, zr, zi } (Float64Arrays; Zi as measured, i.e.
- *  negative for capacitive behaviour). Decimal commas are accepted whenever the field separator is not a comma.
+ *  negative for capacitive behaviour), with mask (Uint8Array) when a table marks masked points. Decimal commas are accepted whenever the field separator is not a comma.
  *  Custom-format definitions are read from Yappari 5.1 XML files (LabVIEW; also written by
  *  writers.definitionXML), from the older .ini form, or from JSON.  DOM-free.
  */
@@ -93,8 +93,9 @@ Y.readers = (function () {
     var sep = line.indexOf('\t') >= 0 ? 'tab' : line.indexOf(';') >= 0 ? 'semicolon' : line.indexOf(',') >= 0 ? 'comma' : 'space';
     var cols = splitter(sep)(line).map(function (c) { return c.trim().toLowerCase().replace(/^"|"$/g, '').replace(/\s+/g, ''); });
     if (compact) cols = cols.filter(function (c) { return c !== ''; });
-    var h = { sep: sep, n: cols.length, cf: -1, cr: -1, ci: -1, cc: -1, sr: -1, si: -1, neg: false };
+    var h = { sep: sep, n: cols.length, cf: -1, cr: -1, ci: -1, cc: -1, cm: -1, sr: -1, si: -1, neg: false }, calc = [];
     cols.forEach(function (s, k) {
+      if (s && /calc/.test(s)) calc.push(k);
       if (!s || /calc|fit|sim|pwr/.test(s)) return;
       if (/stddev|sigma|^σ/.test(s)) {                         // standard deviation columns
         if (h.sr < 0 && /real|zr|z'(?!')/.test(s)) h.sr = k;
@@ -102,10 +103,20 @@ Y.readers = (function () {
         return;
       }
       if (h.cc < 0 && s === 'chunk') { h.cc = k; return; }
+      if (h.cm < 0 && /^mask(ed)?$/.test(s)) { h.cm = k; return; }     // 1 = masked point (written by Save data)
       if (h.cf < 0 && isFreq(s)) { h.cf = k; return; }
       if (h.ci < 0 && isImag(s)) { h.ci = k; h.neg = s.charAt(0) === '-'; return; }
       if (h.cr < 0 && isReal(s)) { h.cr = k; }
     });
+    // no measured real and imaginary columns: model columns (Save data with "Model Zr, Zi" only) are read instead
+    if (h.cf >= 0 && (h.cr < 0 || h.ci < 0) && calc.length) {
+      var mr = -1, mi = -1;
+      calc.forEach(function (k) {
+        var s = cols[k].replace(/[_.\-]*calc\w*/, '');            // Zr_calc -> zr, Z''calc -> z''
+        if (mi < 0 && isImag(s)) mi = k; else if (mr < 0 && isReal(s)) mr = k;
+      });
+      if (mr >= 0 && mi >= 0) { h.cr = mr; h.ci = mi; h.neg = cols[mi].charAt(0) === '-'; }
+    }
     if (h.cf < 0 || h.cr < 0 || h.ci < 0) return null;
     h.maxCol = Math.max(h.cf, h.cr, h.ci, h.cc);
     return h;
@@ -123,6 +134,8 @@ Y.readers = (function () {
   }
 
   function nameLine(t) { var m = /^#\s*dataset\s*[:=]?\s*(.+)$/i.exec(t); return m ? m[1].trim() : null; }
+  // a line that opens another section of a file written by Yappari JS ends the dataset above it
+  function sectionLine(t) { return /^#\s*(dataset|normali[sz]ation|drt|summary)\b/i.test(t); }
 
   // Every header line (frequency + real + imaginary columns) starts a dataset that runs to the next header;
   // text lines in between are skipped. A "chunk" column (Zurich Instruments LabOne) splits sweeps into datasets.
@@ -135,8 +148,8 @@ Y.readers = (function () {
     m[2].replace(/\b(k|A|L)\s*=\s*([-+0-9.eE]+)/g, function (_, key, v) { o[key] = parseFloat(v); });
     return o.k > 0 ? o : null;
   }
-  function headerTable(text, fileName) {
-    if (isMfliCsv(text)) return mfliCsv(text, fileName);
+  function headerTable(text, fileName) { return isMfliCsv(text) ? mfliCsv(text, fileName) : tableRows(text, fileName); }
+  function tableRows(text, fileName) {
     var L = lines(text), out = [], base = baseName(fileName), i = 0, pendingName = null, pendingNorm = null, count = 0, skipped = 0;
     while (i < L.length) {
       var nm = nameLine(L[i].trim());
@@ -159,7 +172,7 @@ Y.readers = (function () {
           }
           sep = dataSep(L[j], h); break;
         }
-        if (nameLine(t0) || parseHeader(L[j])) break;
+        if (sectionLine(t0) || parseHeader(L[j])) break;
       }
       var split = splitter(sep), dc = sep !== 'comma', rows = [];
       for (j = i + 1; j < L.length; j++) {
@@ -173,10 +186,11 @@ Y.readers = (function () {
         if (!ok && /^[-+.]?\d/.test(t) && fields.length >= 3) skipped++;
         if (ok) {
           rows.push([fv, rv, h.neg ? -iv : iv, h.cc >= 0 ? String(fields[h.cc]).trim() : '',
-                     h.sr >= 0 && fields.length > h.sr ? num(fields[h.sr], dc) : NaN, h.si >= 0 && fields.length > h.si ? num(fields[h.si], dc) : NaN]);
+                     h.sr >= 0 && fields.length > h.sr ? num(fields[h.sr], dc) : NaN, h.si >= 0 && fields.length > h.si ? num(fields[h.si], dc) : NaN,
+                     h.cm >= 0 && fields.length > h.cm && num(fields[h.cm], dc) > 0 ? 1 : 0]);
           continue;
         }
-        if (nameLine(t) || parseHeader(L[j])) break;
+        if (sectionLine(t) || parseHeader(L[j])) break;
       }
       if (rows.length) {
         var groups = [], byKey = {};
@@ -189,6 +203,7 @@ Y.readers = (function () {
           var o = pack(name, g.map(function (r) { return r[0]; }), g.map(function (r) { return r[1]; }), g.map(function (r) { return r[2]; }),
                         g.map(function (r) { return r[4]; }), g.map(function (r) { return r[5]; }));
           if (pendingNorm && groups.length === 1) o.norm = pendingNorm;
+          if (g.some(function (r) { return r[6]; })) o.mask = Uint8Array.from(g, function (r) { return r[6]; });
           out.push(o);
           count++;
         });
@@ -204,9 +219,14 @@ Y.readers = (function () {
   // ---------------------------------------------------------------- Zurich Instruments MFLI / MFIA csv (LabOne)
   // Sweeper export with one line per field and sweep:  chunk;timestamp;size;fieldname;v1;v2;...  (';' or ',')
   // Each chunk is a dataset (name_0, name_1 ...); f from "frequency" (or "grid"), Z from "realz" and "imagz"
-  // (or "absz" and "phasez"). Points still nan (sweep not finished) are skipped. A layout with one column
-  // per field is read by headerTable instead.
-  function isMfliCsv(text) { var h = String(text).slice(0, 3000); return /^\s*"?chunk"?\s*[;,\t]/im.test(h) && /fieldname/i.test(h); }
+  // (or "absz" and "phasez", the phase in radians). Points still nan (sweep not finished) are skipped. A layout with one column
+  // per field is read by the table reader instead. Only the "chunk" line itself decides: a "fieldname" written
+  // anywhere else (a comment) does not make a one-column-per-field table an MFLI sweeper export.
+  function isMfliCsv(text) {
+    var L = lines(String(text).slice(0, 3000));
+    for (var i = 0; i < L.length && i < 50; i++) if (/^\s*"?chunk"?\s*[;,\t]/i.test(L[i])) return /fieldname/i.test(L[i]);
+    return false;
+  }
 
   function mfliCsv(text, fileName) {
     var L = lines(text), base = baseName(fileName), h = -1, m = null;
@@ -215,7 +235,7 @@ Y.readers = (function () {
     var sep = m[1], dc = sep !== ',';
     var head = L[h].split(sep).map(function (s) { return s.trim().replace(/^"|"$/g, '').toLowerCase(); });
     var iC = head.indexOf('chunk'), iS = head.indexOf('size'), iF = head.indexOf('fieldname');
-    if (iF < 0) return headerTable(text, fileName);
+    if (iF < 0) return tableRows(text, fileName);              // one column per field: an ordinary table
     var chunks = {}, order = [];
     for (var j = h + 1; j < L.length; j++) {
       var p = L[j].split(sep);
@@ -232,7 +252,7 @@ Y.readers = (function () {
       if (!f) return;
       if (!zr || !zi) {
         if (!c.absz || !c.phasez) return;
-        var deg = c.phasez.some(function (v) { return Math.abs(v) > 6.3; }), ph = c.phasez.map(function (v) { return deg ? v * Math.PI / 180 : v; });
+        var ph = c.phasez;                                      // LabOne writes the phase in radians
         zr = c.absz.map(function (a, k) { return a * Math.cos(ph[k]); });
         zi = c.absz.map(function (a, k) { return a * Math.sin(ph[k]); });
       }

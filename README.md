@@ -103,7 +103,7 @@ rules. The command line and the keyboard shortcuts still run the commands, which
 
 | Tab | Content |
 |---|---|
-| **Datasets** | All datasets, newest on top. Colour square = plot colour; dot on the right = fit status (green converged, amber iteration limit, red failed). Selected datasets are amber. |
+| **Datasets** | All datasets, newest on top. Colour square = plot colour; dot on the right = fit status (green converged; amber iteration limit, stalled, singular system or all fitted parameters at their limits; red failed). Selected datasets are amber. |
 | **Parameters** | Values of the first selected dataset: name, value, unit, standard error (%), fit tick box. Below: χ²w, χ²red, R², weights, fit status. At the bottom: *Copy these values to All datasets / Selected datasets*. |
 | **Fit** | What will be fitted (number of selected datasets, circuit), mode **Individual** or **Global**, method, weights, max iterations, min χ² step (relative tolerance) and *Stop*. The **Fit** button is in the top bar, immediately left of Settings. All four fit settings stay synchronized with Settings. |
 
@@ -124,12 +124,14 @@ behaviour).
 * **Table with column headers**: any text table whose header names a frequency, a real and an imaginary column
   (`frequency, realz, imagz`, `freq/Hz, Re(Z)/Ohm, -Im(Z)/Ohm`, `Freq, Zreal, Zimag`, `Z'`, `-Z''` …): EC-Lab,
   Gamry and similar exports. A `chunk` column (Zurich Instruments LabOne) splits the sweeps into datasets; a
-  `-Im` column is negated. Files written by *Save data* are read back this way, names and normalization included.
+  `-Im` column is negated. Files written by *Save data* are read back this way, names, normalization and masked
+  points included.
 * **MFLI csv** (Zurich Instruments LabOne sweeper export, `;` or `,`): one line per field and sweep,
   `chunk;timestamp;size;fieldname;values…`. Each chunk is a dataset (`name_0`, `name_1` …); f comes from the
-  `frequency` line (or `grid`), Z from `realz` and `imagz` (or `absz` and `phasez`); points still `nan` are
-  skipped. Standard deviations (`realzstddev`, `imagzstddev`, `abszstddev`) are kept for weighting.
-* **MFLI ZView .txt and ZView .z**: f, Z′ and Z″ from columns 1, 5 and 6; each block of numbers is a dataset.
+  `frequency` line (or `grid`), Z from `realz` and `imagz` (or `absz` and `phasez`, the phase in radians); points
+  still `nan` are skipped. Standard deviations (`realzstddev`, `imagzstddev`, `abszstddev`) are kept for weighting.
+* **MFLI ZView .txt and ZView .z**: f, Z′ and Z″ from columns 1, 5 and 6; each block of numbers is a dataset. A ZView
+  file opened with *3 columns* is recognised and read the same way.
 * **VersaStudio .par**: each `<Segment>` with frequency and impedance (or E and I) columns.
 * **Custom format**: files holding several datasets, each starting with the same header text (examples:
   `files/Z_MFLI.txt`, `files/hp4192a.txt`). Definitions are the XML files of Yappari 5.1
@@ -239,8 +241,10 @@ over the N unmasked frequencies, with the weight (Fit tab or Settings):
 | 1 | 1 | Absolute errors, large impedances dominate |
 | measured σ | $1/\sigma_{r,k}^2$ and $1/\sigma_{i,k}^2$ for each part | When the file gives standard deviations (option in Settings) |
 
-|Z| is the measured modulus. With measured σ, points without a σ get the median relative error (σ/|Z|) of the
-others; with fewer than 3 measured points the usual weight is used. χ²red is then close to 1 for an adequate model,
+|Z| is the measured modulus. Measured σ come from the `realzstddev`, `imagzstddev` or `abszstddev` lines of MFLI csv
+files and from the `sigma_Zr`, `sigma_Zi` columns written by *Save data* (the older `sigma Zr` headers are read too).
+Points without a σ get the median relative error (σ/|Z|) of the others; with fewer than 3 measured points the usual
+weight is used. χ²red is then close to 1 for an adequate model,
 and error bars are drawn on the Nyquist, Zr and Zi plots.
 
 ### Statistics
@@ -298,9 +302,14 @@ Every normal end is reported as `converged`, followed by the rule that stopped i
   computer, the usual end with the very small default tolerance (10⁻¹²);
 * `zero gradient`, `simplex collapsed` (Nelder–Mead): the same, seen by other tests.
 
-All are equally good minima. Only `iteration limit reached` (amber dot in the list) means the fit did not finish:
-raise *Maximum iterations* or improve the start values. A converged fit can still be a local minimum: compare
-χ²red after starting from different values.
+All are equally good minima. The other ends have an amber dot in the list:
+
+* `iteration limit reached`: the fit did not finish; raise *Maximum iterations* or improve the start values;
+* `stopped: … not a minimum` (stalled): see *Running fits*;
+* `singular system`: the parameters ticked cannot all be determined by the data; fix one or simplify the circuit;
+* `all fitted parameters are at their limits`: check the limits in Settings.
+
+A converged fit can still be a local minimum: compare χ²red after starting from different values.
 
 ---
 
@@ -318,6 +327,11 @@ Levenberg–Marquardt on the block-arrow normal equations (Schur complement on t
 datasets with local parameters stay cheap. χ²w is the sum over all datasets; χ²red uses $2\sum N - p_\text{total}$.
 Bounds are applied by projection, except with method LM. Typical uses: a series of spectra at several temperatures
 with a common geometric capacitance, or spectra where a shared n of a CPE is wanted.
+
+Standard errors come from the covariance of all the parameters together. As in a single fit, a parameter that ends
+on a limit gets none and is held fixed for the others. A local parameter that the data of its dataset cannot
+determine (it has no effect, or cannot be told apart from another one) gets none either; the other standard errors
+are not affected.
 
 ---
 
@@ -348,15 +362,17 @@ Click a legend entry to hide or show it; double-click the plot to show everythin
   first plotted dataset. They add up exactly: $Z = \sum_\text{parts} Z_\text{part}$. On the Zr and Zi plots each part
   is drawn as is. On the Nyquist plot the model curve takes, at each frequency, the colour of the part with the
   largest |Zi|, and each part is drawn alone, shifted along Zr as if the relaxations were separate (series
-  resistances as thick segments on the axis). The circuit drawing can use the same colours.
+  resistances as thick segments on the axis). The circuit drawing can use the same colours. Hiding a part from the
+  legend also takes its colour off the Nyquist model curve; hiding the dataset hides its parts.
 
 Any combination works: data with contributions and no fit curve, contributions alone, and so on. Hidden entries
 reappear when the selection changes. Reports always include data and model curve.
 
 ### Frequency labels
 
-*Label frequency…* (or `label>>1k`) labels the point nearest to that frequency in every selected dataset on the
-Nyquist plot; with *Click labels a point*, clicking a point adds or removes its label. *Clear labels* removes them.
+*Label frequency…* (or `label>>1k`) labels the point nearest to that frequency, masked or not, in every selected
+dataset on the Nyquist plot; with *Click labels a point*, clicking a point adds or removes its label. *Clear labels*
+removes them.
 
 ### Mouse
 
@@ -366,10 +382,20 @@ plot (with its residual plot).
 
 ### Masked points
 
-*Data → Mask points in the current view* masks the unmasked points inside the visible rectangle of the plot on screen (Nyquist, Zr, Zi or |Z|, θ)
-(zoom on the points first). Masked points stay on the plots, hollow and pale, and do not count for autoscale; fits,
-DRT, Z-HIT and saved data leave them out. *Unmask selected datasets* brings them back. *Delete points in the current
-view* removes them for good.
+*Data → Mask points in the current view* masks the unmasked points inside the visible rectangle of the plot on
+screen (Nyquist, Zr, Zi or |Z|, θ); zoom on the points first. *Unmask selected datasets* brings them back.
+
+Masks apply to fits only: a masked point is left out of every fit, and everything else uses it.
+
+* **Plots**: masked points stay on the plots, hollow and pale. They do not count for autoscale, and the 3D view
+  does not draw them (both are display only).
+* **DRT, Z-HIT, average, spline and smooth** use masked points. Z-HIT still reports a real gap in the frequencies,
+  for example after points are deleted.
+* **Save data** writes every point, with a `masked` column (1 = masked). Reading the file back with *Table with
+  column headers* restores the masks.
+* **Frequency labels** can sit on masked points: masking a labelled point leaves its label in place.
+* **Delete points in the current view** removes every point in view, masked or not, for good; the confirmation
+  says how many of them are masked.
 
 ---
 
@@ -385,7 +411,7 @@ $$Z(\omega) = R_\infty + R_\text{pol}\int_{-\infty}^{\infty} \frac{g(\tau)}{1 + 
 * $R_\infty$ = Zr at the highest frequency, $R_\text{pol}$ = Zr at the lowest frequency − $R_\infty$, both from the
   data, as in Yappari 5.1.
 * τ is log-spaced over $1/\omega_\text{max} … 1/\omega_\text{min}$ with the density of the data (at least 10 points
-  per decade), so masked regions leave no holes in g.
+  per decade), so gaps in the frequencies leave no holes in g. Masked points are used.
 * Discretised, the problem is $A\,g = y$, where y holds the chosen parts of $(Z - R_\infty)/R_\text{pol}$; dividing by
   $R_\text{pol}$ makes λ independent of the size of the impedance.
 
@@ -398,7 +424,7 @@ $$Z(\omega) = R_\infty + R_\text{pol}\int_{-\infty}^{\infty} \frac{g(\tau)}{1 + 
     $g \leftarrow \max\!\left(0,\; g + 0.1\,(A^\mathsf{T}A + \lambda^2 I)^{-1} A^\mathsf{T}(y - A g)\right)$,
     stopped when |g| changes by less than 0.25 %.
   * **Gold**: multiplicative deconvolution of the non-negative system; the number of iterations regularises
-    (10⁵ by default; fewer = smoother).
+    (50 000 by default, 100 to 100 000 with the slider; fewer = smoother).
 * **Data**: Zr and Zi, Zi only or Zr only.
 * **λ** (or iterations for Gold): slider and value. Larger λ = smoother g, larger misfit.
 * **Show**: g (distribution), Spectrum (measured and rebuilt Zr, −Zi), Residuals (|ΔZ|), Peaks (table).
@@ -408,7 +434,7 @@ $$Z(\omega) = R_\infty + R_\text{pol}\int_{-\infty}^{\infty} \frac{g(\tau)}{1 + 
 
 ### Choosing λ: Search λ
 
-Scans λ (or Gold iterations) and plots the rms misfit of the DRT and a re–im cross-validation (Zr predicted by a DRT
+Scans λ from 10⁻⁶ to 1 (or Gold iterations from 100 to 50 000) and plots the rms misfit of the DRT and a re–im cross-validation (Zr predicted by a DRT
 of Zi alone, compared with the measured Zr, for information). The suggested value is the strongest regularisation
 whose misfit stays within 10 % (and 0.1 percentage point) of the best one: the elbow where more smoothing starts to
 cost accuracy. Click the plot to choose another value.
@@ -437,10 +463,11 @@ $$\ln\lvert Z(\omega_0)\rvert = C + \frac{2}{\pi}\int^{\omega_0}\varphi\,d\ln\om
 (derivatives with respect to ln ω). The phase is resampled on a uniform ln ω grid (cubic spline, ≥ 10 points per
 decade); derivatives come from local polynomials of degree 5 over ±1 decade, so $\varphi^{(7)}$ counts as 0: a
 degree-7 fit turns 1 % noise into errors of hundreds of percent, while degree 5 keeps the deviation of valid noisy
-data at the noise level. C matches the median of ln|Z|. New datasets `zh_…` hold the rebuilt |Z| and the
-deviation. Deviations larger than the noise, especially at low frequency, indicate drift or non-stationary data.
-The phase integral cannot cross a gap left by masked points, so each side of such a gap is checked on its own (and
-the gap is reported).
+data at the noise level. C matches the median of ln|Z|. New datasets `zh_…` hold the spectrum rebuilt from the
+phase (rebuilt |Z|, measured phase); the rms and the largest deviation are written to the Log. Deviations larger
+than the noise, especially at low frequency, indicate drift or non-stationary data.
+Masked points are used. The phase integral cannot cross a gap in the frequencies (points deleted, for example), so
+each side of such a gap is checked on its own (and the gap is reported).
 
 ---
 
@@ -453,9 +480,9 @@ All act on the selected datasets (Data menu, or the command line).
 | **Normalize** | None (as measured, Ω); correction factor k: $Z \times k$ (unit unchanged); electrode area A: $Z \times A$ (Ω·cm²); resistivity: $Z \times A / L$ (Ω·cm), L the thickness. A new choice replaces the previous one; *None* restores the measured values. Fitted parameters are converted at the same time (R and L multiplied, C and Q divided, n, α, β and τ unchanged), so the fit still matches. Units are shown everywhere; *Save data* writes a `#normalization` line that is read back. |
 | **Negate Zi** | $Z_i \to -Z_i$ (files written with the opposite sign convention). |
 | **Add random noise** | Uniform noise in ±x % of \|Z\| added to Zr and Zi, Zr only, Zi only, or to f (tests). |
-| **Spline to a log frequency grid** | New datasets: natural cubic spline of Zr and Zi versus log f, on n log-spaced frequencies. |
-| **Smooth (Savitzky–Golay)** | New datasets: least-squares polynomial of degree d on 2s + 1 neighbours (frequencies taken as log-spaced); windows are shifted at the ends instead of shrunk. |
-| **Average selected datasets** | New dataset: point-by-point mean; all datasets must share the same frequencies. |
+| **Spline to a log frequency grid** | New datasets: natural cubic spline of Zr and Zi versus log f, on n log-spaced frequencies. Masked points are used. |
+| **Smooth (Savitzky–Golay)** | New datasets: least-squares polynomial of degree d on 2s + 1 neighbours (frequencies taken as log-spaced); windows are shifted at the ends instead of shrunk. Masked points are used. |
+| **Average selected datasets** | New dataset: point-by-point mean, masked points included; all datasets must share the same frequencies. |
 | **Simulate spectrum** | New dataset from the circuit and the current values (Settings → Simulation). |
 | **Mask / Unmask / Delete points** | See [Masked points](#masked-points). |
 | **Delete selected datasets** | After confirmation. |
@@ -470,7 +497,7 @@ or double-click renames; drag to reorder. `select>>text` selects by name (regula
 | Item | Content |
 |---|---|
 | **Save parameters of selected** | Tab-separated: one line per dataset with R², χ²w, χ²red, and value and SE % of each parameter. |
-| **Save data of selected…** | Measured and/or model Zr, Zi (and σ when present), one block per dataset, chosen separator. Read back with *Table with column headers*. |
+| **Save data of selected…** | Measured and/or model Zr, Zi (and σ when present), one block per dataset, chosen separator; masked points included, marked in a `masked` column. Read back with *Table with column headers*; a file with the model values only reads back as data. |
 | **Report of selected datasets** | HTML: statistics, parameters and six plots per dataset (Nyquist, Zr, Zi with residuals, \|Z\|, phase). Up to 30 datasets it opens in a new tab; otherwise it is downloaded. |
 | **Save project** (Ctrl+S) | JSON: data, masks, labels, circuit, limits, shared flags, settings, parameters and statistics of every dataset. *Open project* restores everything. |
 | **Save PNG** | The current plot. |
@@ -508,7 +535,7 @@ oldest are dropped first), and are lost when the page is closed: *Save project* 
 | | Residuals | Absolute | Or relative, % of \|Z\|. |
 | | Phase unit | Degrees | Or radians. |
 | Limits | Min, max, shared | per element | For the current circuit; *shared* is used by the global fit. |
-| Start values | Value, min, max, fitted | per element | Used when an element is added; stored in the browser; *Reset element values*. |
+| Start values | Value, min, max, fitted | per element | Used when an element is added; min below max, the value between them; stored in the browser; *Reset element values*. |
 
 ---
 
@@ -578,196 +605,16 @@ js/app.js             start-up, tabs, side panel, fit bar
 files/                example data files and custom-format definitions (Yappari 5.1 XML)
 config/definitions/   custom-format definitions in JSON
 script/               third-party libraries, none needed for now
-tests/                node tests/run_core_tests.js, run_io_tests.js, run_step2_tests.js (core, readers, DRT,
-                      Z-HIT, the files/ examples); python tests/browser_test.py [out_dir] drives index.html in
-                      headless Chromium (Playwright) and saves screenshots
+tests/                node tests/run_core_tests.js runs all Node tests (core, readers, DRT, Z-HIT, the review
+                      fixes, the files/ examples; sample files missing from files/ are skipped);
+                      python tests/browser_test.py [out_dir] drives index.html in headless Chromium (Playwright)
+                      and saves screenshots
 ```
 
 No library and no build step: plain JavaScript, canvas plots, one page.
 
-## Layout
-
-Top tabs are workspaces: **EIS** (plots; Nyquist, Zr, Zi, |Z| θ and 3D are chosen in the plot toolbar), **Model**
-(circuit editor), **DRT** (a Show selector picks g, the rebuilt spectrum, the residuals or the peak table, shown at full height),
-**Log**, **About**, and **Settings** on the right (fit, data and plot settings, parameter limits, element start values).
-The File, Data and Analysis menus are in the header, left of Settings. The side panel has three tabs: **Datasets** (the list), **Parameters** (values of
-the first selected dataset, fit statistics, copy to all or to the selected datasets) and **Fit** (what will be fitted,
-Individual or Global, method, weights, the Fit button; F9 works anywhere). The `?` next to the command line shows its help. Drag the left edge of the side panel to resize it (double-click resets).
-
-## Circuit code
-
 ---
 
-```
-R(RQ)(Q[RW])   =   R1 + (R2 ‖ Q1) + (Q2 ‖ (R3 + W1))
-```
-
-Elements: `R C L Q W Wo Ws G HN`. Numbers name the elements (`R1`, `Q2`); missing numbers are added, so the
-code shown is always numbered: `R1(R2Q1)(Q2[R3W1])`. Spaces, commas and dashes are ignored. Any depth of nesting
-is allowed. Editing the circuit keeps the values of the parameters whose element still exists, and an element
-that comes back (Undo) gets its old values back.
-
-In the Model tab, click an element or a group in the drawing, choose *In series*, *In parallel* or *Replace*,
-then click an element of the palette or pick a template. Delete, Ctrl+Z and Esc work on the drawing.
-
-## Elements and parameter names
-
-| Code | Element | Z | Parameters (element 1) |
-|---|---|---|---|
-| R | resistor | R | `R1` |
-| C | capacitor | 1/(jωC) | `C1` |
-| L | inductor | jωL | `L1` |
-| Q | constant phase element | 1/(Q (jω)^n) | `Q1`, `Q1_n` |
-| W | Warburg, semi-infinite | Aw/√ω − j·Aw/√ω | `W1` (Aw) |
-| Wo | Warburg open, reflective | Aw/√(jω) · coth(B√(jω)) | `Wo1_A`, `Wo1_B` |
-| Ws | Warburg short, transmissive | Aw/√(jω) · tanh(B√(jω)) | `Ws1_A`, `Ws1_B` |
-| G | Gerischer | R/√(1 + jωτ) | `G1_R`, `G1_tau` |
-| HN | Havriliak–Negami | R/(1 + (jωτ)^α)^β | `HN1_R`, `HN1_tau`, `HN1_a`, `HN1_b` |
-
-W, Wo and Ws follow Yappari's help/theory.md. For large B, Wo and Ws tend to W with an Aw larger by √2.
-The composite elements of the LabVIEW version (Randles variants, M00x) are templates in the Model tab.
-
-## Fitting
-
-* χ²w = Σ w·[(Zr − Zr calc)² + (Zi − Zi calc)²], with w = 1/|Z|, 1/|Z|² or 1 (measured |Z|).
-* Reduced χ² = χ²w / (2N − p): N frequencies, real and imaginary parts both counted, p fitted parameters.
-* R² = 1 − SS_res/SS_tot on the stacked, unweighted (Zr, Zi) values.
-* Standard errors, in % of the value: square root of the diagonal of s²(JᵀJ)⁻¹ with s² = reduced χ², J from
-  central differences at the solution. Given for every method; a parameter that ends on a limit gets none.
-  On simulated spectra with noise matching the weights, these errors agree with the scatter of repeated fits.
-* Methods: trust-region dogleg with bounds (TRDL, default), Levenberg–Marquardt with or without bounds,
-  Nelder–Mead with bounds. Parameters spanning decades (R, C, Q, τ …) are fitted as ln p internally; the result is
-  the same, convergence from poor start values is better.
-* Batch fits run in parallel Web Workers. The top-bar Fit button uses each dataset's own start values; the usual route for
-  many spectra is: fit one, Clone parameters to all, select all, click Fit.
-* Global fit: one fit of all selected datasets. Each parameter is shared (one value) or local (one value per
-  dataset), set in Settings; all shared is the LabVIEW behaviour. Start values: shared ones from the first
-  selected dataset, local ones from each dataset.
-
-### Why a fit says "converged: …"
-
-Every normal end of a fit is reported as `converged`, followed by the rule that stopped it (shown when you
-point at the status, and in the Log):
-
-* `χ² change below the tolerance`: χ² changed by less than the tolerance (Settings) twice in a row;
-* `no step lowers χ² further` or `steps below numerical resolution`: the minimum is reached to the precision of
-the computer, which is the usual end with the very small default tolerance (1e-12);
-* `zero gradient`, `simplex collapsed` (Nelder–Mead): the same, seen by other tests.
-
-All are equally good minima. Only `iteration limit reached` (amber dot in the list) means the fit did not finish.
-
-### Normalization
-
-Action → *Normalize* sets, for the selected datasets: none (as measured, Ω), a correction factor (unit unchanged),
-the electrode area (Z × A, Ω·cm²) or a resistivity (Z × A / L, Ω·cm). A new choice replaces the previous one, and
-*None* brings back the measured values. Fitted parameters are converted at the same time (R and L multiplied, C and
-Q divided, n, α, β and τ unchanged), so the fit still matches and needs no new run. Plots, tooltips, parameters,
-DRT, report and saved files show the unit; the dataset list shows it next to the name. Save data writes a
-`#normalization` line that File, reading data, takes back.
-
-### Contributions
-
-The parts of the series chain are drawn for the first plotted dataset. Clicking a part in the legend hides it (on
-the Nyquist plot its colour leaves the model curve too); hiding the dataset hides its parts.
-
-### Masked points
-
-Masked points stay on the plots, hollow and pale, and do not count for autoscale; fits, DRT, Z-HIT and saved data
-leave them out. Unmask brings them back.
-
-### History
-
-Before every command or action that changes datasets, a restore point keeps the datasets (data, masks, parameters,
-fit results, labels), the selection and the circuit. In the Log tab, the line of each such action has a
-*Restore before* button that brings back that state; a restore can itself be restored or undone. `undo` goes back
-one step at a time. Restore points live in memory, up to 256 MB (the oldest are dropped first), and are lost when the
-page is closed: Save project keeps a state for good.
-
-### Measured errors as weights
-
-With *Use measured standard deviations as weights* (Parameters, Data files), datasets read with standard
-deviations (`realzstddev`, `imagzstddev` or `abszstddev` lines of MFLI csv files, `sigma_Zr`, `sigma_Zi` columns
-written by Save data; the older `sigma Zr` headers are still read) are fitted with w = 1/σ² for each part. Points without a σ get the median relative error
-(σ/|Z|) of the others; with fewer than 3 measured points the usual weight is used. χ²red is then close to 1 for an
-adequate model. Error bars are drawn on the Nyquist, Zr and Zi plots.
-
-## DRT, Z-HIT, contributions, labels
-
-* **DRT tab**: distribution of relaxation times of the selected datasets (as in Yappari 5.1, the spectra and peaks shown are those of the first one):
-  Z(ω) = R∞ + Rpol ∫ g(τ)/(1 + jωτ) dlnτ with R∞ = Zr at the highest and Rpol = Zr at the lowest frequency minus
-  R∞, both from the data. τ is log-spaced over the measured range (at least 10 per decade). Methods: Tikhonov with
-  g ≥ 0 (active-set NNLS), Fisk (iterated Tikhonov, relaxation 0.1, stop at 0.25 % change of |g|), Gold
-  (multiplicative; the number of iterations regularises, 10⁵ by default). Data: Zr and Zi, Zi only or Zr only.
-  The peak table gives f, τ, R = Rpol × area, C = τ/R, useful as start values. *Search λ* scans λ (or Gold
-  iterations): it plots the misfit and the re–im cross-validation and suggests the strongest regularisation
-  whose misfit stays within 10 % (and 0.1 percentage point) of the best; click the plot to choose another value.
-  *Axis* switches all three plots between frequency (g placed at f = 1/(2πτ)) and time constant (spectra placed
-  at τ = 1/(2πf)), so the peaks of g line up with the features of the spectra. The distributions of the selected datasets are drawn together
-  (at most 12; Gold only the first); spectra, residuals and peaks are those of the first one. *Save DRT…* computes
-  every selected dataset with the current settings and saves a summary line per dataset (R∞, Rpol, f, R and C of
-  each peak), then each distribution, rebuilt spectrum and peak list.
-* **Z-HIT** (Analysis menu, `zhit`): ln|Z| is rebuilt from the phase,
-  ln|Z(ω0)| = C + (2/π)∫φ dlnω − (π/6) φ' − (π³/360) φ''' − (π⁵/15120) φ⁽⁵⁾ − (π⁷/604800) φ⁽⁷⁾ (derivatives in lnω),
-  and compared with the measured |Z|. The derivatives come from local polynomials of degree 5 over ±1 decade, so
-  φ⁽⁷⁾ counts as 0: a degree-7 fit turns 1 % noise into errors of hundreds of percent, while degree 5 keeps the
-  deviation of valid noisy data at the noise level; new datasets `zh_…` hold the result. The phase integral cannot cross a
-  gap left by masked points, so each side of such a gap is checked on its own (and the gap is reported).
-* **Data / Fit / Contributions**: hidden or shown by clicking their legend entries (one "Fit" entry for all model curves); contributions are switched on in the Model tab or with `contrib`; reports always include data and model curve.
-* **Contributions** (plot toolbar, Model tab, `contrib`): the parts of the top-level series chain add up.
-  On the Zr and Zi plots each part of the first plotted dataset is drawn in its colour; on the Nyquist plot the
-  model curve takes the colour of the part with the largest |Zi| at each frequency, and each part is drawn alone,
-  shifted along Zr as if the relaxations were separate. The circuit drawing uses the same colours.
-* **Frequency labels** on the Nyquist plot: *Label frequency…* (or `label>>1k`) labels the point nearest to that
-  frequency in every selected dataset; with *Click labels a point*, clicking a point adds or removes its label.
-
-## Reading data
-
-* **3 columns**: f, Zr, Zi, one dataset per file, several files at once. Separator detected or chosen in the
-  Parameters tab; decimal commas are accepted whenever the separator is not a comma.
-* **Table with column headers**: any other text table whose header names a frequency, a real and an imaginary column
-  (`frequency, realz, imagz`, `freq/Hz, Re(Z)/Ohm, -Im(Z)/Ohm`, `Freq, Zreal, Zimag`, `Z'`, `-Z''` …). A `chunk`
-  column (Zurich Instruments LabOne) splits the sweeps into datasets; a `-Im` column is negated. Files written by
-  Save data read back this way, names included.
-* **MFLI csv** (Zurich Instruments LabOne sweeper export, `;` or `,`): one line per field and sweep,
-  `chunk;timestamp;size;fieldname;values…`. Each chunk is a dataset (`name_0`, `name_1` …); f comes from the
-  `frequency` line (or `grid`), Z from `realz` and `imagz` (or `absz` and `phasez`); points still `nan` are skipped.
-* **MFLI ZView .txt and ZView .z**: f, Z' and Z'' are taken from columns 1, 5 and 6; each block of numbers
-  is a dataset. A ZView file opened with "3 columns" is recognised and read the same way.
-* **VersaStudio .par**: each `<Segment>` with frequency and impedance (or E and I) columns.
-* **Custom formats**: files holding several datasets, each starting with the same header text, for example
-  `files/Z_MFLI.txt` and `files/hp4192a.txt`. Definitions are the XML files of Yappari 5.1
-  (`files/Z_MFLI_datafile_example_template.xml`, `files/custom_hp4192a.xml`); the dialog loads them, has them as
-  presets, and saves new ones in the same XML, which the LabVIEW version reads too. Older `.ini` definitions and
-  JSON are read as well. Fields, in the order of the XML: header (it can be part of a longer line), label length
-  (characters after the header added to the name), data separator, ignore first (lines after the header line),
-  frequency, Zr and Zi columns (from 1), ignore last (lines at the end of each dataset; a dataset cut short,
-  such as the last one in `Z_MFLI.txt`, keeps all its rows).
-* **Dropped files** are read automatically: ZView, VersaStudio, tables with headers, or blocks of three numbers
-  separated by text lines (`hp4192a.txt` gives its three cycles). Drop a definition file together with data files
-  to read them with it; `.json` projects open directly.
-
-The MFLI csv sample in `files/` stops before the `frequency`, `realz` and `imagz` lines (reading it explains
-this); the reader was checked on generated files with the same layout. `files/type_VersaStudio.par` is a
-real VersaStudio file.
-
-## Saving
-
-Action menu: parameters of the selected datasets (tab-separated, R², χ²w, χ²red, value and SE % of each
-parameter), data (measured and/or model values), report (HTML with statistics, parameters and six plots per
-dataset; up to 30 datasets it opens in a new tab), project (JSON with data, masks, circuit, limits, settings,
-parameters and statistics). Plots: Save PNG above each plot.
-
-## Command line
-
-`rndz>>x`, `rndzr>>x`, `rndzi>>x`, `rndf>>x` (noise, % of |Z|), `negate_zi`, `spline>>n`, `smooth>>s&d`,
-`average`, `fit`, `globalfit`, `clone_all`, `clone_active`, `mask`, `unmask`, `simulate`, `select>>text`,
-`label>>f`, `unlabel`, `contrib`, `drt`, `drt_save`, `drt_search`, `zhit`, `demo`, `help`, and `undo`, which goes
-back one step (repeat to go further).
-They act on the selected datasets.
-
-The switch at the top right turns dark mode on and off; the first choice follows the system setting.
-
-## Differences from Yappari 5.1 (LabVIEW)
 ## 18. Differences from Yappari 5.1 (LabVIEW)
 
 * Circuits of any depth instead of ten slots; readable parameter names instead of 4ZARR, 2MR1D …

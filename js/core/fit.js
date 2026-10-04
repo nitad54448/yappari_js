@@ -11,8 +11,9 @@
  *  values spanning many decades (Q, C, R) are handled evenly. The solution is the same.
  *
  *  Measured standard deviations (job.sr, job.si) replace the weights: w = 1/sigma^2 for each part.
- *  Stop messages start with "converged:" followed by the rule that ended the fit (all are normal ends),
- *  or "iteration limit reached".
+ *  Stop messages start with "converged:" followed by the rule that ended the fit (all are normal ends);
+ *  the other ends ("iteration limit reached", "stopped: ...", "singular system", "all fitted parameters are at
+ *  their limits") are warnings (status 'warn').
  *
  *  Methods:  'TRDL' trust-region dogleg with box bounds (dogbox variant)   'LMB' Levenberg-Marquardt with bounds
  *            'LM'   Levenberg-Marquardt without bounds                        'NM'  Nelder-Mead with bounds
@@ -458,8 +459,9 @@ Y.defineCore('fit', function (Y) {
     return better;
   }
 
-  // fit status from the message: 'ok' converged, 'warn' iteration limit or stalled
-  function status(msg) { return /iteration limit|^stopped/.test(msg || '') ? 'warn' : 'ok'; }
+  // fit status from the message: 'ok' converged (or statistics only, nothing fitted); 'warn' every other end:
+  // iteration limit, stalled, singular system, all fitted parameters at their limits. Failures are told by ok: false.
+  function status(msg) { return /^(converged|no free parameters)/.test(msg || '') ? 'ok' : 'warn'; }
 
   // ---------------------------------------------------------------- entry point (also used inside workers)
   function run(job) {

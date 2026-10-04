@@ -60,7 +60,7 @@ module.exports = function (Y, ok, close) {
   ok(bi > 0 && bi < vals.length - 1, 'suggested lambda inside the scanned range');
   ok(pk.length === 3 && pk.every((p, k) => Math.abs(p.R / expect[k].R - 1) < 0.1), 'the suggested lambda resolves the three RC of noisy data');
   const gv = Y.drt.scanValues('gold', 13), gs = Y.drt.scanner(zn, { method: 'gold', source: 'both' }, gv);
-  gs.step(0);
+  for (let k = 0; k < gs.total; k++) gs.step(k);                 // each step continues the iterations of the one before
   ok(Y.drt.bestIndex(gs.result, 'gold') >= 0 && gs.result.cv.every(v => v === v), 'Gold iteration scan');
 
   // ---------- Z-HIT on a smooth spectrum and on noisy data
@@ -76,12 +76,17 @@ module.exports = function (Y, ok, close) {
   const bad = { name: 'drift', f: Y.dataops.logspace(1e6, 1e-2, 81), zr: Float64Array.from(zd.re), zi: Float64Array.from(zd.im), mask: new Uint8Array(81) };
   for (let k = 60; k < 81; k++) { bad.zr[k] *= 1.1; bad.zi[k] *= 1.1; }               // |Z| changes, phase does not
   ok(Y.drt.zhit(bad).max > 0.03, 'Z-HIT flags a drift of |Z| that the phase does not follow');
-  // a masked region leaves a gap: Z-HIT reports it, the DRT keeps a regular tau grid
-  const gapped = { name: 'g', f: Y.dataops.logspace(1e6, 1e-2, 81), zr: zd.re, zi: zd.im, mask: new Uint8Array(81) };
-  for (let k = 40; k < 60; k++) gapped.mask[k] = 1;
+  // a gap in the frequencies (points deleted): Z-HIT reports it, the DRT keeps a regular tau grid
+  const gapped = { name: 'g', f: Y.dataops.logspace(1e6, 1e-2, 81), zr: Float64Array.from(zd.re), zi: Float64Array.from(zd.im), mask: new Uint8Array(81) };
+  Y.dataops.removePoints(gapped, Uint8Array.from({ length: 81 }, (_, k) => k >= 40 && k < 60 ? 1 : 0));
   const zg = Y.drt.zhit(gapped);
-  ok(zg.gap && zg.gap.decades > 2, 'Z-HIT reports the gap left by masked points (' + (zg.gap ? zg.gap.decades.toFixed(1) + ' decades' : 'none') + ')');
+  ok(zg.gap && zg.gap.decades > 2, 'Z-HIT reports a gap in the frequencies (' + (zg.gap ? zg.gap.decades.toFixed(1) + ' decades' : 'none') + ')');
   ok(zg.ranges === 2 && zg.rms < 0.01, 'Z-HIT checks each side of the gap on its own (' + (100 * zg.rms).toFixed(2) + ' % rms)');
   const dg = Y.drt.compute(gapped, { method: 'tikhonov', source: 'both', lambda: 1e-3 });
-  ok(dg.tau.length === 81 && Math.abs(Math.log(dg.tau[1] / dg.tau[0]) - Math.log(dg.tau[50] / dg.tau[49])) < 1e-9 && dg.f.length === 61, 'DRT of masked data: regular tau grid, 61 data points');
+  ok(dg.tau.length === 81 && Math.abs(Math.log(dg.tau[1] / dg.tau[0]) - Math.log(dg.tau[50] / dg.tau[49])) < 1e-9 && dg.f.length === 61, 'DRT across a gap: regular tau grid, 61 data points');
+  // masked points are used by Z-HIT and the DRT (masks apply to fits only): no gap
+  const masked = { name: 'm', f: Y.dataops.logspace(1e6, 1e-2, 81), zr: zd.re, zi: zd.im, mask: new Uint8Array(81) };
+  for (let k = 40; k < 60; k++) masked.mask[k] = 1;
+  const zm = Y.drt.zhit(masked);
+  ok(!zm.gap && zm.ranges === 1 && zm.checked === 81 && Y.drt.compute(masked, { method: 'tikhonov', source: 'both', lambda: 1e-3 }).f.length === 81, 'Z-HIT and DRT use masked points');
 };

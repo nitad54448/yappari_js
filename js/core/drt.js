@@ -3,13 +3,14 @@
  *  DRT, distribution of relaxation times (series RC behaviour):
  *    Z(w) = Rinf + Rpol * integral g(tau) / (1 + j w tau) dln(tau),   integral g dln(tau) = 1
  *    Rinf = Zr at the highest frequency, Rpol = Zr at the lowest frequency - Rinf (from the data, as in Yappari 5.1).
- *    tau grid: log-spaced over 1/w_max .. 1/w_min with the density of the data (at least 10 per decade), so masked
- *    regions leave no holes in the distribution. The system is divided by Rpol, so lambda does not depend on the
+ *    tau grid: log-spaced over 1/w_max .. 1/w_min with the density of the data (at least 10 per decade), so gaps
+ *    in the frequencies leave no holes in the distribution. Masked points are used (masks apply to fits only). The system is divided by Rpol, so lambda does not depend on the
  *    size of the impedance.
  *    'tikhonov'  min |A g - y|^2 + lambda^2 |g|^2 with g >= 0 (active-set NNLS of Bro & De Jong, normal equations)
  *    'fisk'      iterated Tikhonov: g <- max(0, g + 0.1 (A'A + lambda^2 I)^-1 A'(y - A g)) from the Tikhonov
  *                solution, stopped when |g| changes by less than 0.25 %
  *    'gold'      Gold's multiplicative deconvolution of the non-negative system; the iterations regularise
+ *                (GOLD_ITER = 50 000 by default, fewer = smoother)
  *    source: 'both' (Zr and Zi), 're' (Zr only), 'im' (Zi only)
  *    lambda search: rms misfit of the DRT, and re-im cross-validation (Zr predicted by a DRT of Zi alone, compared
  *    with the measured Zr, shown for information). The suggested value is the strongest regularisation whose
@@ -22,7 +23,8 @@
  *    derivatives from local least-squares polynomials of degree 5 over +-1 decade, so phi(7) is taken as 0: a
  *    degree-7 fit, needed for the pi^7 term, turns 1 % noise into errors of hundreds of percent, whereas degree 5
  *    keeps the deviation of valid noisy data at the noise level. C matches the median of ln|Z|. Masked points are
- *    left out; a gap they leave is reported in .gap and each side is rebuilt on its own.
+ *    used; a gap in the frequencies (points deleted, for example) is reported in .gap and each side is rebuilt
+ *    on its own.
  */
 Y.drt = (function () {
   'use strict';
@@ -135,35 +137,41 @@ Y.drt = (function () {
 
   // Gold: imaginary rows negated so that the system and the data are non-negative (negative data set to 0).
   // Entries that have decayed below 1e-14 of the maximum are frozen at 0 (checked every 200 iterations),
-  // which speeds up the many late iterations without changing the result.
-  function goldRun(sy, n, iters, checkpoints, onCheck) {
-    var rows = sy.rows, A = new Float64Array(sy.A.length), y = new Float64Array(rows), j, q, a;
+  // which speeds up the many late iterations without changing the result. goldStart prepares the iteration and
+  // goldAdvance continues it up to a number of iterations, so a scan can stop at each value it needs.
+  var GOLD_ITER = 50000;
+  function goldStart(sy, n) {
+    var rows = sy.rows, A = new Float64Array(sy.A.length), y = new Float64Array(rows), j;
     for (var r = 0; r < rows; r++) {
       var neg = false;
       for (j = 0; j < n; j++) if (sy.A[r * n + j] < 0) { neg = true; break; }
       for (j = 0; j < n; j++) A[r * n + j] = Math.abs(sy.A[r * n + j]);
       y[r] = Math.max(0, neg ? -sy.y[r] : sy.y[r]);
     }
-    var NE = normal({ A: A, y: y, rows: rows, n: n }), H = NE.H, c = NE.c, g = new Float64Array(n).fill(1 / n), Hg = new Float64Array(n), cp = 0;
-    var act = [], na = n;
+    var NE = normal({ A: A, y: y, rows: rows, n: n }), act = [];
     for (j = 0; j < n; j++) act.push(j);
-    for (var it = 1; it <= iters; it++) {
+    return { n: n, H: NE.H, c: NE.c, g: new Float64Array(n).fill(1 / n), Hg: new Float64Array(n), act: act, it: 0 };
+  }
+  function goldAdvance(st, iters) {
+    var n = st.n, H = st.H, c = st.c, g = st.g, Hg = st.Hg, act = st.act, na = act.length, j, q, a;
+    while (st.it < iters) {
+      st.it++;
       for (a = 0; a < na; a++) { j = act[a]; var s = 0, row = j * n; for (var b = 0; b < na; b++) { q = act[b]; s += H[row + q] * g[q]; } Hg[j] = s; }
       for (a = 0; a < na; a++) { j = act[a]; g[j] = Hg[j] > 0 ? g[j] * c[j] / Hg[j] : 0; }
-      if (it % 200 === 0) {
+      if (st.it % 200 === 0) {
         var gmax = 0;
         for (a = 0; a < na; a++) gmax = Math.max(gmax, g[act[a]]);
-        act = act.filter(function (jj) { if (g[jj] > 1e-14 * gmax) return true; g[jj] = 0; return false; });
+        act = st.act = act.filter(function (jj) { if (g[jj] > 1e-14 * gmax) return true; g[jj] = 0; return false; });
         na = act.length;
       }
-      if (checkpoints && it === checkpoints[cp]) { onCheck(cp, Float64Array.from(g)); cp++; }
     }
     return g;
   }
+  function goldRun(sy, n, iters) { return goldAdvance(goldStart(sy, n), iters); }
 
   function solve(P, K, o, sy) {
     sy = sy || system(P, K, o.source || 'both');
-    if (o.method === 'gold') return goldRun(sy, P.nt, Math.max(1, Math.round(o.iterations || 1e5)));
+    if (o.method === 'gold') return goldRun(sy, P.nt, Math.max(1, Math.round(o.iterations || GOLD_ITER)));
     var NE = normal(sy);
     return o.method === 'fisk' ? fisk(NE, P.nt, o.lambda) : tikhonov(NE, P.nt, o.lambda);
   }
@@ -199,18 +207,20 @@ Y.drt = (function () {
              err: Math.sqrt(err / n), area: area, method: o.method, source: o.source || 'both', lambda: o.lambda, iterations: o.iterations };
   }
 
-  // values to scan: lambda from 1e-6 to 1, or Gold iterations from 100 to 3e5
+  // values to scan: lambda from 1e-6 to 1, or Gold iterations from 100 to GOLD_ITER (50 000)
   function scanValues(method, count) {
     var out = [], k;
     if (method === 'gold') {
-      for (k = 0; k < count; k++) { var v = Math.round(Math.pow(10, 2 + 3.5 * k / (count - 1))); if (!out.length || v > out[out.length - 1]) out.push(v); }
+      var top = Math.log10(GOLD_ITER) - 2;
+      for (k = 0; k < count; k++) { var v = Math.round(Math.pow(10, 2 + top * k / (count - 1))); if (!out.length || v > out[out.length - 1]) out.push(v); }
       return out;
     }
     for (k = 0; k < count; k++) out.push(Math.pow(10, -6 + 6 * k / (count - 1)));
     return out;
   }
 
-  // lambda search, done step by step by the caller: step(k) for lambda k (one step does all for Gold)
+  // lambda search, done step by step by the caller: step(k) for value k, in increasing k (for Gold, each step
+  // continues the iterations of the previous one up to values[k])
   function scanner(ds, o, values) {
     var P = prepare(ds), K = kernels(P), n = P.n, nt = P.nt, sF = system(P, K, o.source || 'both'), sI = system(P, K, 'im');
     var res = { values: values, err: new Float64Array(values.length).fill(NaN), cv: new Float64Array(values.length).fill(NaN) };
@@ -226,11 +236,9 @@ Y.drt = (function () {
       res.err[k] = Math.sqrt(e / n); res.cv[k] = Math.sqrt(cv / n);
     }
     if (o.method === 'gold') {
-      return { total: 1, result: res, step: function () {
-        var gF = [], gI = [], last = values[values.length - 1];
-        goldRun(sF, nt, last, values, function (k, g) { gF[k] = g; });
-        goldRun(sI, nt, last, values, function (k, g) { gI[k] = g; });
-        values.forEach(function (v, k) { score(k, gF[k], gI[k]); });
+      var stF = goldStart(sF, nt), stI = goldStart(sI, nt);
+      return { total: values.length, result: res, step: function (k) {
+        score(k, goldAdvance(stF, values[k]), goldAdvance(stI, values[k]));
       } };
     }
     var NF = normal(sF), NI = normal(sI), fn = o.method === 'fisk' ? fisk : tikhonov;
@@ -285,7 +293,7 @@ Y.drt = (function () {
     return { mod: mod, ph: ph, lz: lz };
   }
 
-  // Z-HIT of a dataset. A gap left by masked points (more than 4 times the usual spacing and half a decade)
+  // Z-HIT of a dataset. A gap in the frequencies (more than 4 times the usual spacing and half a decade)
   // splits the data: each continuous range is rebuilt on its own, since the phase integral cannot cross a gap.
   // Ranges with fewer than 10 points keep their measured values and get no deviation.
   function zhit(ds, o) {
@@ -316,5 +324,5 @@ Y.drt = (function () {
     return { f: c.f, zr: zr, zi: zi, dev: dev, rms: Math.sqrt(rms / done), max: worst, fmax: fw, gap: gap, ranges: segs.length, checked: done };
   }
 
-  return { compute: compute, scanValues: scanValues, scanner: scanner, bestIndex: bestIndex, zhit: zhit, GAMMA: GAMMA };
+  return { compute: compute, scanValues: scanValues, scanner: scanner, bestIndex: bestIndex, zhit: zhit, GAMMA: GAMMA, GOLD_ITER: GOLD_ITER };
 })();

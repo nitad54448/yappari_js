@@ -22,10 +22,22 @@ Y.Plot2D = (function () {
     return (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag;
   }
 
+  // Ticks are counted first and built from their index (at most MAX_TICKS): a range smaller than the floating-point
+  // resolution of its values, or a view zoomed out to huge numbers, cannot turn the loop into an endless one.
+  var MAX_TICKS = 200;
+  function tickCount(first, last, step) {
+    var n = Math.floor((last - first) / step + 1e-9) + 1;
+    if (!(n > 0) || !isFinite(n) || first + step === first) return 0;      // not finite, or below the resolution
+    return Math.min(n, MAX_TICKS);
+  }
+
+  // a spread of the values below ~1e-12 of their size (on a log axis: of a decade) is round-off, shown as one value
+  function roundOff(a, b, log) { return b - a <= 1e-12 * Math.max(Math.abs(a), Math.abs(b), log ? 1 : 0); }
+
   // linear ticks with a shared power of ten for very large / small numbers
   function linTicks(v0, v1, target) {
-    var step = niceStep(v1 - v0, target), t = [], s = Math.ceil(v0 / step) * step;
-    for (var v = s; v <= v1 + step * 1e-9; v += step) t.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+    var step = niceStep(v1 - v0, target), t = [], s = Math.ceil(v0 / step) * step, n = tickCount(s, v1, step);
+    for (var i = 0; i < n; i++) { var v = s + i * step; t.push(Math.abs(v) < step * 1e-9 ? 0 : v); }
     var big = Math.max(Math.abs(v0), Math.abs(v1)), e = big > 0 ? Math.floor(Math.log10(big)) : 0, exp = 0;
     if (e >= 4 || e <= -3) exp = e;
     var sc = Math.pow(10, exp), dec = Math.max(0, Math.min(8, -Math.floor(Math.log10(step / sc) + 1e-9)));
@@ -33,11 +45,12 @@ Y.Plot2D = (function () {
   }
 
   function logTicks(v0, v1, target) {
-    var d0 = Math.ceil(v0 - 1e-9), d1 = Math.floor(v1 + 1e-9), span = v1 - v0, t = [], labels = [], minor = [];
-    var stride = Math.max(1, Math.ceil((d1 - d0 + 1) / Math.max(target, 2)));
-    for (var d = d0; d <= d1; d++) if ((d - d0) % stride === 0) { t.push(d); labels.push('10' + sup(d)); }
-    if (span <= 8) for (var dd = Math.floor(v0); dd <= Math.ceil(v1); dd++) for (var k = 2; k <= 9; k++) {
-      var v = dd + Math.log10(k);
+    var d0 = Math.ceil(v0 - 1e-9), d1 = Math.floor(v1 + 1e-9), span = v1 - v0, t = [], labels = [], minor = [], i;
+    var stride = Math.max(1, Math.ceil((d1 - d0 + 1) / Math.max(target, 2))), n = tickCount(d0, d1, stride);
+    for (i = 0; i < n; i++) { var d = d0 + i * stride; t.push(d); labels.push('10' + sup(d)); }
+    var m0 = Math.floor(v0), nm = span <= 8 ? tickCount(m0, Math.ceil(v1), 1) : 0;     // decades holding minor ticks
+    for (i = 0; i < nm; i++) for (var k = 2; k <= 9; k++) {
+      var v = m0 + i + Math.log10(k);
       if (v > v0 && v < v1) minor.push(v);
     }
     if (t.length < 2 && span < 1.2) return linLabelsOnLog(v0, v1, target);
@@ -119,7 +132,9 @@ Y.Plot2D = (function () {
     });
     if (!isFinite(x0)) { x0 = 0; x1 = 1; y0 = 0; y1 = 1; }
     var pad = function (a, b, log) {
-      if (a === b) { var d = log ? 0.5 : (Math.abs(a) * 0.1 || 1); return [a - d, b + d]; }
+      if (roundOff(a, b, log)) {                                       // one value, or values equal up to round-off
+        var c = (a + b) / 2, d = log ? 0.5 : (Math.abs(c) * 0.1 || 1); return [c - d, c + d];
+      }
       var p = (b - a) * 0.04; return [a - p, b + p];
     };
     var X = pad(x0, x1, this.o.xlog), Yr = pad(y0, y1, this.o.ylog);
@@ -154,7 +169,10 @@ Y.Plot2D = (function () {
         if (a >= x0 && a <= x1 && isFinite(bb)) { if (bb < y0) y0 = bb; if (bb > y1) y1 = bb; }
       }
     });
-    if (isFinite(y0)) { var p = (y1 - y0) * 0.06 || Math.abs(y0) * 0.1 || 1; this.view.y0 = y0 - p; this.view.y1 = y1 + p; }
+    if (isFinite(y0)) {
+      var p = !roundOff(y0, y1, this.o.ylog) ? (y1 - y0) * 0.06 : (this.o.ylog ? 0.5 : Math.abs(y0) * 0.1 || 1);
+      this.view.y0 = y0 - p; this.view.y1 = y1 + p;
+    }
     this.draw();
   };
 

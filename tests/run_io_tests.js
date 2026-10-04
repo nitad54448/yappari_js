@@ -43,7 +43,8 @@ module.exports = function (Y, ok, close) {
   b.mask[2] = 1;
   const txt = Y.writers.dataText([a, b], { sep: 'tab', calc: true }, ds => ({ re: ds.zr.map(v => v + 1), im: ds.zi.map(v => v - 1) }));
   d = R.headerTable(txt, 'export.txt');
-  ok(d.length === 2 && d[0].name === 'first set' && d[1].name === 'second' && d[1].f.length === 3 && d[0].zi[2] === -3, 'Save data export reads back (names, masked point dropped)');
+  ok(d.length === 2 && d[0].name === 'first set' && d[1].name === 'second' && d[1].f.length === 4 && d[1].mask && d[1].mask[2] === 1 &&
+     d[1].mask.reduce((a, m) => a + m, 0) === 1 && !d[0].mask && d[0].zi[2] === -3, 'Save data export reads back (names, masked point kept and marked)');
 
   // custom: Z-MFLI example from the Yappari README
   const zm = 'Temp /K before measurement : 449.810\nmeasure started : 26/07/2023 18:33:58\nT34B descente\ntemp /K : 0.000\nfrequency /Hz, Real Z /Ohm, Im Z /Ohm\n1.000000E+6\t9.414706E+5\t-2.383074E+5\n8.154407E+5\t1.130474E+5\t-6.121182E+4\n\nend of measure : 26/07/2023 18:35:34\nTemp /K after measurement : 449.670 K\n----------\nTemp /K before measurement : 449.660\nmeasure started : 26/07/2023 18:36:07\nT34B descente\ntemp /K : 0.000\nfrequency /Hz, Real Z /Ohm, Im Z /Ohm\n1.000000E+6\t9.664908E+5\t-2.747448E+5\n8.154407E+5\t1.126409E+5\t-6.080259E+4\n6.649436E+5\t9.169096E+4\t-5.206284E+4\n\nend of measure : 26/07/2023 18:37:34\nTemp /K after measurement : 449.600 K\n----------\n';
@@ -89,6 +90,8 @@ module.exports = function (Y, ok, close) {
   // ---------- example files shipped in files/ (from the LabVIEW Yappari) ----------
   const fs = require('fs'), path = require('path'), FILES = path.join(__dirname, '..', 'files');
   const rd = f => fs.readFileSync(path.join(FILES, f), 'utf8'), counts = d => d.map(x => x.f.length).join(',');
+  // sample files that are not in files/ are skipped (named in the output), the other checks still run
+  const has = f => { const yes = fs.existsSync(path.join(FILES, f)); if (!yes) console.log('  skipped, not in files/: ' + f); return yes; };
   const mfli = 'MFLI_Zview_txt_imps_0_sample_00000.txt';
   ['zview', 'threeColumns', 'headerTable', 'auto'].forEach(k => {
     const m = R[k](rd(mfli), mfli, 'auto');
@@ -98,12 +101,16 @@ module.exports = function (Y, ok, close) {
   ok(dz.header === 'Temp /K before measurement : ' && dz.label_length === 6 && dz.separator === 'tab' && dz.ignore_first === 4 && dz.ignore_last === 4, 'Z-MFLI XML definition');
   ok(dh.header === 'Frequency /Hz, Z_r, Z_im, cycle :' && dh.label_length === 4 && dh.column_zi === 3, 'HP 4192A XML definition');
   ok(Y.writers.definitionXML(dz) === rd('Z_MFLI_datafile_example_template.xml') && Y.writers.definitionXML(dh) === rd('custom_hp4192a.xml'), 'XML definitions written byte for byte as LabVIEW');
-  const zmf = R.custom(rd('Z_MFLI.txt'), 'Z_MFLI.txt', dz);
-  ok(zmf.map(x => x.name).join() === 'Z_MFLI_449.81,Z_MFLI_449.66' && counts(zmf) === '19,14' && zmf[1].zi[13] === -9479.804, 'Z_MFLI with its definition, cut-short last dataset kept whole');
-  ok(counts(R.auto(rd('Z_MFLI.txt'), 'Z_MFLI.txt')) === '19,14', 'Z_MFLI dropped without definition');
-  const hp = R.custom(rd('hp4192a.txt'), 'hp4192a.txt', dh);
-  ok(hp.map(x => x.name).join() === 'hp4192a_0,hp4192a_1,hp4192a_2' && counts(hp) === '14,9,9', 'hp4192a with its definition');
-  ok(counts(R.auto(rd('hp4192a.txt'), 'hp4192a.txt')) === '14,9,9', 'hp4192a dropped without definition');
+  if (has('Z_MFLI.txt')) {
+    const zmf = R.custom(rd('Z_MFLI.txt'), 'Z_MFLI.txt', dz);
+    ok(zmf.map(x => x.name).join() === 'Z_MFLI_449.81,Z_MFLI_449.66' && counts(zmf) === '19,14' && zmf[1].zi[13] === -9479.804, 'Z_MFLI with its definition, cut-short last dataset kept whole');
+    ok(counts(R.auto(rd('Z_MFLI.txt'), 'Z_MFLI.txt')) === '19,14', 'Z_MFLI dropped without definition');
+  }
+  if (has('hp4192a.txt')) {
+    const hp = R.custom(rd('hp4192a.txt'), 'hp4192a.txt', dh);
+    ok(hp.map(x => x.name).join() === 'hp4192a_0,hp4192a_1,hp4192a_2' && counts(hp) === '14,9,9', 'hp4192a with its definition');
+    ok(counts(R.auto(rd('hp4192a.txt'), 'hp4192a.txt')) === '14,9,9', 'hp4192a dropped without definition');
+  }
   const ini = R.parseDefinition('[header]=Freq /Hz, Zr , Zi ; Name: \n[label_length]=0\n#data_columns=1,2,3\n');
   ok(ini.header === 'Freq /Hz, Zr , Zi ; Name: ' && ini.column_zr === 2 && ini.separator === 'tab', 'old .ini definition');
   ok(R.lines('a\r\r\nb\r\nc\rd').join('|') === 'a|b|c|d', 'line endings \\r\\r\\n, \\r\\n and \\r');
@@ -119,9 +126,11 @@ module.exports = function (Y, ok, close) {
   ok(worst < 1e-4, 'VersaStudio Z columns equal E/I, same sign convention (max rel. diff ' + worst.toExponential(1) + ')');
   ok(counts(R.auto(par, 'type_VersaStudio.par')) === String(vp[0].f.length), 'VersaStudio recognised automatically');
   // MFLI csv: the sample stops before the frequency, realz and imagz lines -> a message naming what is there
-  let msg = '';
-  try { R.mfliCsv(rd('mfli_imps_csv.txt'), 'mfli_imps_csv.txt'); } catch (e) { msg = e.message; }
-  ok(/abszpwr/.test(msg) && /frequency/.test(msg), 'MFLI csv sample without frequency lines explains why');
+  if (has('mfli_imps_csv.txt')) {
+    let msg = '';
+    try { R.mfliCsv(rd('mfli_imps_csv.txt'), 'mfli_imps_csv.txt'); } catch (e) { msg = e.message; }
+    ok(/abszpwr/.test(msg) && /frequency/.test(msg), 'MFLI csv sample without frequency lines explains why');
+  }
   // the same layout, complete (generated): 3 sweeps of 12 points, the last 2 still nan
   const mkCsv = (sep, withZ) => {
     const n = 12, out = ['chunk' + sep + 'timestamp' + sep + 'size' + sep + 'fieldname' + sep.repeat(n)];

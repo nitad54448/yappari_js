@@ -160,10 +160,11 @@ Y.plots = (function () {
   }
 
   // ---------------------------------------------------------------- frequency labels on the Nyquist plot
+  // nearest point to a frequency, masked or not (a label stays on its point when that point is masked)
   function nearestPoint(ds, fv) {
     var best = -1, bd = Infinity;
     for (var k = 0; k < ds.f.length; k++) {
-      if (ds.mask[k] || !(ds.f[k] > 0)) continue;
+      if (!(ds.f[k] > 0)) continue;
       var d = Math.abs(Math.log(ds.f[k] / fv));
       if (d < bd) { bd = d; best = k; }
     }

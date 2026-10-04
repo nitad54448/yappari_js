@@ -22,7 +22,7 @@ Y.drtTab = (function () {
   function syncControls() {
     var st = S.settings, sl = $('#drt-slider');
     $('#drt-method').value = st.drtMethod; $('#drt-source').value = st.drtSource; $('#drt-x').value = st.drtX;
-    if (gold()) { sl.min = 2; sl.max = 6; sl.step = 0.05; sl.value = st.drtIter; } else { sl.min = -6; sl.max = 0; sl.step = 0.05; sl.value = st.drtLambda; }
+    if (gold()) { sl.min = 2; sl.max = 5; sl.step = 0.05; sl.value = st.drtIter; } else { sl.min = -6; sl.max = 0; sl.step = 0.05; sl.value = st.drtLambda; }   // Gold: 100 to 100 000
     $('#drt-par-name').textContent = gold() ? 'Iterations' : 'λ';
     if (document.activeElement !== $('#drt-par')) $('#drt-par').value = parText();
     $('#drt-search').textContent = gold() ? 'Search iterations…' : 'Search λ…';
