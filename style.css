@@ -548,3 +548,5 @@ button.danger:enabled:hover { background: color-mix(in srgb, var(--err) 88%, var
 /* Custom XML editor: keep its action buttons accessible on narrow screens. */
 dialog.custom-format-dialog { width: min(860px, 94vw); }
 .custom-format-dialog .btns { flex-wrap: wrap; }
+
+#cdc::placeholder { color: var(--ink-3); opacity: .55; font-style: italic; }
