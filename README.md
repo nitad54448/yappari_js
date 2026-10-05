@@ -5,10 +5,7 @@
 One equivalent circuit is fitted to one or to thousands of impedance spectra; the distribution of relaxation
 times (DRT), the Z-HIT check and a Kramers–Kronig test (Lin-KK) complete the analysis.
 
-Open `index.html` in Chrome, Edge or Firefox. A double-click is enough: no server, no installation, and nothing is
-uploaded, all computations run in your browser. The same folder can be published on GitHub Pages. Settings, the last
-circuit, the element start values and the layout (tabs, side panel width) are remembered by the browser
-(localStorage).
+Open the [link](https://nitad54448.github.io/yappari_js/index.html) in Chrome, Edge or Firefox;  no installation, and nothing is uploaded, all computations run in your browser. Settings, the last circuit, the element start values and the layout (tabs, side panel width) are remembered by the browser (localStorage).
 
 **Contents**
 
