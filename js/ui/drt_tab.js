@@ -147,8 +147,9 @@ Y.drtTab = (function () {
     var others = multi ? ' The distributions of ' + (current.all.length - 1) + ' other selected datasets are drawn in their colours' +
       (current.left > 0 ? ' (' + current.left + ' more not drawn)' : '') + '.' : (gold() && S.sel.size > 1 ? ' Gold is slow: only the first selected dataset is drawn.' : '');
     $('#drt-peaks').innerHTML = '<table class="grid compact"><thead><tr><th>Peaks of ' + esc(name) + '</th><th>1/(2πτ) /Hz</th><th>τ /s</th><th>R /' + u + '</th><th>C = τ/R /' + Y.state.unitFor('F', current.ds) + '</th><th>of Rpol</th></tr></thead><tbody>' +
-      (rows || '<tr><td colspan="6">No peak</td></tr>') + '</tbody></table><p class="hint">' + esc(name) + ': R∞ = ' + fmt(r.rinf) + ' ' + u + ' and Rpol = ' + fmt(r.rpol) +
-      ' ' + u + ' from the data, ∫g dlnτ = ' + r.area.toFixed(3) + ', misfit ' + (100 * r.err).toFixed(2) + ' % rms, ' + r.f.length + ' points, ' + r.tau.length + ' τ values, ' +
+      (rows || '<tr><td colspan="6">No peak</td></tr>') + '</tbody></table><p class="hint">' + esc(name) + ': R∞ = ' + fmt(r.rinf) + ' ' + u +
+      (r.source === 'im' ? ' (mean of what remains of Zr)' : ' (fitted with g)') + ', Rpol = ' + fmt(r.rpol) + ' ' + u + ' (area of g), misfit ' +
+      (100 * r.err).toFixed(2) + ' % rms, ' + r.f.length + ' points, ' + r.tau.length + ' τ values, ' +
       Math.round(current.ms) + ' ms. R and C of each peak are estimates, useful as start values.' + others + '</p>';
   }
 

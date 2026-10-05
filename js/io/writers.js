@@ -88,7 +88,8 @@ Y.writers = (function () {
 
   function arr(a) { return Array.prototype.slice.call(a); }
 
-  function projectJSON(state) {
+  // log: the lines of the Log kept for the project ({ t, kind, msg }, Y.ui.logEntries), without Restore buttons
+  function projectJSON(state, log) {
     var m = state.model;
     var doc = {
       format: 'yappari-js-project', version: 1, saved: stamp(),
@@ -98,7 +99,8 @@ Y.writers = (function () {
         return { name: ds.name, f: arr(ds.f), zr: arr(ds.zr), zi: arr(ds.zi), mask: arr(ds.mask),
                  sr: ds.sr ? arr(ds.sr) : null, si: ds.si ? arr(ds.si) : null, notes: ds.notes || [],
                  p: ds.p, fit: ds.fit, stats: ds.stats || null, norm: ds.norm || null };
-      })
+      }),
+      log: log || []
     };
     return JSON.stringify(doc);
   }
@@ -106,7 +108,7 @@ Y.writers = (function () {
   // DRT of several datasets: a summary line per dataset (peaks side by side), then for each dataset the
   // distribution g(tau), the spectrum rebuilt from it and its peaks. items: [{name, r}]
   function drtText(items, sep, how) {
-    var s = SEP[sep] || '\t', out = ['Yappari JS - DRT saved : ' + stamp(), '# ' + how + '; Rinf and Rpol from the data; peak R = Rpol x area, C = tau/R'], most = 0;
+    var s = SEP[sep] || '\t', out = ['Yappari JS - DRT saved : ' + stamp(), '# ' + how + '; Rinf fitted with g (with Zi alone: mean of what remains of Zr), Rpol = area of g; peak R = Rpol x area of the peak, C = tau/R'], most = 0;
     items.forEach(function (it) { most = Math.max(most, it.r.peaks.length); });
     var U = zu(items[0] && items[0].norm), same = items.every(function (it) { return zu(it.norm) === U; }), ru = same ? '/' + U : '', fu = same ? '/' + cu(items[0] && items[0].norm) : '';
     var head = ['Dataset'].concat(same ? [] : ['Z unit'], ['Rinf' + ru, 'Rpol' + ru, 'misfit_rms', 'peaks']);

@@ -5,6 +5,10 @@
  *  Y.pool.fitMany(jobs, onResult, onProgress) -> { promise, cancel, stopped }
  *  Y.pool.globalFit(job) -> { promise, cancel }
  *  Stop (cancel) takes effect at once: the workers still fitting are terminated and replaced by fresh ones.
+ *  A worker only stops by itself on an error outside the fit code, in practice when it runs out of memory: it is
+ *  replaced, the job it was running is tried once more in a fresh worker, and a job that stops a worker twice is
+ *  reported as failed. The main thread would run out of memory the same way and freeze the page, so jobs run there
+ *  only when no worker can be made at all.
  */
 Y.pool = (function () {
   'use strict';
@@ -35,14 +39,11 @@ Y.pool = (function () {
     }
   }
 
-  function terminateAll() {
-    workers.forEach(function (wk) { try { wk.w.terminate(); } catch (e) { /* */ } });
-    workers = []; url = null;
-  }
-  // a worker whose work is abandoned (Stop): terminated, and a fresh one takes its place in the pool
+  var CRASH_MSG = 'the fit stopped its worker twice (out of memory?), so it was not done';
+  // a worker whose work is abandoned (Stop) or that stopped by itself: terminated, and a fresh one takes its place
   function restart(wk) {
     try { wk.w.terminate(); } catch (e) { /* */ }
-    wk.busy = false;
+    wk.busy = false; wk.token = null;
     var at = workers.indexOf(wk);
     if (at < 0) return;
     try { wk.w = new Worker(url); } catch (e) { workers.splice(at, 1); }
@@ -71,29 +72,38 @@ Y.pool = (function () {
       init();
       var all = jobs.map(function (_, k) { return k; });
       if (broken || !workers.length) { mainThread(jobs, all, results, onResult, onProgress, state, function () { resolve(results); }); return; }
-      var next = 0, inflight = 0, failed = false;
+      var next = 0, inflight = 0, fallback = false, retry = [], tries = new Uint8Array(jobs.length);
       var chunk = Math.max(1, Math.min(16, Math.ceil(jobs.length / (workers.length * 6))));
+      function put(k, r) { results[k] = r; onResult(r, k); state.done++; onProgress(state.done, jobs.length); }
+      // the next jobs for a worker: one to try again first, then the next chunk; token: handlers of earlier work ignored
       function feed(wk) {
-        if (failed || state.cancelled) return;
-        if (next >= jobs.length) { wk.busy = false; if (!inflight) resolve(results); return; }
-        var start = next, end = Math.min(jobs.length, next + chunk);
-        next = end; inflight++; wk.busy = true;
+        if (fallback || state.cancelled) return;
+        var start, end;
+        if (retry.length) { start = retry.shift(); end = start + 1; }
+        else if (next < jobs.length) { start = next; end = Math.min(jobs.length, next + chunk); next = end; }
+        else { wk.busy = false; if (!inflight) resolve(results); return; }
+        var token = {};
+        inflight++; wk.busy = true; wk.token = token;
         wk.w.onmessage = function (e) {
-          if (failed || state.cancelled) return;
+          if (wk.token !== token || fallback || state.cancelled) return;
           var d = e.data;
-          results[d.k] = d.result; onResult(d.result, d.k);
-          state.done++;
-          onProgress(state.done, jobs.length);
+          put(d.k, d.result);
           if (d.last) { inflight--; feed(wk); }
         };
         wk.w.onerror = function (ev) {
           if (ev && ev.preventDefault) ev.preventDefault();
-          if (failed || state.cancelled) return;
-          failed = true; broken = true;
-          console.warn('worker failed, continuing on the main thread', ev && ev.message);
-          terminateAll();
-          var todo = all.filter(function (k) { return !results[k]; });
-          mainThread(jobs, todo, results, onResult, onProgress, state, function () { resolve(results); });
+          if (wk.token !== token || fallback || state.cancelled) return;
+          console.warn('a fit worker stopped:', ev && ev.message);
+          inflight--;
+          for (var k = start; k < end; k++) if (!results[k]) {
+            if (tries[k]++) put(k, { id: jobs[k].id, ok: false, msg: CRASH_MSG }); else retry.push(k);
+          }
+          restart(wk);
+          if (workers.length) workers.slice().forEach(function (w2) { if (!w2.busy) feed(w2); });
+          else {                                         // no worker could be made: the rest on the main thread
+            fallback = true; broken = true;
+            mainThread(jobs, all.filter(function (k) { return !results[k]; }), results, onResult, onProgress, state, function () { resolve(results); });
+          }
         };
         wk.w.postMessage({ type: 'fit', first: start, jobs: jobs.slice(start, end) });
       }
@@ -112,32 +122,36 @@ Y.pool = (function () {
   }
 
   // A global fit is one long job: Stop terminates its worker (a fresh one replaces it) and the promise
-  // resolves with { ok: false, cancelled: true }. On the main thread (no workers) it cannot be stopped.
+  // resolves with { ok: false, cancelled: true }. If its worker stops by itself, the fit is tried once more in a fresh
+  // worker, then reported as failed. On the main thread (no workers at all) it cannot be stopped.
   function globalFit(job) {
-    var settle = null, wk = null, finished = false;
-    function finish(r) { if (finished) return; finished = true; if (wk) wk.busy = false; settle(r); }
+    var settle = null, wk = null, finished = false, tries = 0;
+    function finish(r) { if (finished) return; finished = true; if (wk) { wk.busy = false; wk.token = null; } settle(r); }
+    function send() {
+      var token = {};
+      wk.busy = true; wk.token = token;
+      wk.w.onmessage = function (e) { if (wk.token === token) finish(e.data.results[0]); };
+      wk.w.onerror = function (ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (finished || wk.token !== token) return;
+        console.warn('the global-fit worker stopped:', ev && ev.message);
+        restart(wk);
+        if (workers.indexOf(wk) < 0) wk = workers[0] || null;
+        if (wk && !tries++) { send(); return; }                  // once more, in a fresh worker
+        finish({ ok: false, msg: 'the global fit stopped its worker twice (out of memory?), so it was not done; the parameters are unchanged' });
+      };
+      wk.w.postMessage({ type: 'global', job: job });
+    }
     var promise = new Promise(function (resolve) {
       settle = resolve;
       init();
       wk = workers[0] || null;
       if (broken || !wk) { wk = null; setTimeout(function () { if (!finished) finish(Y.globalFit.run(job)); }, 0); return; }
-      wk.busy = true;
-      wk.w.onmessage = function (e) { finish(e.data.results[0]); };
-      wk.w.onerror = function (ev) {
-        if (ev && ev.preventDefault) ev.preventDefault();
-        if (finished) return;
-        broken = true; terminateAll(); wk = null;
-        finish(Y.globalFit.run(job));
-      };
-      wk.w.postMessage({ type: 'global', job: job });
+      send();
     });
     function cancel() {
       if (finished || !wk) return false;
-      try { wk.w.terminate(); } catch (e) { /* */ }
-      var at = workers.indexOf(wk);
-      if (at >= 0) {
-        try { wk.w = new Worker(url); } catch (e) { workers.splice(at, 1); }
-      }
+      restart(wk);
       finish({ ok: false, cancelled: true, msg: 'stopped by the user' });
       return true;
     }

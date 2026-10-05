@@ -303,6 +303,36 @@ with sync_playwright() as p:
     pg.evaluate("Y.state.setSetting('method', 'TRDL'); Y.state.setSetting('maxIter', 2500); Y.cmd.runCommand('select>>^demo_0[0-2]$')")
     pg.click('#btn-fit'); pg.wait_for_function('!Y.state.S.busy', timeout=60000)
     print('  next fit after the stop:', status(pg)[:70])
+    # a project saved with its Log, written in UTF-16 and opened through the file reader: the Log comes back with its
+    # dates, without Restore buttons, and the Log kept for the project continues from it
+    n_log = pg.evaluate('Y.ui.logEntries().length')
+    proj = pg.evaluate('Y.writers.projectJSON(Y.state.S, Y.ui.logEntries())')
+    pg.evaluate("""(t) => { const b = new Uint8Array(2 + 2 * t.length); b[0] = 0xff; b[1] = 0xfe;
+        for (let i = 0; i < t.length; i++) { const c = t.charCodeAt(i); b[2 + 2 * i] = c & 255; b[3 + 2 * i] = c >> 8; }
+        window.__proj = new File([b], 'utf16_project.json'); Y.cmd.readFiles([window.__proj], 'project'); }""", proj)
+    pg.wait_for_selector('#dlg[open] .primary'); pg.click('#dlg .primary'); pg.wait_for_timeout(300)
+    lg = pg.evaluate("[document.querySelectorAll('#log-list li.saved').length, document.querySelector('#log-list li.saved-head span').textContent, "
+                     "document.querySelectorAll('#log-list li.saved [data-restore]').length, Y.ui.logEntries().length]")
+    print('project with its Log, UTF-16 file: %d lines shown (%s), restore buttons among them %d, Log kept %d lines (%d saved + the opening)' % (lg[0], lg[1], lg[2], lg[3], n_log))
+    b.close()
+    # worker failures, simulated: an error event on the worker that received the last job (a wrapper records it)
+    b = p.chromium.launch(); pg = b.new_page()
+    pg.add_init_script("""(() => { const W = window.Worker; window.__lastWorker = null;
+      window.Worker = function (u, o) { const w = new W(u, o), pm = w.postMessage.bind(w);
+        w.postMessage = function (m) { window.__lastWorker = w; return pm(m); }; return w; };
+      window.Worker.prototype = W.prototype; })();""")
+    pg.goto('file://' + os.path.join(ROOT, 'index.html')); pg.wait_for_timeout(500)
+    pg.evaluate("""(() => { Y.state.setModel(Y.circuit.parse('R(RQ)(RQ)')); const prog = Y.state.S.model.prog, f = Y.dataops.logspace(1e6, 1e-2, 200), raws = [];
+      for (let i = 0; i < 2; i++) { const z = Y.circuit.impedance(prog, f, Float64Array.from([50, 1.2e4, 2e-10, 0.93, 4e4, 6e-7, 0.82]));
+        raws.push({ name: 'w_' + i, f: f, zr: z.re, zi: z.im }); }
+      Y.state.addDatasets(raws, { selectAll: true }); })()""")
+    crash = "window.__lastWorker.dispatchEvent(new ErrorEvent('error', { message: 'simulated crash' }));"
+    pg.evaluate('Y.cmd.fitSelected(); ' + crash); pg.wait_for_function('!Y.state.S.busy', timeout=60000); once = status(pg)
+    pg.evaluate('Y.cmd.fitSelected(); ' + crash + crash); pg.wait_for_function('!Y.state.S.busy', timeout=60000); twice = status(pg)
+    pg.evaluate('Y.cmd.globalFit(); ' + crash); pg.wait_for_function('!Y.state.S.busy', timeout=60000); gonce = status(pg)
+    pg.evaluate('Y.cmd.globalFit(); ' + crash + crash); pg.wait_for_function('!Y.state.S.busy', timeout=60000); gtwice = status(pg)
+    print('worker stops once during a fit: %s\n  twice on the same fit: %s' % (once[:70], twice[:110]))
+    print('  global fit, once: %s\n  global fit, twice: %s\n  fits still in workers: %s' % (gonce[:60], gtwice[:120], pg.evaluate('Y.pool.usingWorkers()')))
     b.close()
 print('\n'.join(logs) if logs else 'no console errors or warnings')
 from PIL import Image

@@ -440,7 +440,12 @@ Y.state = (function () {
       if (stats) STAT_NUM.forEach(function (k) { if (k in stats && stats[k] == null) stats[k] = NaN; });
       return Object.assign({}, r, { stats: stats });
     });
-    return { settings: settings, tree: tree, limits: limits, shared: shared, raws: raws };
+    // the Log saved with the project ({ t, kind, msg }); it only informs, so unreadable lines are left out
+    var KINDS = ['info', 'ok', 'warn', 'err', 'cmd'];
+    var log = (Array.isArray(doc.log) ? doc.log : []).filter(function (e) {
+      return isObj(e) && typeof e.msg === 'string' && typeof e.t === 'string' && !isNaN(Date.parse(e.t));
+    }).slice(-5000).map(function (e) { return { t: e.t, kind: KINDS.indexOf(e.kind) >= 0 ? e.kind : 'info', msg: e.msg.slice(0, 2000) }; });
+    return { settings: settings, tree: tree, limits: limits, shared: shared, raws: raws, log: log };
   }
 
   // replaces the circuit, datasets and settings with a project from prepareProject (does not throw)

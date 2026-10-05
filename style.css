@@ -372,6 +372,8 @@ dialog.xl { width: min(1000px, 96vw); }
 .log li { grid-template-columns: 80px minmax(0, 1fr) auto; align-items: baseline; }
 .log .restore { padding: 1px 8px; font-size: 12px; }
 .log-head { margin: 12px 22px 0; max-width: 90ch; }
+.log li.saved { grid-template-columns: 120px minmax(0, 1fr) auto; }       /* lines of an opened project: date and time */
+.log li.saved-head span { font-weight: 600; }
 
 .form-grid [hidden] { display: none !important; }
 .ds .du { flex: none; font-size: 11px; color: var(--ink-2); }

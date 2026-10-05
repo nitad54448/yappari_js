@@ -127,20 +127,44 @@ Y.ui = (function () {
   // snap: id of the restore point taken before the action this line reports (Restore button, js/history.js).
   // merge: key of a burst of small edits (see Y.history.take); with no new restore point, the newest line of the same
   // burst is updated in place instead of a new line being added
+  // The lines kept for the project file ({ t: ISO time, kind, msg }, oldest first): from the start of the page, or from
+  // the log of the project opened last (logLoad). Restore buttons are not part of them.
+  var entries = [], MAX_ENTRIES = 5000;
   function log(msg, kind, snap, merge) {
     var list = $('#log-list');
     if (!list) return;
-    var top = list.firstChild;
+    var top = list.firstChild, now = new Date();
     if (merge && !snap && top && top.getAttribute('data-merge') === merge) {
-      top.querySelector('time').textContent = new Date().toLocaleTimeString();
+      top.querySelector('time').textContent = now.toLocaleTimeString();
       top.querySelector('span').textContent = msg;
+      var last = entries[entries.length - 1];
+      if (last) { last.t = now.toISOString(); last.msg = String(msg); }
       return;
     }
+    entries.push({ t: now.toISOString(), kind: kind || 'info', msg: String(msg) });
+    if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
     var li = h('li', { class: kind || 'info' });
     if (merge) li.setAttribute('data-merge', merge);
     li.innerHTML = '<time>' + new Date().toLocaleTimeString() + '</time><span>' + esc(msg) + '</span>' +
       (snap ? '<button type="button" class="restore" data-restore="' + snap + '" title="Bring back the datasets, the selection and the circuit as they were just before this action">Restore before</button>' : '');
     list.insertBefore(li, list.firstChild);
+    while (list.children.length > 500) list.removeChild(list.lastChild);
+  }
+  function logEntries() { return entries.map(function (e) { return { t: e.t, kind: e.kind, msg: e.msg }; }); }
+  // the log saved with a project being opened (checked by Y.state.prepareProject): shown with its dates under a heading,
+  // and the log kept for the project starts again from it
+  function logLoad(saved, title) {
+    var list = $('#log-list');
+    entries = (saved || []).map(function (e) { return { t: e.t, kind: e.kind, msg: e.msg }; });
+    if (!list || !entries.length) return;
+    entries.forEach(function (e) {
+      var li = h('li', { class: e.kind + ' saved' });
+      li.innerHTML = '<time>' + esc(Y.writers.stamp(new Date(e.t)).slice(0, 16)) + '</time><span>' + esc(e.msg) + '</span>';
+      list.insertBefore(li, list.firstChild);
+    });
+    var head = h('li', { class: 'info saved-head' });
+    head.innerHTML = '<time>' + new Date().toLocaleTimeString() + '</time><span>' + esc(title) + '</span>';
+    list.insertBefore(head, list.firstChild);
     while (list.children.length > 500) list.removeChild(list.lastChild);
   }
   function toast(msg, kind, merge) {
@@ -214,9 +238,13 @@ Y.ui = (function () {
       inp.click();
     });
   }
+  // text of a file, UTF-8 or UTF-16 (Y.readers.decode)
   function readText(file) {
-    if (file.text) return file.text();
-    return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsText(file); });
+    if (file.arrayBuffer) return file.arrayBuffer().then(function (buf) { return Y.readers.decode(new Uint8Array(buf)); });
+    return new Promise(function (res, rej) {
+      var r = new FileReader();
+      r.onload = function () { res(Y.readers.decode(new Uint8Array(r.result))); }; r.onerror = rej; r.readAsArrayBuffer(file);
+    });
   }
 
   // ---------------------------------------------------------------- progress (total < 0: indeterminate)
@@ -230,7 +258,7 @@ Y.ui = (function () {
     lab.textContent = total > 0 ? done + ' / ' + total : (total < 0 ? 'working' : '');
   }
 
-  return { modal: modal, prompt: prompt, confirm: confirm, fieldHTML: fieldHTML, collect: collect, toast: toast, log: log,
+  return { modal: modal, prompt: prompt, confirm: confirm, fieldHTML: fieldHTML, collect: collect, toast: toast, log: log, logEntries: logEntries, logLoad: logLoad,
            menu: menu, closeMenu: closeMenu, able: able, pickFiles: pickFiles, readText: readText, progress: progress,
            esc: esc, h: h, parseNum: parseNum };
 })();

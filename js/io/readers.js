@@ -8,6 +8,21 @@ Y.readers = (function () {
   var SEP_LABEL = { auto: 'auto', tab: 'TAB', space: 'space', comma: ',', semicolon: ';' };
   var SEPARATORS = ['space', 'comma', 'semicolon', 'tab'];            // order of the Yappari 5.1 enum
 
+  // Text of a file from its bytes. UTF-16 ("Unicode text" of Excel or Notepad) when the file starts with its byte-order
+  // mark FF FE or FE FF, or, without one, when every other byte of the start is 0 (plain text in UTF-16); UTF-8
+  // otherwise (a UTF-8 byte-order mark is dropped).
+  function decode(bytes) {
+    var b = bytes, n = b.length, enc = 'utf-8';
+    if (n >= 2 && b[0] === 0xff && b[1] === 0xfe) enc = 'utf-16le';
+    else if (n >= 2 && b[0] === 0xfe && b[1] === 0xff) enc = 'utf-16be';
+    else if (n >= 4) {
+      var m = Math.min(n >> 1, 1000), z0 = 0, z1 = 0;
+      for (var i = 0; i < m; i++) { if (!b[2 * i]) z0++; if (!b[2 * i + 1]) z1++; }
+      if (z1 > 0.4 * m && !z0) enc = 'utf-16le'; else if (z0 > 0.4 * m && !z1) enc = 'utf-16be';
+    }
+    return new TextDecoder(enc).decode(b);
+  }
+
   // \r\n, \r\r\n (MFLI ZView exports) and a lone \r all end a line
   function lines(text) { return String(text).replace(/\r+\n/g, '\n').replace(/\r/g, '\n').split('\n'); }
   function baseName(name) { return String(name || 'data').replace(/^.*[\\/]/, '').replace(/\.[^.]*$/, ''); }
@@ -518,5 +533,5 @@ Y.readers = (function () {
   return { threeColumns: threeColumns, headerTable: headerTable, mfliCsv: mfliCsv, zview: zview, versa: versa, custom: custom,
            numericBlocks: numericBlocks, auto: auto, parseDefinition: parseDefinition, normalizeDef: normalizeDef,
            detectSeparator: detectSeparator, parseHeader: parseHeader, colName: colName, presets: PRESETS, separators: SEPARATORS,
-           baseName: baseName, lines: lines };
+           baseName: baseName, lines: lines, decode: decode };
 })();

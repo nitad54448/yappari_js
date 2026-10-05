@@ -118,7 +118,8 @@ only while a job runs.
 
 All formats are in *File*. Several files can be chosen at once; dropped files are recognised automatically.
 Each spectrum becomes a **dataset** holding the frequency f (Hz), Zr and Zi (Ω, Zi negative for capacitive
-behaviour).
+behaviour). Text files are read as UTF-8, or as UTF-16 when they are written that way (*Unicode text* of Excel or
+Notepad, recognised from the start of the file).
 
 * **3 columns**: f, Zr, Zi, one dataset per file. The separator is detected or set in *Settings → Data files*;
   decimal commas are accepted whenever the separator is not a comma.
@@ -152,7 +153,8 @@ behaviour).
   | Frequency, Zr, Zi columns | Column numbers, counted from 1. |
   | Ignore last | Lines skipped at the end of each dataset; a dataset cut short keeps all its rows. |
 
-* **Open project**: a `.json` project written by *Save project* (also opens when dropped).
+* **Open project**: a `.json` project written by *Save project* (also opens when dropped). The Log saved with it is
+  shown in the Log tab, with its dates, and the Log kept for the project continues from it.
 * **Dropped files** are read automatically: ZView, VersaStudio, tables with headers, or blocks of three numbers
   separated by text lines (`hp4192a.txt` gives its three cycles). Drop a definition file together with data files
   to read them with it.
@@ -292,6 +294,9 @@ them is brought back to the nearest limit.
   Workers (the status bar shows how many). *Stop* ends a running batch at once: the datasets already fitted keep
   their results, the fits still running are abandoned (their workers are replaced) and those datasets keep their
   values. A running global fit is stopped at once and its result discarded (parameters unchanged).
+* A worker that stops by itself (in practice out of memory) is replaced by a fresh one, and the fit it was running
+  is tried once more there; a fit that stops a worker twice is reported as failed. Fits run in this window only
+  when the browser cannot start workers at all.
 * A fit that stops on tiny steps is checked with one Gauss-Newton step; if χ² could still drop noticeably it is
   reported as *stalled, not a minimum* (amber), not as converged.
 * Fit flags (the tick boxes) are per dataset and are copied with the values by *Copy these values to …*.
@@ -416,13 +421,16 @@ the spectrum, residuals and peaks shown are those of the first selected dataset.
 
 $$Z(\omega) = R_\infty + R_\text{pol}\int_{-\infty}^{\infty} \frac{g(\tau)}{1 + j\omega\tau}\,d\ln\tau, \qquad \int g(\tau)\,d\ln\tau = 1$$
 
-* $R_\infty$ = Zr at the highest frequency, $R_\text{pol}$ = Zr at the lowest frequency − $R_\infty$, both from the
-  data, as in Yappari 5.1.
+* $R_\infty$ is fitted together with g: one more unknown (≥ 0, not regularised) of the same least squares;
+  $R_\text{pol}$ is the area of the fitted distribution. With Zi alone, $R_\infty$ is the mean of what remains of Zr.
+  (Yappari 5.1 took $R_\infty$ = Zr at the highest frequency, too high when the high-frequency arc is not complete:
+  on the demo spectra 705 Ω instead of 50 Ω, the missing part showing up as extra peaks.)
 * τ is log-spaced over $1/\omega_\text{max} … 1/\omega_\text{min}$ with the density of the data, at least 10 points
   per decade (so gaps in the frequencies leave no holes in g) and at most 20 (the cost grows as the cube of the
   number of τ values, so dense sweeps stay fast). Masked points are used.
-* Discretised, the problem is $A\,g = y$, where y holds the chosen parts of $(Z - R_\infty)/R_\text{pol}$; dividing by
-  $R_\text{pol}$ makes λ independent of the size of the impedance.
+* Discretised, the problem is $A\,x = y$, where x holds $R_\infty$ and g and y the chosen parts of Z, all divided by
+  the span of Zr (Zr at the lowest minus Zr at the highest frequency, close to $R_\text{pol}$), which makes λ
+  independent of the size of the impedance.
 
 ### Toolbar
 
@@ -444,7 +452,7 @@ $$Z(\omega) = R_\infty + R_\text{pol}\int_{-\infty}^{\infty} \frac{g(\tau)}{1 + 
 ### Choosing λ: Search λ
 
 Scans λ from 10⁻⁶ to 1 (or Gold iterations from 100 to 50 000) and plots the rms misfit of the DRT and a re–im cross-validation (Zr predicted by a DRT
-of Zi alone, compared with the measured Zr, for information). The suggested value is the strongest regularisation
+of Zi alone, its R∞ the mean of what remains of Zr, compared with the measured Zr, for information). The suggested value is the strongest regularisation
 whose misfit stays within 10 % (and 0.1 percentage point) of the best one: the elbow where more smoothing starts to
 cost accuracy. Click the plot to choose another value.
 
@@ -465,11 +473,14 @@ Computes every selected dataset with the current settings and saves a text file:
 ## 10. Z-HIT
 
 *Analysis → Z-HIT of selected datasets* (or `zhit`) checks the consistency of a spectrum (Kramers–Kronig type): ln|Z|
-is rebuilt from the phase φ and compared with the measured |Z|.
+is rebuilt from the phase φ and compared with the measured |Z|. Large selections are computed one dataset at a time, with the progress
+bar.
 
 $$\ln\lvert Z(\omega_0)\rvert = C + \frac{2}{\pi}\int^{\omega_0}\varphi\,d\ln\omega - \frac{\pi}{6}\varphi' - \frac{\pi^3}{360}\varphi''' - \frac{\pi^5}{15120}\varphi^{(5)} - \frac{\pi^7}{604800}\varphi^{(7)}$$
 
-Derivatives are with respect to ln ω; phase is in radians. The phase is interpolated on a uniform ln ω
+Derivatives are with respect to ln ω; phase is in radians. The phase is first unwrapped: going up in frequency,
+2π is added or subtracted where it jumps by more than π, so a phase crossing ±180° (Zr < 0) stays continuous;
+ordinary spectra (Zr > 0) are not changed. It is then interpolated on a uniform ln ω
 grid (natural cubic spline, at least 10 points per decade). By default, local degree-5 polynomial fits
 over a two-decade window estimate the first, third and fifth derivatives; the seventh-derivative term
 is zero. The integration constant C is the median difference between measured and reconstructed
@@ -613,7 +624,7 @@ or double-click renames; drag to reorder. `select>>text` selects by name (regula
 | **Save parameters of selected** | Tab-separated: one line per dataset with R², χ²w, χ²red, and value and SE % of each parameter. |
 | **Save data of selected…** | Measured and/or model Zr, Zi (and σ when present), one block per dataset, chosen separator; masked points included, marked in a `masked` column. Read back with *Table with column headers*; a file with the model values only reads back as data. |
 | **Report of selected datasets** | HTML: statistics, parameters and six plots per dataset (Nyquist, Zr, Zi with residuals, \|Z\|, phase). Up to 30 datasets it opens in a new tab; otherwise it is downloaded. |
-| **Save project** (Ctrl+S) | JSON: data, masks, labels, circuit, limits, shared flags, settings, parameters and statistics of every dataset. *Open project* restores everything. |
+| **Save project** (Ctrl+S) | JSON: data, masks, labels, circuit, limits, shared flags, settings, parameters and statistics of every dataset, and the Log (its lines, without the *Restore before* buttons: from the opening of the page, or from the project opened last, which brings its own Log). *Open project* restores everything. |
 | **Save PNG** | The current plot. |
 | **Save DRT…** | See [Save DRT](#save-drt). |
 | **Settings file** | *Settings → Save settings… / Load settings… / Reset settings*. |
@@ -628,8 +639,13 @@ Before every command or action that changes datasets, a **restore point** keeps 
 parameters, fit results, labels), the selection and the circuit. In the **Log** tab, the line of each such action
 has a *Restore before* button that brings back that state; a restore can itself be restored or undone. `undo` (or
 *Data → Undo the last command*) goes back one step at a time. Steps of the mouse wheel or the arrow keys on one
-parameter that follow each other (less than 1.5 s apart) share one restore point and one line of the Log. Restore points live in memory, up to 256 MB (the
-oldest are dropped first), and are lost when the page is closed: *Save project* keeps a state for good.
+parameter that follow each other (less than 1.5 s apart) share one restore point and one line of the Log.
+
+Restore points are incremental: the data of a dataset (f, Zr, Zi, masks, σ) are copied only when they differ from
+the newest restore point that holds that dataset; otherwise that copy is shared. A fit or a parameter change therefore
+costs a few kilobytes, and only actions that change data (noise, masks, deleted points, normalisation …) copy them.
+Restore points live in memory, up to 256 MB (the oldest are dropped first; none is kept when the datasets alone take
+more), and are lost when the page is closed: *Save project* keeps a state for good.
 
 ---
 

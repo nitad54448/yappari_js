@@ -98,6 +98,7 @@ Y.cmd = (function () {
     if (S.datasets.length && !(await ui.confirm('Opening a project replaces the circuit and the ' + plural(S.datasets.length, 'dataset') + ' in memory.', 'Open project', false, 'Open project'))) return;
     snapshot('opening a project', { settings: true });
     Y.state.commitProject(pj);
+    ui.logLoad(pj.log, 'Log saved with the project, ' + plural(pj.log.length, 'line') + ' (newest first):');
     ui.toast('Opened a project with ' + plural(S.datasets.length, 'dataset') + (S.model.cdc ? ' and the circuit ' + S.model.cdc : '') + '.', 'ok');
   }
 
@@ -453,8 +454,9 @@ Y.cmd = (function () {
   }
   function saveProject() {
     if (!need(S.datasets.length || S.model.prog, 'Nothing to save yet.')) return;
-    Y.writers.download('yappari_project_' + Y.writers.fileStamp() + '.json', Y.writers.projectJSON(S), 'application/json');
-    ui.toast('Saved the project: circuit, settings and ' + plural(S.datasets.length, 'dataset') + '.', 'ok');
+    var lines = ui.logEntries();
+    Y.writers.download('yappari_project_' + Y.writers.fileStamp() + '.json', Y.writers.projectJSON(S, lines), 'application/json');
+    ui.toast('Saved the project: circuit, settings, ' + plural(S.datasets.length, 'dataset') + ' and the Log (' + plural(lines.length, 'line') + ').', 'ok');
   }
   function report() { if (haveModel() && haveSel()) Y.report.open(sel()); }
 
@@ -520,18 +522,20 @@ Y.cmd = (function () {
   function showTab(t) { Y.app.showTab(t); }
   function drtSelected() { if (haveSel()) showTab('drt'); }
   function drtSave() { if (haveSel()) Y.drtTab.saveSelected(); }
+  // Z-HIT of the selected datasets, computed in slices with the progress bar (as the Kramers–Kronig test), so that a
+  // large selection keeps the window responsive; finish() always clears the busy state
   function zhitSelected() {
     if (!idle() || !haveSel()) return;
-    var src = sel(), out = [], lines = [], warnings = [], failed = 0;
-    src.forEach(function (ds) {
+    var src = sel(), out = [], lines = [], warnings = [], failed = 0, i = 0;
+    function one(ds) {
       try {
         var r = Y.drt.zhit(ds);
         var idx = [];
         for (var k = 0; k < r.f.length; k++) if (isFinite(r.dev[k])) idx.push(k);
         out.push({ name: 'zh_' + ds.name,
-          f: Float64Array.from(idx, function (i) { return r.f[i]; }),
-          zr: Float64Array.from(idx, function (i) { return r.zr[i]; }),
-          zi: Float64Array.from(idx, function (i) { return r.zi[i]; }),
+          f: Float64Array.from(idx, function (j) { return r.f[j]; }),
+          zr: Float64Array.from(idx, function (j) { return r.zr[j]; }),
+          zi: Float64Array.from(idx, function (j) { return r.zi[j]; }),
           p: Object.assign({}, ds.p), fit: Object.assign({}, ds.fit), norm: ds.norm });
         lines.push(ds.name + ': ' + (100 * r.rms).toFixed(2) + ' % rms, at most ' + (100 * r.max).toFixed(1) + ' % at ' + Y.plots.fmtF(r.fmax, 3) +
           ', ' + r.checked + ' of ' + r.f.length + ' distinct-frequency points checked' +
@@ -541,19 +545,35 @@ Y.cmd = (function () {
             ' (' + sg.reason + '); omitted from zh_ output.');
         });
       } catch (e) { failed++; ui.toast(ds.name + ': ' + e.message, 'err'); }
-    });
-    if (!out.length) return;
-    snapshot('Z-HIT');
-    var made = Y.state.addDatasets(out, { select: false });
-    Y.state.selectIds(made.map(function (d) { return d.id; }).concat(src.map(function (d) { return d.id; })));
-    lines.forEach(function (l) { ui.log('Z-HIT ' + l, 'info'); });
-    warnings.forEach(function (l) { ui.log('Z-HIT ' + l, 'warn'); });
-    ui.toast('Z-HIT, measured |Z| against |Z| rebuilt from the phase. ' + lines.slice(0, 2).join('; ') + (lines.length > 2 ? ' …' : '') +
-      '. New datasets zh_… contain only checked points and are selected with the originals.' +
-      (warnings.length ? ' ' + warnings.length + ' ranges were not checked; see Log.' : '') +
-      (failed ? ' ' + failed + ' datasets failed; see Log.' : '') +
-      ' Deviations can also reflect noise, endpoints or sharp resonances; this is not a pass/fail test.', warnings.length || failed ? 'warn' : 'info');
+    }
+    function finish(err) {
+      Y.state.setBusy(false);
+      ui.progress(0, 0);
+      if (err) { ui.toast('Z-HIT stopped: ' + ((err && err.message) || err) + '. No dataset was added.', 'err'); return; }
+      if (!out.length) return;
+      snapshot('Z-HIT');
+      var made = Y.state.addDatasets(out, { select: false });
+      Y.state.selectIds(made.map(function (d) { return d.id; }).concat(src.map(function (d) { return d.id; })));
+      lines.forEach(function (l) { ui.log('Z-HIT ' + l, 'info'); });
+      warnings.forEach(function (l) { ui.log('Z-HIT ' + l, 'warn'); });
+      ui.toast('Z-HIT, measured |Z| against |Z| rebuilt from the phase. ' + lines.slice(0, 2).join('; ') + (lines.length > 2 ? ' …' : '') +
+        '. New datasets zh_… contain only checked points and are selected with the originals.' +
+        (warnings.length ? ' ' + warnings.length + ' ranges were not checked; see Log.' : '') +
+        (failed ? ' ' + failed + ' datasets failed; see Log.' : '') +
+        ' Deviations can also reflect noise, endpoints or sharp resonances; this is not a pass/fail test.', warnings.length || failed ? 'warn' : 'info');
+    }
+    ui.progress(0, src.length);
+    Y.state.setBusy(true);
+    (function slice() {
+      try {
+        var t0 = performance.now();
+        while (i < src.length && performance.now() - t0 < 40) one(src[i++]);
+        ui.progress(i, src.length);
+      } catch (e) { finish(e); return; }
+      if (i < src.length) setTimeout(slice, 0); else finish(null);
+    })();
   }
+
 
   // Kramers–Kronig test (Lin-KK, js/core/kk.js). New datasets kk_… hold the fit that obeys the Kramers–Kronig relations,
   // at the distinct measured frequencies. o.M fixes the number of RC elements (kk>>M); otherwise M is where more elements
@@ -757,7 +777,7 @@ Y.cmd = (function () {
              ['MFLI csv…', function () { read('mfli'); }, 'read'],
              ['MFLI ZView .txt, ZView .z…', function () { read('zview'); }, 'read'],
              ['VersaStudio .par…', function () { read('versa'); }, 'read'],
-             ['Table with column headers (EC-Lab, Gamry, saved data)…', function () { read('table'); }, 'read'],
+             ['Table with column headers…', function () { read('table'); }, 'read'],
              ['Custom format, Yappari 5.1 definition…', customDialog, 'read'], null,
              ['Open project…', function () { read('project'); }, 'read'], ['Save project', saveProject, 'saveProject'], null,
              ['Save parameters of selected', saveParams, 'withModel'], ['Save data of selected…', saveData, 'selection'],

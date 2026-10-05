@@ -105,7 +105,7 @@ module.exports = function (Y, ok, close) {
   }
 
   // ---------- 8. version string
-  ok(/^\d+\.\d+\.\d+ /.test(Y.version), 'version string ' + Y.version);
+  ok(/^\d+\.\d+(\.\d+)? /.test(Y.version), 'version string ' + Y.version);
 
   // ---------- 10. settings from files and from the browser: values out of range are not used
   {
