@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<impedanceFormat version="1">
+  <description>HP 4192A (custom_hp4192a.xml)</description>
+  <table delimiter="tab" decimalSeparator="auto" commentPrefix="" missingValues="NA;NaN;N/A"/>
+  <datasets mode="repeatedHeader">
+    <header match="contains">Frequency /Hz, Z_r, Z_im, cycle :</header>
+    <label source="afterHeader" length="4"/>
+    <endMarker></endMarker>
+    <skipLines afterHeader="0" beforeEnd="0" footerPolicy="keepNumeric"/>
+  </datasets>
+  <columns numbering="1" representation="cartesian">
+    <frequency column="1" unit="Hz"/>
+    <real column="2" unit="ohm"/>
+    <imaginary column="3" unit="ohm" sign="Zi"/>
+  </columns>
+  <invalidRows action="skipAndReport"/>
+</impedanceFormat>

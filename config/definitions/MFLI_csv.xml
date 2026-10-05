@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<impedanceFormat version="2" reader="mfliCsv">
+  <description>Zurich Instruments LabOne sweep CSV: quantities stored across rows, grouped by chunk.</description>
+</impedanceFormat>

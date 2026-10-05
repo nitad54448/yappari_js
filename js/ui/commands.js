@@ -20,6 +20,8 @@ Y.cmd = (function () {
   var READ = {
     three: function (t, n) { return Y.readers.threeColumns(t, n, S.settings.sep); },
     table: function (t, n) { return Y.readers.headerTable(t, n); },
+    gamry: function (t, n) { return Y.readers.gamryDTA(t, n); },
+    biologic: function (t, n) { return Y.readers.biologicMPT(t, n); },
     zview: function (t, n) { return Y.readers.zview(t, n); },
     versa: function (t, n) { return Y.readers.versa(t, n); },
     mfli: function (t, n) { return Y.readers.mfliCsv(t, n); },
@@ -102,72 +104,145 @@ Y.cmd = (function () {
     ui.toast('Opened a project with ' + plural(S.datasets.length, 'dataset') + (S.model.cdc ? ' and the circuit ' + S.model.cdc : '') + '.', 'ok');
   }
 
-  // custom formats: the fields and their order are those of the Yappari 5.1 definition XML
-  var SEP_OK = ['space', 'comma', 'semicolon', 'tab'];
-  var DEF0 = { header: '', label_length: 0, separator: 'tab', ignore_first: 0, column_freq: 1, column_zr: 2, column_zi: 3, ignore_last: 0 };
+  // Native XML version 1. Keep every supported setting visible and round-trippable.
   var DEF_FIELDS = [
-    { key: 'header', label: 'Header', type: 'text', hint: 'Text in front of every dataset; it can be part of a longer line.' },
-    { key: 'label_length', label: 'Label length', type: 'number', hint: 'Characters after the header added to the dataset name; 0 numbers the datasets.' },
-    { key: 'separator', label: 'Data separator', type: 'select', options: [['space', 'Space'], ['comma', 'Comma'], ['semicolon', 'Semicolon'], ['tab', 'TAB']] },
-    { key: 'ignore_first', label: 'Ignore first', type: 'number', hint: 'Lines skipped after the header line.' },
-    { key: 'column_freq', label: 'Frequency column', type: 'number', hint: 'Columns count from 1.' },
-    { key: 'column_zr', label: 'Zr column', type: 'number' },
-    { key: 'column_zi', label: 'Zi column', type: 'number' },
-    { key: 'ignore_last', label: 'Ignore last', type: 'number', hint: 'Lines skipped at the end of each dataset. A dataset that ends without them keeps all its rows.' }
+    { key: 'reader', label: 'File layout', type: 'select', options: [['table', 'Custom table'], ['mfliCsv', 'MFLI CSV (LabOne)'], ['zview', 'MFLI ZView / ZView'], ['yappariJS', 'Yappari JS Save data']] },
+    { key: 'data_source', label: 'Impedance to load', type: 'select', options: [['auto', 'Measured if present, otherwise model'], ['measured', 'Measured Zr, Zi'], ['model', 'Model Zr, Zi']] },
+    { key: 'description', label: 'Description', type: 'text' },
+    { key: 'mode', label: 'Dataset separation', type: 'select', options: [['repeatedHeader', 'Repeated header'], ['single', 'One dataset per file'], ['blankLines', 'Blank lines']] },
+    { key: 'header', label: 'Header text', type: 'text', hint: 'Literal text; spaces are significant. Used in repeated-header mode.' },
+    { key: 'header_match', label: 'Header matching', type: 'select', options: [['contains', 'Contains'], ['startsWith', 'Starts with'], ['exact', 'Exact line']] },
+    { key: 'label_source', label: 'Dataset label', type: 'select', options: [['afterHeader', 'Text after header'], ['index', 'Dataset number']] },
+    { key: 'label_length', label: 'Label length', type: 'number', hint: '0 keeps the full text after the header; otherwise maximum character count.' },
+    { key: 'end_marker', label: 'End marker', type: 'text', hint: 'Optional literal text ending a dataset. The marker line is excluded.' },
+    { key: 'ignore_first', label: 'Skip first lines', type: 'number', hint: 'Per dataset, after its header; from the beginning in single/blank-line mode.' },
+    { key: 'ignore_last', label: 'Skip last lines', type: 'number' },
+    { key: 'footer_policy', label: 'Footer policy', type: 'select', options: [['keepNumeric', 'Keep trailing lines if all are valid data'], ['always', 'Always skip the specified lines']] },
+    { key: 'separator', label: 'Delimiter', type: 'select', options: [['auto', 'Detect automatically'], ['tab', 'TAB'], ['space', 'Whitespace'], ['comma', 'Comma'], ['semicolon', 'Semicolon']] },
+    { key: 'decimal_separator', label: 'Decimal separator', type: 'select', options: [['auto', 'Automatic'], ['.', 'Point'], [',', 'Comma']] },
+    { key: 'comment_prefix', label: 'Comment prefix', type: 'text', hint: 'Optional prefix for whole comment lines, e.g. #.' },
+    { key: 'missing_values', label: 'Missing values', type: 'text', hint: 'Semicolon-separated markers, e.g. NA;NaN;N/A. Empty fields are always missing.' },
+    { key: 'representation', label: 'Impedance representation', type: 'select', options: [['cartesian', 'Real and imaginary'], ['polar', 'Magnitude and phase']] },
+    { key: 'column_freq', label: 'Frequency column', type: 'number', hint: 'All column numbers start at 1.' },
+    { key: 'column_zr', label: 'Real / magnitude column', type: 'number' },
+    { key: 'column_zi', label: 'Imaginary / phase column', type: 'number' },
+    { key: 'frequency_unit', label: 'Frequency unit', type: 'select', options: [['Hz', 'Hz'], ['kHz', 'kHz'], ['MHz', 'MHz'], ['rad/s', 'rad/s']] },
+    { key: 'impedance_unit', label: 'Impedance unit', type: 'select', options: [['ohm', 'Ω'], ['kohm', 'kΩ'], ['Mohm', 'MΩ'], ['mohm', 'mΩ']] },
+    { key: 'phase_unit', label: 'Phase unit (polar)', type: 'select', options: [['deg', 'Degrees'], ['rad', 'Radians']] },
+    { key: 'negate_zi', label: 'Imaginary column contains −Zi', type: 'checkbox', hint: 'Cartesian only. Convert the stored −Zi to Zi.' },
+    { key: 'invalid_rows', label: 'Invalid data rows', type: 'select', options: [['skipAndReport', 'Skip and report'], ['error', 'Stop with an error']] }
   ];
 
   function customDialog() {
     if (!idle()) return;
-    var def = Object.assign({}, DEF0, Y.state.load('customdef') || {}), presets = Y.readers.presets, chosen = null, cluster = def.cluster;
-    if (SEP_OK.indexOf(def.separator) < 0) def.separator = 'tab';
+    var def, chosen = null, request = 0, busy = false;
+    try { def = Y.readers.upgradeDefinition(Y.state.load('customdef') || Object.assign({}, Y.readers.modernDefaults, { mode: 'single' })); }
+    catch (e) { def = Object.assign({}, Y.readers.modernDefaults, { mode: 'single' }); }
     var body = document.createElement('div');
-    body.innerHTML = '<p class="intro">For files holding several datasets that each start with the same header text. Definitions are the XML files of Yappari 5.1: load one, pick a preset, or fill in the fields and save them.</p>' +
-      '<div class="form-grid"><label for="f_preset">Preset</label><div><select id="f_preset"><option value="">None</option>' +
-      Object.keys(presets).map(function (k) { return '<option>' + ui.esc(k) + '</option>'; }).join('') + '</select></div>' +
-      DEF_FIELDS.map(function (f) { return ui.fieldHTML(Object.assign({}, f, { value: def[f.key] })); }).join('') + '</div>';
+    body.innerHTML = '<p class="intro">XML definitions (versions 1 and 2). Presets are listed in config/definitions/index.json. Select a preset, load an XML file, or edit the settings below.</p>' +
+      '<div class="form-grid"><label for="f_preset">Preset</label><div><select id="f_preset" disabled><option value="">Loading presets…</option></select><small id="preset-status" role="status"></small></div>' +
+      DEF_FIELDS.map(function (f) { return ui.fieldHTML(Object.assign({}, f, { value: def[f.key] })); }).join('') + '</div>' +
+      '<div id="definition-preview" role="status" style="margin-top:1em;white-space:pre-wrap"></div>';
+    var select = body.querySelector('#f_preset'), status = body.querySelector('#preset-status'), preview = body.querySelector('#definition-preview');
+    function setBusy(value) { busy = value; body.querySelectorAll('[data-key]').forEach(function (e) { e.disabled = value; }); }
+    function showLayout() {
+      var kind = body.querySelector('[data-key="reader"]').value;
+      DEF_FIELDS.forEach(function (f) {
+        var visible = f.key === 'reader' || f.key === 'description' || (f.key === 'data_source' ? kind === 'yappariJS' : kind === 'table');
+        var e = body.querySelector('[data-key="' + f.key + '"]');
+        e.parentElement.hidden = !visible;
+        body.querySelector('label[for="f_' + f.key + '"]').hidden = !visible;
+      });
+    }
     function fill(d) {
       DEF_FIELDS.forEach(function (f) {
-        var e = body.querySelector('[data-key="' + f.key + '"]'), v = d[f.key];
-        if (f.key === 'separator' && SEP_OK.indexOf(v) < 0) v = 'tab';
-        e.value = v == null ? '' : v;
+        var e = body.querySelector('[data-key="' + f.key + '"]');
+        if (f.type === 'checkbox') e.checked = d[f.key] || false; else e.value = d[f.key] == null ? Y.readers.modernDefaults[f.key] : d[f.key];
         e.classList.remove('invalid');
       });
-      cluster = d.cluster;
+      showLayout(); preview.textContent = '';
     }
     function grab() {
-      var v = ui.collect(body, DEF_FIELDS);
-      if (!v) return null;
-      if (!v.header) { body.querySelector('[data-key="header"]').classList.add('invalid'); ui.toast('Enter the header text that starts each dataset.', 'warn'); return null; }
-      ['label_length', 'ignore_first', 'ignore_last'].forEach(function (k) { v[k] = Math.max(0, Math.round(v[k])); });
-      ['column_freq', 'column_zr', 'column_zi'].forEach(function (k) { v[k] = Math.max(1, Math.round(v[k])); });
-      v.cluster = cluster;
-      return v;
+      if (busy) { ui.toast('Wait for the definition to finish loading.', 'info'); return null; }
+      var v = ui.collect(body, DEF_FIELDS); if (!v) return null;
+      try { return Y.readers.normalizeModern(Object.assign(v, { format_version: 2 })); }
+      catch (e) { ui.toast(e.message, 'warn'); return null; }
     }
-    body.querySelector('#f_preset').addEventListener('change', function (e) { if (presets[e.target.value]) fill(Object.assign({}, DEF0, presets[e.target.value])); });
+    async function getText(url) {
+      var response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) throw new Error('HTTP ' + response.status + ' for ' + url);
+      return response.text();
+    }
+    async function loadIndex() {
+      try {
+        var index = JSON.parse(await getText('config/definitions/index.json'));
+        if (!index || !Array.isArray(index.definitions)) throw new Error('index.json must contain a definitions array.');
+        var names = index.definitions;
+        if (names.some(function (n) { return typeof n !== 'string' || !/^[^/\\\x00-\x1f]+\.xml$/i.test(n) || n.indexOf('..') >= 0; })) throw new Error('Use XML filenames only, without directory paths.');
+        names = Array.from(new Set(names)).sort(function (a, b) { return a.localeCompare(b); });
+        select.innerHTML = '<option value="">None — manual settings</option>';
+        names.forEach(function (name) { var o = document.createElement('option'); o.value = name; o.textContent = name; select.appendChild(o); });
+        select.disabled = false;
+        status.textContent = names.length ? names.length + ' XML definitions available.' : 'No definitions listed. Load a file or enter settings.';
+      } catch (e) {
+        select.innerHTML = '<option value="">Presets unavailable</option>';
+        status.textContent = 'Could not load config/definitions/index.json: ' + e.message + '. Use Load definition or manual settings. Serve the app over HTTP(S).';
+      }
+    }
+    select.addEventListener('change', async function () {
+      var id = ++request, name = select.value;
+      if (!name) { setBusy(false); return; }
+      setBusy(true); status.textContent = 'Loading ' + name + '…';
+      try {
+        var d = Y.readers.upgradeDefinition(Y.readers.parseDefinition(await getText('config/definitions/' + encodeURIComponent(name))));
+        if (id !== request) return;
+        fill(d); status.textContent = name + ' loaded.';
+      } catch (e) {
+        if (id !== request) return;
+        select.value = ''; status.textContent = 'Could not load ' + name + ': ' + e.message + '. Previous settings retained.';
+      } finally { if (id === request) setBusy(false); }
+    });
+    body.addEventListener('input', function (e) {
+      if (e.target.hasAttribute('data-key')) { select.value = ''; status.textContent = 'Manual settings (edited).'; preview.textContent = ''; }
+    });
+    showLayout();
+    body.addEventListener('change', showLayout);
+    loadIndex();
     return ui.modal({
-      title: 'Read a custom format', body: body, wide: true,
+      title: 'Custom format, xml', body: body, wide: true,
+      onOpen: function () { body.closest('dialog').classList.add('custom-format-dialog'); },
       buttons: [
         { label: 'Load definition…', left: true, close: false, onClick: function () {
-          ui.pickFiles({ accept: '.xml,.ini,.json' }).then(function (fs) {
+          ui.pickFiles({ accept: '.xml,.ini,.json' }).then(async function (fs) {
             if (!fs.length) return;
-            return ui.readText(fs[0]).then(function (t) {
-              fill(Y.readers.parseDefinition(t));
-              body.querySelector('#f_preset').value = '';
-              ui.toast('Definition ' + fs[0].name + ' loaded.', 'info');
-            });
-          }).catch(function (e) { ui.toast('Not a definition file: ' + e.message, 'err'); });
+            var id = ++request; setBusy(true);
+            try {
+              var d = Y.readers.upgradeDefinition(Y.readers.parseDefinition(await ui.readText(fs[0])));
+              if (id !== request) return;
+              fill(d); select.value = ''; status.textContent = fs[0].name + ' loaded.';
+            } finally { if (id === request) setBusy(false); }
+          }).catch(function (e) { ui.toast('Not a usable definition: ' + e.message, 'err'); });
         } },
         { label: 'Save definition…', left: true, close: false, onClick: function () {
-          var v = grab();
-          if (!v) return;
-          var name = 'custom_' + (v.header.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'definition') + '.xml';
+          var v = grab(); if (!v) return;
+          var name = select.value || 'custom_' + ((v.description || v.header).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'definition') + '.xml';
           Y.writers.download(name, Y.writers.definitionXML(v), 'application/xml');
-          ui.toast('Saved ' + name + ', a Yappari 5.1 definition that the LabVIEW version reads too.', 'ok');
+          ui.toast('Downloaded ' + name + '. To make it a preset, place it in config/definitions/ and add its filename to index.json.', 'ok');
+        } },
+        { label: 'Preview data…', close: false, onClick: function () {
+          var v = grab(); if (!v) return;
+          ui.pickFiles({ multiple: false }).then(async function (fs) {
+            if (!fs.length) return;
+            var got = Y.readers.custom(await ui.readText(fs[0]), fs[0].name, v);
+            preview.textContent = got.length + ' dataset(s), ' + got.reduce(function (n, d) { return n + d.f.length; }, 0) + ' points, ' + (got.skipped || 0) + ' invalid row(s) skipped.\n' +
+              got.slice(0, 5).map(function (d) { return d.name + ': ' + d.f.length + ' points; first point: f=' + d.f[0] + ' Hz, Zr=' + d.zr[0] + ' Ω, Zi=' + d.zi[0] + ' Ω'; }).join('\n') + (got.warning ? '\n' + got.warning : '');
+          }).catch(function (e) { preview.textContent = e.message; });
         } },
         { label: 'Cancel', value: null },
         { label: 'Choose data files…', primary: true, onClick: function () { chosen = grab(); return !!chosen; }, value: function () { return chosen; } }
       ]
     }).then(function (v) {
+      ++request;
       if (!v) return;
       Y.state.store('customdef', v);
       return ui.pickFiles({ multiple: true }).then(function (fs) { if (fs.length) return readFiles(fs, 'custom', v); });
@@ -774,11 +849,12 @@ Y.cmd = (function () {
   function init() {
     var M = {                                  // label, command, availability rule (see WHY)
       file: [['3 columns: f, Zr, Zi…', function () { read('three'); }, 'read'],
-             ['MFLI csv…', function () { read('mfli'); }, 'read'],
-             ['MFLI ZView .txt, ZView .z…', function () { read('zview'); }, 'read'],
-             ['VersaStudio .par…', function () { read('versa'); }, 'read'],
              ['Table with column headers…', function () { read('table'); }, 'read'],
-             ['Custom format, Yappari 5.1 definition…', customDialog, 'read'], null,
+             ['ZView .z / .txt…', function () { read('zview'); }, 'read'], null,
+             ['BioLogic MPT…', function () { read('biologic'); }, 'read'],
+             ['Gamry DTA…', function () { read('gamry'); }, 'read'],
+             ['VersaStudio .par…', function () { read('versa'); }, 'read'],
+             ['Custom format, xml', customDialog, 'read'], null,
              ['Open project…', function () { read('project'); }, 'read'], ['Save project', saveProject, 'saveProject'], null,
              ['Save parameters of selected', saveParams, 'withModel'], ['Save data of selected…', saveData, 'selection'],
              ['Report of selected datasets', report, 'withModel'], null,

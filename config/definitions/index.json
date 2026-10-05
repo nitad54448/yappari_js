@@ -1,0 +1,9 @@
+{
+  "definitions": [
+    "SP2M_ZHT_Mfli.xml",
+    "SP2M_HP4192a.xml",
+    "MFLI_csv.xml",
+    "MFLI_ZView.xml",
+    "Yappari_JS.xml"
+  ]
+}

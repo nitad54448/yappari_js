@@ -48,12 +48,12 @@ module.exports = function (Y, ok, close) {
 
   // custom: Z-MFLI example from the Yappari README
   const zm = 'Temp /K before measurement : 449.810\nmeasure started : 26/07/2023 18:33:58\nT34B descente\ntemp /K : 0.000\nfrequency /Hz, Real Z /Ohm, Im Z /Ohm\n1.000000E+6\t9.414706E+5\t-2.383074E+5\n8.154407E+5\t1.130474E+5\t-6.121182E+4\n\nend of measure : 26/07/2023 18:35:34\nTemp /K after measurement : 449.670 K\n----------\nTemp /K before measurement : 449.660\nmeasure started : 26/07/2023 18:36:07\nT34B descente\ntemp /K : 0.000\nfrequency /Hz, Real Z /Ohm, Im Z /Ohm\n1.000000E+6\t9.664908E+5\t-2.747448E+5\n8.154407E+5\t1.126409E+5\t-6.080259E+4\n6.649436E+5\t9.169096E+4\t-5.206284E+4\n\nend of measure : 26/07/2023 18:37:34\nTemp /K after measurement : 449.600 K\n----------\n';
-  d = R.custom(zm, 'ZMFLI_datafile_example.dat', R.presets['Z-MFLI (Z_MFLI_datafile_example_template.xml)']);
+  d = R.custom(zm, 'ZMFLI_datafile_example.dat', { header: 'Temp /K before measurement : ', label_length: 6, separator: 'tab', ignore_first: 4, column_freq: 1, column_zr: 2, column_zi: 3, ignore_last: 4 });
   ok(d.length === 2 && d[0].name === 'ZMFLI_datafile_example_449.81' && d[1].f.length === 3 && d[1].zi[2] === -5.206284E+4, 'custom Z-MFLI definition: ' + d.map(x => x.name + ':' + x.f.length).join(','));
 
   // custom: 5-column export, reading calculated columns
   const five = 'dev3221_imps_34, freq /Hz, Zr , Zi, Zr calc, Zi calc\n5.000000E+6;2.308040E+3;-4.358320E+3;2.656137E+3;-6.062695E+3\n4.304039E+6;2.506840E+3;-5.120760E+3;3.017911E+3;-6.767093E+3\ndev3221_imps_33, freq /Hz, Zr , Zi, Zr calc, Zi calc\n5.000000E+6;2.302790E+3;-4.372530E+3;2.825870E+3;-6.215076E+3\n';
-  d = R.custom(five, 'example_custom_5_columns.dat', R.presets['Yappari 5-column export, calculated Z (dev3221_imps_)']);
+  d = R.custom(five, 'example_custom_5_columns.dat', { header: 'dev3221_imps_', label_length: 2, separator: 'semicolon', ignore_first: 0, column_freq: 1, column_zr: 4, column_zi: 5, ignore_last: 0 });
   ok(d.length === 2 && d[0].name.endsWith('_34') && d[0].zr[1] === 3.017911E+3 && d[1].zi[0] === -6.215076E+3, 'custom 5-column definition');
 
   // ZView .z
@@ -63,6 +63,27 @@ module.exports = function (Y, ok, close) {
   // VersaStudio
   d = R.versa('<Application>x</Application>\n<Segment1>\nDefinition=Segment #, Point #, E(V), I(A), Frequency(Hz), Z Real, Z Imag\n1,0,0,0,1000,12.5,-3.5\n1,1,0,0,100,22.5,-8\n</Segment1>\n', 'v.par');
   ok(d.length === 1 && d[0].zr[0] === 12.5 && d[0].zi[1] === -8, 'VersaStudio segment');
+
+  // Explicit File-menu vendor readers: no positional fallback.
+  const gdta = 'EXPLAIN\nTAG\tEIS\nZCURVE\tTABLE\t2\n\tPt\tTime\tFreq\tZreal\tZimag\n\t#\ts\tHz\tohm\tohm\n\t0\t0\t1000\t12\t-3\n\t1\t1\t100\t20\t-8\n';
+  d = R.gamryDTA(gdta, 'gamry.DTA');
+  ok(d.length === 1 && d[0].f.length === 2 && d[0].zr[0] === 12 && d[0].zi[1] === -8, 'Gamry DTA reads heading and units rows');
+  d = R.gamryDTA(gdta + gdta.replace('ZCURVE', 'ZCURVE1'), 'gamry.DTA');
+  ok(d.length === 2 && d[1].name === 'gamry_1', 'Gamry multiple ZCURVE sections');
+  let rejected = false;
+  try { R.gamryDTA('1000 12 -3', 'bad.DTA'); } catch (e) { rejected = /ZCURVE/.test(e.message); }
+  ok(rejected, 'Gamry rejects non-impedance input');
+  const mpt = 'EC-Lab ASCII FILE\nNb header lines : 4\nPEIS\nfreq/Hz\tRe(Z)/Ohm\t-Im(Z)/Ohm\tcycle number\n1000\t12\t3\t1\n100\t20\t8\t1\n1000\t15\t4\t2\n100\t25\t9\t2\n';
+  d = R.biologicMPT(mpt, 'bio.mpt');
+  ok(d.length === 2 && d[0].f.length === 2 && d[1].zr[0] === 15 && d[1].zi[1] === -9, 'BioLogic header count, negative imaginary and cycle grouping');
+  d = R.biologicMPT(mpt.replace('12\t3', '12,5\t3,5'), 'bio.mpt');
+  ok(d[0].zr[0] === 12.5 && d[0].zi[0] === -3.5, 'BioLogic decimal commas');
+  rejected = false;
+  try { R.biologicMPT(mpt.replace('lines : 4', 'lines : 3'), 'bad.mpt'); } catch (e) { rejected = /header/.test(e.message); }
+  ok(rejected, 'BioLogic rejects invalid header count');
+  rejected = false;
+  try { R.biologicMPT('BIO-LOGIC MODULAR FILE', 'bad.mpr'); } catch (e) { rejected = /binary/.test(e.message); }
+  ok(rejected, 'BioLogic rejects binary MPR');
 
   // auto
   ok(R.auto('1 2 3\n4 5 6\n', 'x.txt', 'auto')[0].f.length === 2, 'auto falls back to 3 columns');
@@ -100,7 +121,7 @@ module.exports = function (Y, ok, close) {
   const dz = R.parseDefinition(rd('Z_MFLI_datafile_example_template.xml')), dh = R.parseDefinition(rd('custom_hp4192a.xml'));
   ok(dz.header === 'Temp /K before measurement : ' && dz.label_length === 6 && dz.separator === 'tab' && dz.ignore_first === 4 && dz.ignore_last === 4, 'Z-MFLI XML definition');
   ok(dh.header === 'Frequency /Hz, Z_r, Z_im, cycle :' && dh.label_length === 4 && dh.column_zi === 3, 'HP 4192A XML definition');
-  ok(Y.writers.definitionXML(dz) === rd('Z_MFLI_datafile_example_template.xml') && Y.writers.definitionXML(dh) === rd('custom_hp4192a.xml'), 'XML definitions written byte for byte as LabVIEW');
+  ok(Y.writers.definitionXML(dz).includes('<impedanceFormat version="1">') && Y.writers.definitionXML(dh).includes('<frequency column="1" unit="Hz"/>'), 'Legacy definitions export as native XML version 1');
   if (has('Z_MFLI.txt')) {
     const zmf = R.custom(rd('Z_MFLI.txt'), 'Z_MFLI.txt', dz);
     ok(zmf.map(x => x.name).join() === 'Z_MFLI_449.81,Z_MFLI_449.66' && counts(zmf) === '19,14' && zmf[1].zi[13] === -9479.804, 'Z_MFLI with its definition, cut-short last dataset kept whole');

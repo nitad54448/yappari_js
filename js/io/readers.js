@@ -1,7 +1,7 @@
 /*  File readers. Each returns an array of { name, f, zr, zi } (Float64Arrays; Zi as measured, i.e.
  *  negative for capacitive behaviour), with mask (Uint8Array) when a table marks masked points. Decimal commas are accepted whenever the field separator is not a comma.
- *  Custom-format definitions are read from Yappari 5.1 XML files (LabVIEW; also written by
- *  writers.definitionXML), from the older .ini form, or from JSON.  DOM-free.
+ *  Native XML v1 definitions use browser DOMParser. Legacy LabVIEW XML, INI and JSON
+ *  remain readable; numerical readers are DOM-free. writers.definitionXML writes native XML.
  */
 Y.readers = (function () {
   'use strict';
@@ -178,7 +178,7 @@ Y.readers = (function () {
     return o.k > 0 ? o : null;
   }
   function headerTable(text, fileName) { return isMfliCsv(text) ? mfliCsv(text, fileName) : tableRows(text, fileName); }
-  function tableRows(text, fileName) {
+  function tableRows(text, fileName, groupHeading) {
     var L = lines(text), out = [], base = baseName(fileName), i = 0, pendingName = null, pendingNorm = null, count = 0, skipped = 0;
     while (i < L.length) {
       var nm = nameLine(L[i].trim());
@@ -187,6 +187,10 @@ Y.readers = (function () {
       if (nz) { pendingNorm = nz; i++; continue; }
       var h = parseHeader(L[i]);
       if (!h) { i++; continue; }
+      if (groupHeading) {
+        var groupCols = splitter(h.sep)(L[i]).map(colName), groupColumn = groupCols.indexOf(groupHeading);
+        if (groupColumn >= 0) { h.cc = groupColumn; h.maxCol = Math.max(h.maxCol, groupColumn); }
+      }
       var j, sep = h.sep;
       for (j = i + 1; j < L.length; j++) {
         var t0 = L[j].trim();
@@ -244,6 +248,34 @@ Y.readers = (function () {
     if (!out.length) throw new Error(base + ': no column header with frequency, real and imaginary impedance found');
     out.skipped = skipped;
     return out;
+  }
+
+  // Explicit vendor entries use heading-based text parsing, never positional fallback.
+  function gamryDTA(text, fileName) {
+    var src = String(text).replace(/^\uFEFF/, '');
+    if (!/^\s*ZCURVE\d*\s+TABLE\b/im.test(src)) throw new Error(baseName(fileName) + ': no Gamry ZCURVE TABLE impedance section found.');
+    var L = lines(src), out = [], skipped = 0;
+    for (var i = 0; i < L.length; i++) {
+      if (!/^\s*ZCURVE\d*\s+TABLE\b/i.test(L[i])) continue;
+      var start = i + 1, end = start;
+      while (end < L.length && !/^\s*\S+\s+TABLE\b/i.test(L[end])) end++;
+      var spectra = tableRows(L.slice(start, end).join('\n'), fileName);
+      skipped += spectra.skipped || 0; out = out.concat(spectra); i = end - 1;
+    }
+    if (!out.length) throw new Error(baseName(fileName) + ': no usable Gamry impedance data.');
+    out.forEach(function (ds, k) { ds.name = baseName(fileName) + (out.length > 1 ? '_' + k : ''); });
+    out.skipped = skipped; return out;
+  }
+  function biologicMPT(text, fileName) {
+    var src = String(text).replace(/^\uFEFF/, ''), L = lines(src);
+    if (!/^EC-Lab ASCII FILE\s*$/i.test((L[0] || '').trim())) throw new Error(baseName(fileName) + ': expected an EC-Lab ASCII .mpt export; binary .mpr files are not supported.');
+    var count = /^Nb header lines\s*:\s*(\d+)\s*$/im.exec(src);
+    if (count) {
+      var n = Number(count[1]);
+      if (n < 2 || n > L.length || !parseHeader(L[n - 1])) throw new Error(baseName(fileName) + ': invalid header-line count or missing impedance column headings.');
+      src = L.slice(n - 1).join('\n');
+    }
+    return tableRows(src, fileName, 'cyclenumber');
   }
 
   // ---------------------------------------------------------------- Zurich Instruments MFLI / MFIA csv (LabOne)
@@ -388,18 +420,20 @@ Y.readers = (function () {
   // ---------------------------------------------------------------- custom formats
   // Definition fields, as in the Yappari 5.1 XML: header, label_length, separator (space|comma|semicolon|tab),
   // ignore_first, column_freq, column_zr, column_zi (columns count from 1), ignore_last.
-  var PRESETS = {
-    'Z-MFLI (Z_MFLI_datafile_example_template.xml)': { header: 'Temp /K before measurement : ', label_length: 6, separator: 'tab', ignore_first: 4, column_freq: 1, column_zr: 2, column_zi: 3, ignore_last: 4 },
-    'HP 4192A (custom_hp4192a.xml)': { header: 'Frequency /Hz, Z_r, Z_im, cycle :', label_length: 4, separator: 'tab', ignore_first: 0, column_freq: 1, column_zr: 2, column_zi: 3, ignore_last: 0 },
-    'Yappari multiple datasets file (Freq /Hz, Zr , Zi ; Name:)': { header: 'Freq /Hz, Zr , Zi ; Name: ', label_length: 30, separator: 'tab', ignore_first: 0, column_freq: 1, column_zr: 2, column_zi: 3, ignore_last: 0 },
-    'Yappari 5-column export, calculated Z (dev3221_imps_)': { header: 'dev3221_imps_', label_length: 2, separator: 'semicolon', ignore_first: 0, column_freq: 1, column_zr: 4, column_zi: 5, ignore_last: 0 }
-  };
+
 
   // The text before the first header is ignored; each header occurrence (it can sit inside a longer line)
   // starts a dataset. label_length characters after the header name the dataset. ignore_first lines are
   // skipped after the header line and ignore_last lines at the end of each dataset, except when those last
   // lines are all data: a dataset cut short (end of file) keeps all its points.
   function custom(text, fileName, def) {
+    if (def && def.format_version != null) {
+      var native = normalizeModern(def);
+      if (native.reader === 'mfliCsv') return mfliCsv(text, fileName);
+      if (native.reader === 'zview') return zview(text, fileName);
+      if (native.reader === 'yappariJS') return yappariExport(text, fileName, native.data_source);
+      return customModern(text, fileName, native);
+    }
     if (!def || !def.header) throw new Error('the definition needs a header text that separates the datasets');
     var src = String(text), header = String(def.header), parts = src.split(header), base = baseName(fileName), out = [], skipped = 0;
     if (parts.length < 2 && header.trim() && header.trim() !== header) { header = header.trim(); parts = src.split(header); }
@@ -433,6 +467,225 @@ Y.readers = (function () {
     if (!out.length) throw new Error(base + ': the header was found but no numeric rows in columns ' + (cf + 1) + ', ' + (cr + 1) + ', ' + (ci + 1));
     out.skipped = skipped;
     return out;
+  }
+
+  // Versioned, application-native definitions. Legacy readers remain available for imported files.
+  var MODERN_DEFAULTS = {
+    format_version: 1, reader: 'table', data_source: 'auto', description: '', mode: 'repeatedHeader', header: '', header_match: 'contains',
+    label_source: 'afterHeader', label_length: 0, end_marker: '', ignore_first: 0, ignore_last: 0,
+    footer_policy: 'keepNumeric', separator: 'tab', decimal_separator: 'auto', comment_prefix: '',
+    missing_values: 'NA;NaN;N/A', representation: 'cartesian', column_freq: 1, column_zr: 2, column_zi: 3,
+    frequency_unit: 'Hz', impedance_unit: 'ohm', phase_unit: 'deg', negate_zi: false, invalid_rows: 'skipAndReport'
+  };
+  function normalizeModern(input) {
+    var d = Object.assign({}, MODERN_DEFAULTS, input);
+    if ([1, 2].indexOf(Number(d.format_version)) < 0) throw new Error('Unsupported XML definition version: ' + d.format_version);
+    d.format_version = Number(d.format_version);
+    if (['table', 'mfliCsv', 'zview', 'yappariJS'].indexOf(d.reader) < 0) throw new Error('Unknown reader: ' + d.reader);
+    if (['auto', 'measured', 'model'].indexOf(d.data_source) < 0) throw new Error('Unknown impedance source: ' + d.data_source);
+    if (d.reader !== 'table') {
+      if (d.format_version < 2) throw new Error('Specialized readers require XML version 2.');
+      var profile = { format_version: 2, reader: d.reader, description: String(d.description) };
+      if (d.reader === 'yappariJS') profile.data_source = d.data_source;
+      return profile;
+    }
+    var choices = {
+      mode: ['single', 'repeatedHeader', 'blankLines'], header_match: ['contains', 'startsWith', 'exact'],
+      label_source: ['afterHeader', 'index'], footer_policy: ['keepNumeric', 'always'],
+      separator: ['auto', 'tab', 'space', 'comma', 'semicolon'], decimal_separator: ['auto', '.', ','],
+      representation: ['cartesian', 'polar'], frequency_unit: ['Hz', 'kHz', 'MHz', 'rad/s'],
+      impedance_unit: ['ohm', 'kohm', 'Mohm', 'mohm'], phase_unit: ['deg', 'rad'], invalid_rows: ['skipAndReport', 'error']
+    };
+    Object.keys(choices).forEach(function (k) {
+      if (choices[k].indexOf(d[k]) < 0) throw new Error('Unsupported ' + k + ': ' + d[k]);
+    });
+    ['ignore_first', 'ignore_last', 'label_length', 'column_freq', 'column_zr', 'column_zi'].forEach(function (k) {
+      var n = Number(d[k]), min = k.indexOf('column_') === 0 ? 1 : 0;
+      if (!Number.isSafeInteger(n) || n < min) throw new Error(k + ' must be an integer of at least ' + min);
+      d[k] = n;
+    });
+    ['description', 'header', 'end_marker', 'comment_prefix', 'missing_values'].forEach(function (k) { d[k] = String(d[k]); });
+    if (d.mode === 'repeatedHeader' && !d.header.trim()) throw new Error('Repeated-header mode needs a header.');
+    if (new Set([d.column_freq, d.column_zr, d.column_zi]).size !== 3) throw new Error('Choose three different data columns.');
+    if (typeof d.negate_zi !== 'boolean') throw new Error('negate_zi must be true or false.');
+    if (d.representation === 'polar' && d.negate_zi) throw new Error('Imaginary sign reversal applies only to Cartesian data.');
+    return d;
+  }
+  function upgradeDefinition(d) {
+    if (d.format_version != null) return normalizeModern(d);
+    // Old label_length=0 means index; new length=0 means the full label.
+    return normalizeModern(Object.assign({}, d, { format_version: 1, label_source: d.label_length > 0 ? 'afterHeader' : 'index' }));
+  }
+  function customModern(text, fileName, d) {
+    var base = baseName(fileName), blocks = [], cur = null, skipped = 0, examples = [];
+    var start = function (label) { cur = { label: label || '', rows: [] }; blocks.push(cur); };
+    if (d.mode === 'single') start('');
+    lines(text).forEach(function (line, n) {
+      var at = -1;
+      if (d.mode === 'repeatedHeader') {
+        if (d.header_match === 'contains') at = line.indexOf(d.header);
+        else if (d.header_match === 'startsWith' && line.indexOf(d.header) === 0) at = 0;
+        else if (d.header_match === 'exact' && line === d.header) at = 0;
+        if (at >= 0) {
+          var label = d.label_source === 'afterHeader' ? line.slice(at + d.header.length).replace(/^\s+/, '') : '';
+          if (d.label_length > 0) label = label.slice(0, d.label_length);
+          start(label.trim()); return;
+        }
+      }
+      if (d.end_marker && line.indexOf(d.end_marker) >= 0) { cur = null; return; }
+      if (d.mode === 'blankLines') {
+        if (!line.trim()) { cur = null; return; }
+        if (!cur) start('');
+      }
+      if (cur) cur.rows.push({ text: line, line: n + 1 });
+    });
+    if (!blocks.length) throw new Error(base + ': no dataset start found; check the header and matching rule.');
+    var out = [], frequencyScale = { Hz: 1, kHz: 1e3, MHz: 1e6, 'rad/s': 1 / (2 * Math.PI) }[d.frequency_unit];
+    var zScale = { ohm: 1, kohm: 1e3, Mohm: 1e6, mohm: 1e-3 }[d.impedance_unit];
+    var missing = d.missing_values.split(';').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+    blocks.forEach(function (block, idx) {
+      var body = block.rows.slice(d.ignore_first);
+      while (body.length && !body[body.length - 1].text.trim()) body.pop();
+      var sep = d.separator === 'auto' ? detectSeparator(body.map(function (r) { return r.text; })) : d.separator;
+      // Quotes protect delimiters; multiline quoted fields are intentionally unsupported.
+      function fields(line) {
+        if (sep === 'space') return line.trim().split(/\s+/);
+        var delimiter = { tab: '\t', comma: ',', semicolon: ';' }[sep], values = [], v = '', quoted = false;
+        for (var i = 0; i < line.length; i++) {
+          var c = line[i];
+          if (c === '"') {
+            if (quoted && line[i + 1] === '"') { v += '"'; i++; } else quoted = !quoted;
+          } else if (c === delimiter && !quoted) { values.push(v); v = ''; } else v += c;
+        }
+        if (quoted) return [];
+        values.push(v); return values;
+      }
+      function value(s) {
+        if (s == null || !s.trim() || missing.indexOf(s.trim().toLowerCase()) >= 0) return NaN;
+        s = s.trim();
+        if (d.decimal_separator === ',' || (d.decimal_separator === 'auto' && sep !== 'comma')) s = s.replace(',', '.');
+        return Number(s);
+      }
+      function row(line) {
+        var v = fields(line), f = value(v[d.column_freq - 1]) * frequencyScale,
+          a = value(v[d.column_zr - 1]), b = value(v[d.column_zi - 1]), zr, zi;
+        if (d.representation === 'polar') {
+          if (a < 0) return null;
+          var phase = b * (d.phase_unit === 'deg' ? Math.PI / 180 : 1);
+          zr = a * zScale * Math.cos(phase); zi = a * zScale * Math.sin(phase);
+        } else { zr = a * zScale; zi = b * zScale * (d.negate_zi ? -1 : 1); }
+        return f > 0 && isFinite(f) && isFinite(zr) && isFinite(zi) ? [f, zr, zi] : null;
+      }
+      var nl = d.ignore_last;
+      if (nl > 0 && !(d.footer_policy === 'keepNumeric' && body.length >= nl && body.slice(-nl).every(function (r) { return row(r.text); }))) {
+        body = body.slice(0, Math.max(0, body.length - nl));
+      }
+      var f = [], zr = [], zi = [];
+      body.forEach(function (r) {
+        if (!r.text.trim() || (d.comment_prefix && r.text.trim().indexOf(d.comment_prefix) === 0)) return;
+        var values = row(r.text);
+        if (values) { f.push(values[0]); zr.push(values[1]); zi.push(values[2]); }
+        else {
+          if (d.invalid_rows === 'error') throw new Error(base + ': invalid data at line ' + r.line + '.');
+          skipped++; if (examples.length < 5) examples.push(r.line);
+        }
+      });
+      if (f.length) out.push(pack(d.mode === 'single' ? base : base + '_' + (block.label || idx), f, zr, zi));
+    });
+    if (!out.length) throw new Error(base + ': no valid data rows; check columns, separator, units and skipped lines.');
+    out.skipped = skipped;
+    if (skipped) out.warning = base + ': skipped ' + skipped + ' invalid row(s); first line numbers: ' + examples.join(', ') + '.';
+    return out;
+  }
+
+  // Save data has optional sigma, calculated and mask columns. Resolve by heading per dataset.
+  function yappariExport(text, fileName, source) {
+    var blocks = [], cur = null, out = [], skipped = 0;
+    lines(text).forEach(function (line) {
+      if (/^#dataset\s+/.test(line)) { cur = [line]; blocks.push(cur); }
+      else if (/^#drt\b/.test(line)) cur = null;
+      else if (cur) cur.push(line);
+    });
+    if (!blocks.length) throw new Error('Not a Yappari JS Save data file: #dataset markers are missing.');
+    blocks.forEach(function (block) {
+      var h = block.findIndex(function (line) { return /^freq\/Hz(?:\s|,|;)/.test(line); });
+      if (h < 0) throw new Error(block[0] + ': frequency/impedance column header is missing.');
+      var line = block[h], sep = line.indexOf('\t') >= 0 ? 'tab' : line.indexOf(';') >= 0 ? 'semicolon' : line.indexOf(',') >= 0 ? 'comma' : 'space';
+      var names = splitter(sep)(line), measured = names.indexOf('Zr') >= 0 && names.indexOf('Zi') >= 0,
+        model = names.indexOf('Zr_calc') >= 0 && names.indexOf('Zi_calc') >= 0;
+      var selected = source === 'auto' ? (measured ? 'measured' : 'model') : source;
+      if (!(selected === 'measured' ? measured : model)) throw new Error(block[0] + ': requested ' + selected + ' Zr/Zi columns are missing.');
+      names = names.map(function (name) {
+        if (selected === 'model') {
+          if (name === 'Zr_calc') return 'Zr'; if (name === 'Zi_calc') return 'Zi';
+          if (['Zr', 'Zi', 'sigma_Zr', 'sigma_Zi'].indexOf(name) >= 0) return 'unused';
+        } else if (name === 'Zr_calc' || name === 'Zi_calc') return 'unused';
+        return name;
+      });
+      block[h] = names.join({ tab: '\t', comma: ',', semicolon: ';', space: ' ' }[sep]);
+      var got = tableRows(block.join('\n'), fileName);
+      skipped += got.skipped || 0;
+      out = out.concat(got);
+    });
+    out.skipped = skipped;
+    return out;
+  }
+
+  function fromModernXML(t) {
+    if (typeof DOMParser === 'undefined') throw new Error('Reading the new XML format requires a browser DOMParser.');
+    var doc = new DOMParser().parseFromString(t, 'application/xml');
+    if (doc.querySelector('parsererror') || doc.doctype) throw new Error('Invalid XML, or unsupported DOCTYPE.');
+    var root = doc.documentElement;
+    if (root.tagName !== 'impedanceFormat') throw new Error('Expected <impedanceFormat>.');
+    function check(el, attrs, children) {
+      Array.from(el.attributes).forEach(function (a) { if (attrs.indexOf(a.name) < 0) throw new Error('Unknown attribute ' + a.name + ' on ' + el.tagName); });
+      Array.from(el.children).forEach(function (c) { if (children.indexOf(c.tagName) < 0) throw new Error('Unknown element <' + c.tagName + '>.'); });
+    }
+    function child(el, tag, attrs, children, required) {
+      var found = Array.from(el.children).filter(function (c) { return c.tagName === tag; });
+      if (found.length > 1 || (required && !found.length)) throw new Error('Expected one <' + tag + '>.');
+      var node = found[0]; if (node) check(node, attrs, children || []); return node;
+    }
+    function attr(el, name, fallback) { return el && el.hasAttribute(name) ? el.getAttribute(name) : fallback; }
+    check(root, ['version', 'reader', 'source'], ['description', 'table', 'datasets', 'columns', 'invalidRows']);
+    var d = { format_version: attr(root, 'version', ''), reader: attr(root, 'reader', 'table'), data_source: attr(root, 'source', 'auto') };
+    var desc = child(root, 'description', [], []); d.description = desc ? desc.textContent : '';
+    if (d.reader !== 'table') {
+      if (Array.from(root.children).some(function (c) { return c.tagName !== 'description'; })) throw new Error('Specialized definitions accept description only; their layout is fixed.');
+      if (d.reader !== 'yappariJS' && root.hasAttribute('source')) throw new Error('Source applies only to the Yappari JS reader.');
+      return normalizeModern(d);
+    }
+    if (root.hasAttribute('source')) throw new Error('Source applies only to the Yappari JS reader.');
+    var table = child(root, 'table', ['delimiter', 'decimalSeparator', 'commentPrefix', 'missingValues'], []);
+    d.separator = attr(table, 'delimiter', 'tab'); d.decimal_separator = attr(table, 'decimalSeparator', 'auto');
+    d.comment_prefix = attr(table, 'commentPrefix', ''); d.missing_values = attr(table, 'missingValues', MODERN_DEFAULTS.missing_values);
+    var sets = child(root, 'datasets', ['mode'], ['header', 'label', 'endMarker', 'skipLines']);
+    d.mode = attr(sets, 'mode', 'single');
+    if (sets) {
+      var h = child(sets, 'header', ['match'], []), label = child(sets, 'label', ['source', 'length'], []), end = child(sets, 'endMarker', [], []);
+      var skip = child(sets, 'skipLines', ['afterHeader', 'beforeEnd', 'footerPolicy'], []);
+      d.header = h ? h.textContent : ''; d.header_match = attr(h, 'match', 'contains');
+      d.label_source = attr(label, 'source', 'afterHeader'); d.label_length = attr(label, 'length', 0);
+      d.end_marker = end ? end.textContent : ''; d.ignore_first = attr(skip, 'afterHeader', 0);
+      d.ignore_last = attr(skip, 'beforeEnd', 0); d.footer_policy = attr(skip, 'footerPolicy', 'keepNumeric');
+    }
+    var cols = child(root, 'columns', ['numbering', 'representation'], ['frequency', 'real', 'imaginary', 'magnitude', 'phase'], true);
+    if (attr(cols, 'numbering', '1') !== '1') throw new Error('Columns must use numbering="1".');
+    d.representation = attr(cols, 'representation', cols.querySelector('magnitude') ? 'polar' : 'cartesian');
+    var polar = d.representation === 'polar';
+    if (cols.querySelector(polar ? 'real, imaginary' : 'magnitude, phase')) throw new Error('Mixed Cartesian and polar columns.');
+    var f = child(cols, 'frequency', ['column', 'unit'], [], true), a = child(cols, polar ? 'magnitude' : 'real', ['column', 'unit'], [], true);
+    var b = child(cols, polar ? 'phase' : 'imaginary', polar ? ['column', 'unit'] : ['column', 'unit', 'sign'], [], true);
+    d.column_freq = attr(f, 'column', ''); d.column_zr = attr(a, 'column', ''); d.column_zi = attr(b, 'column', '');
+    d.frequency_unit = attr(f, 'unit', 'Hz'); d.impedance_unit = attr(a, 'unit', 'ohm');
+    d.phase_unit = polar ? attr(b, 'unit', 'deg') : 'deg';
+    if (!polar) {
+      if (attr(b, 'unit', d.impedance_unit) !== d.impedance_unit) throw new Error('Real and imaginary units must match.');
+      var sign = attr(b, 'sign', 'Zi'); if (['Zi', '-Zi'].indexOf(sign) < 0) throw new Error('Imaginary sign must be Zi or -Zi.');
+      d.negate_zi = sign === '-Zi';
+    }
+    var invalid = child(root, 'invalidRows', ['action'], []); d.invalid_rows = attr(invalid, 'action', 'skipAndReport');
+    return normalizeModern(d);
   }
 
   // ---------------------------------------------------------------- definition files
@@ -494,10 +747,13 @@ Y.readers = (function () {
 
   function parseDefinition(text) {
     var t = String(text).replace(/^\uFEFF/, '').trim(), d;
-    if (t.charAt(0) === '<') d = fromXML(t);
+    if (t.charAt(0) === '<') {
+      if (!/<LVData[\s>]/i.test(t)) return fromModernXML(t);
+      d = fromXML(t);
+    }
     else if (t.charAt(0) === '{') d = JSON.parse(t);
     else d = fromINI(t);
-    return normalizeDef(d);
+    return d.format_version != null ? normalizeModern(d) : normalizeDef(d);
   }
 
   // ---------------------------------------------------------------- automatic choice (files dropped on the window)
@@ -530,8 +786,8 @@ Y.readers = (function () {
     return out;
   }
 
-  return { threeColumns: threeColumns, headerTable: headerTable, mfliCsv: mfliCsv, zview: zview, versa: versa, custom: custom,
+  return { gamryDTA: gamryDTA, biologicMPT: biologicMPT, threeColumns: threeColumns, headerTable: headerTable, mfliCsv: mfliCsv, zview: zview, versa: versa, custom: custom,
            numericBlocks: numericBlocks, auto: auto, parseDefinition: parseDefinition, normalizeDef: normalizeDef,
-           detectSeparator: detectSeparator, parseHeader: parseHeader, colName: colName, presets: PRESETS, separators: SEPARATORS,
+           detectSeparator: detectSeparator, parseHeader: parseHeader, colName: colName, modernDefaults: MODERN_DEFAULTS, normalizeModern: normalizeModern, upgradeDefinition: upgradeDefinition, separators: SEPARATORS,
            baseName: baseName, lines: lines, decode: decode };
 })();

@@ -533,3 +533,7 @@ button:not(.primary):disabled:hover { border-color: var(--rule); }
   --schematic-css: ".w{stroke:var(--ink-2);stroke-width:var(--schematic-wire)}.sym{fill:var(--blue)}.sym-line{stroke:var(--blue);stroke-width:var(--schematic-line);fill:none;stroke-linecap:round;stroke-linejoin:round}.sym-box{fill:var(--panel);stroke:var(--blue);stroke-width:var(--schematic-box)}.sym-txt{fill:var(--blue);font:600 var(--schematic-symbol-size) var(--font-ui);text-anchor:middle}.lbl{fill:var(--ink);font:var(--schematic-font-size) var(--font-ui);text-anchor:middle}.hit,.grp{fill:none;stroke:none}.node{fill:var(--ink-2)}.term{fill:var(--panel);stroke:var(--ink-2);stroke-width:var(--schematic-wire)}";
 }
 button.danger:enabled:hover { background: color-mix(in srgb, var(--err) 88%, var(--ink)); border-color: var(--err); color: #fff; }
+
+/* Custom XML editor: keep its action buttons accessible on narrow screens. */
+dialog.custom-format-dialog { width: min(860px, 94vw); }
+.custom-format-dialog .btns { flex-wrap: wrap; }

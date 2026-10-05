@@ -131,21 +131,28 @@ Y.writers = (function () {
     return out.join('\n') + '\n';
   }
 
-  function xmlEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function xmlEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;'); }
 
-  // custom-format definition in the Yappari 5.1 (LabVIEW) XML layout, so one file serves both programs
+  // Application-native XML definition, schema version 1.
   function definitionXML(def) {
-    var si = ['space', 'comma', 'semicolon', 'tab'].indexOf(def.separator);
-    function u8(name, v) { v = Math.max(0, Math.min(255, Math.round(+v || 0))); return ['<U8>', '<Name>' + name + '</Name>', '<Val>' + v + '</Val>', '</U8>']; }
-    return ["<?xml version='1.0' standalone='yes' ?>", '<LVData xmlns="http://www.ni.com/LVData">', '<Version>23.1f276</Version>', '<Cluster>',
-            '<Name>' + xmlEsc(def.cluster || 'custom datafile format') + '</Name>', '<NumElts>8</NumElts>',
-            '<String>', '<Name>header</Name>', '<Val>' + xmlEsc(def.header) + '</Val>', '</String>']
-      .concat(u8('label length', def.label_length),
-              ['<EW>', '<Name>data_separator</Name>', '<Choice>space</Choice>', '<Choice>comma</Choice>', '<Choice>semicolon</Choice>',
-               '<Choice>tab</Choice>', '<Val>' + (si < 0 ? 3 : si) + '</Val>', '</EW>'],
-              u8('ignore first', def.ignore_first), u8('column_freq', def.column_freq), u8('column_Zr', def.column_zr),
-              u8('column_Zi', def.column_zi), u8('ignore last', def.ignore_last), ['</Cluster>', '</LVData>'])
-      .join('\r\n');
+    var d = Y.readers.upgradeDefinition(def), x = xmlEsc, polar = d.representation === 'polar';
+    if (d.reader !== 'table') return ['<?xml version="1.0" encoding="UTF-8"?>',
+      '<impedanceFormat version="2" reader="' + d.reader + '"' + (d.reader === 'yappariJS' ? ' source="' + d.data_source + '"' : '') + '>',
+      '  <description>' + x(d.description) + '</description>', '</impedanceFormat>', ''].join('\n');
+    return ['<?xml version="1.0" encoding="UTF-8"?>', '<impedanceFormat version="' + d.format_version + '">',
+      '  <description>' + x(d.description) + '</description>',
+      '  <table delimiter="' + x(d.separator) + '" decimalSeparator="' + x(d.decimal_separator) + '" commentPrefix="' + x(d.comment_prefix) + '" missingValues="' + x(d.missing_values) + '"/>',
+      '  <datasets mode="' + d.mode + '">',
+      '    <header match="' + d.header_match + '">' + x(d.header) + '</header>',
+      '    <label source="' + d.label_source + '" length="' + d.label_length + '"/>',
+      '    <endMarker>' + x(d.end_marker) + '</endMarker>',
+      '    <skipLines afterHeader="' + d.ignore_first + '" beforeEnd="' + d.ignore_last + '" footerPolicy="' + d.footer_policy + '"/>',
+      '  </datasets>',
+      '  <columns numbering="1" representation="' + d.representation + '">',
+      '    <frequency column="' + d.column_freq + '" unit="' + d.frequency_unit + '"/>',
+      '    <' + (polar ? 'magnitude' : 'real') + ' column="' + d.column_zr + '" unit="' + d.impedance_unit + '"/>',
+      '    <' + (polar ? 'phase' : 'imaginary') + ' column="' + d.column_zi + '" unit="' + (polar ? d.phase_unit : d.impedance_unit) + '"' + (polar ? '' : ' sign="' + (d.negate_zi ? '-Zi' : 'Zi') + '"') + '/>',
+      '  </columns>', '  <invalidRows action="' + d.invalid_rows + '"/>', '</impedanceFormat>', ''].join('\n');
   }
 
   function download(name, text, mime) {

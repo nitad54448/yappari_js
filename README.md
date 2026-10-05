@@ -91,7 +91,7 @@ the plots must be plain values (#hex, rgb(), rgba()).
 
 | Menu | Items |
 |---|---|
-| **File** | Read: 3 columns · MFLI csv · MFLI ZView .txt / ZView .z · VersaStudio .par · Table with column headers · Custom format. Open project · Save project. Save parameters of selected · Save data of selected · Report of selected datasets. Load 24 demo spectra. |
+| **File** | Read: 3 columns · Table with column headers · ZView · **separator** · BioLogic MPT · Gamry DTA · VersaStudio .par · Custom format, xml. Open project · Save project. Save parameters of selected · Save data of selected · Report of selected datasets. Load 24 demo spectra. |
 | **Data** | Undo the last command. Mask points in the current view · Unmask selected datasets · Delete points in the current view · Delete selected datasets. Normalize · Negate Zi. Add random noise · Spline to a log frequency grid · Smooth (Savitzky–Golay) · Average selected datasets. Simulate spectrum. |
 | **Analysis** | Show / Save the DRT of selected datasets · DRT λ search. Z-HIT of selected datasets · Kramers–Kronig test of selected datasets. Label a frequency on the Nyquist plot · Clear Nyquist labels. Command line help. |
 
@@ -131,27 +131,59 @@ Notepad, recognised from the start of the file).
   converted. Dropped files whose headings name a frequency but no such columns are read by position (f, Zr, Zi)
   with a warning. Files written by *Save data* are read back this way, names, normalization and masked
   points included.
-* **MFLI csv** (Zurich Instruments LabOne sweeper export, `;` or `,`): one line per field and sweep,
+* **MFLI CSV preset** (`MFLI_csv.xml`, through Custom format, xml) (Zurich Instruments LabOne sweeper export, `;` or `,`): one line per field and sweep,
   `chunk;timestamp;size;fieldname;values…`. Each chunk is a dataset (`name_0`, `name_1` …); f comes from the
   `frequency` line (or `grid`), Z from `realz` and `imagz` (or `absz` and `phasez`, the phase in radians); points
   still `nan` are skipped. Standard deviations (`realzstddev`, `imagzstddev`, `abszstddev`) are kept for weighting.
-* **MFLI ZView .txt and ZView .z**: f, Z′ and Z″ from columns 1, 5 and 6; each block of numbers is a dataset. A ZView
+* **ZView .z / .txt** (also available as the `MFLI_ZView.xml` custom preset): f, Z′ and Z″ from columns 1, 5 and 6; each block of numbers is a dataset. A ZView
   file opened with *3 columns* is recognised and read the same way.
+* **BioLogic MPT**: EC-Lab ASCII text exports, not binary `.mpr` files. Reads the declared header-line count
+  when present and resolves impedance columns by heading, including conversion of `-Im(Z)` to Zi. A `cycle number`
+  column separates cycles into datasets; without it, each recognized impedance table becomes one dataset.
+  Empty or invalid numerical rows are skipped and reported. This imports impedance arrays, not all EC-Lab metadata.
+* **Gamry DTA**: tab-delimited text containing `ZCURVE TABLE` (or numbered `ZCURVE` sections).
+  Resolves frequency, real and imaginary impedance by their column headings, skips the units row, and imports
+  multiple impedance sections as separate datasets. Non-impedance tables are ignored. Files without an impedance
+  section are rejected; numerical data is not guessed by column position.
 * **VersaStudio .par**: each `<Segment>` with frequency and impedance (or E and I) columns.
-* **Custom format**: files holding several datasets, each starting with the same header text (examples:
-  `files/Z_MFLI.txt`, `files/hp4192a.txt`). Definitions are the XML files of Yappari 5.1
-  (`files/Z_MFLI_datafile_example_template.xml`, `files/custom_hp4192a.xml`); the dialog loads them, offers them
-  as presets and saves new ones in the same XML, which the LabVIEW version reads too. Older `.ini` definitions and
-  JSON are read as well. Fields:
+* **Custom format, xml** (Yappari JS 1.5): select a filename from
+  `config/definitions/index.json`, load a definition, or edit the fields. Definitions use the
+  application-native XML format (versions 1 and 2). Version 2 adds specialized file layouts. The dialog supports single datasets,
+  repeated literal headers, blank-line blocks, full or truncated labels, end markers, line skipping,
+  Cartesian/polar impedance, unit conversions, imaginary sign reversal, explicit delimiters and decimal
+  separators, comments, missing values and invalid-row policies. Preview data before importing it.
+  Save definition downloads the new XML format. Existing LabVIEW XML, INI and JSON definitions can
+  still be imported; new XML is not intended for LabVIEW.
 
-  | Field | Meaning |
-  |---|---|
-  | Header | Text in front of every dataset; it can be part of a longer line. |
-  | Label length | Characters after the header added to the dataset name; 0 numbers the datasets. |
-  | Data separator | Space, comma, semicolon or TAB. |
-  | Ignore first | Lines skipped after the header line. |
-  | Frequency, Zr, Zi columns | Column numbers, counted from 1. |
-  | Ignore last | Lines skipped at the end of each dataset; a dataset cut short keeps all its rows. |
+  Presets require HTTP(S) hosting (including GitHub Pages). Add your XML to `config/definitions/` and
+  its filename to the `definitions` array in `index.json`; no Actions or build step is needed.
+  The filename list is refreshed whenever the dialog opens, and the selected XML is fetched when chosen.
+  See `config/definitions/README.md` for the schema and supported options.
+
+* **Yappari JS export preset** (`Yappari_JS.xml`): reads files produced by Save data. Choose
+  **Impedance to load**: Measured Zr, Zi; Model Zr, Zi; or Measured if present, otherwise model.
+  Columns are found by heading for each dataset, so optional uncertainty columns do not shift the selection.
+  Explicit measured/model choices report an error if that pair is missing in any dataset; they do not silently
+  substitute the other pair. Dataset names, normalization and masks are restored. Measured uncertainties are
+  retained for measured data only; they are not assigned to model data. DRT sections are excluded.
+
+### Custom reading: local index.html versus a server
+
+Opening `index.html` by double-click normally uses a `file://` URL. Browsers generally block the automatic
+fetches of `config/definitions/index.json` and the XML presets in this mode. Therefore the Preset list may
+show **Presets unavailable**, even though the files exist alongside index.html. Editing index.json alone
+cannot overcome that browser restriction.
+
+Custom reading still works locally: open File → Custom format, xml → **Load definition…**, select an XML
+file explicitly, then use **Preview data…** or **Choose data files…**. You can also enter manual settings,
+or select a specialized File layout directly, including Yappari JS and its measured/model choice. Saving
+an XML definition downloads a file; it never writes into config/definitions or updates index.json automatically.
+
+For automatic presets, serve the whole application directory over HTTP(S), including GitHub Pages or a
+local server. If Python is installed, run `python -m http.server 8000` from that directory and visit
+`http://localhost:8000/`. The browser still performs all parsing and calculations locally; selected measurement
+files are not uploaded to the static server. After publishing updates, hard-refresh to avoid old cached scripts.
+
 
 * **Open project**: a `.json` project written by *Save project* (also opens when dropped). The Log saved with it is
   shown in the Log tab, with its dates, and the Log kept for the project continues from it.
@@ -743,7 +775,7 @@ js/workers.js         Web Worker pool built from a Blob (works from file://), ma
 js/ui/*.js            theme (reads style.css), plots (canvas 2D and 3D), schematic, Model tab, DRT tab, panels, dialogs, menus, report
 js/app.js             start-up, tabs, side panel, fit bar
 files/                example data files and custom-format definitions (Yappari 5.1 XML)
-config/definitions/   custom-format definitions in JSON
+config/definitions/   XML presets, index.json and schema documentation
 script/               third-party libraries, none needed for now
 tests/                node tests/run_core_tests.js runs all Node tests (core, readers, DRT, Z-HIT, the review
                       fixes, the files/ examples; sample files missing from files/ are skipped);
