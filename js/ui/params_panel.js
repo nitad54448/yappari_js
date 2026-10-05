@@ -1,4 +1,4 @@
-/*  Parameters: the list in the side panel (values of the first selected dataset; edits apply to all
+/*  Parameters: the list in the side panel (values of the dataset shown, the first selected one or the one browsed to with ← →; edits apply to all
  *  selected datasets) and the Parameters tab (fit, data, plot settings, limits, element defaults).
  *  Mouse wheel over a parameter: x1.02 per step (log parameters) or +-0.005 (linear ones);
  *  Shift = larger steps, Alt or Ctrl = finer steps. Arrow keys do the same in the value field.
@@ -29,12 +29,19 @@ Y.paramsPanel = (function () {
   function bounded() { return S.settings.method !== 'LM'; }
   function clampVal(n, v) { var L = S.model.limits[n]; return bounded() && L ? Math.min(L.max, Math.max(L.min, v)) : v; }
 
+  // Global fit mode: a padlock before the fit tick, closed = shared (one value for all datasets), open = local.
+  var LOCK_SVG = {
+    shared: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+    local: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 5.8-1" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>'
+  };
+  function globalMode() { return !!(Y.app && Y.app.fitMode && Y.app.fitMode() === 'global'); }
+
   // ---------------------------------------------------------------- side panel list
   function renderList() {
     var host = $('#param-list'), ds = Y.state.first(), prog = S.model.prog, head = $('#param-ds'), more = S.sel.size > 1 ? S.sel.size - 1 : 0;
     head.textContent = ds ? ds.name : '';                  // cut with … when long (style.css); the whole name is in the tooltip
     $('#param-more').textContent = ds && more ? 'and ' + more + ' more' : '';
-    head.title = !ds ? '' : more ? ds.name + ': values of the first selected dataset. Changes apply to all ' + S.sel.size + ' selected datasets.' : ds.name;
+    head.title = !ds ? '' : more ? ds.name + ' (' + (Y.state.selected().indexOf(ds) + 1) + ' of ' + S.sel.size + ' selected; ← → show the others). Changes apply to all ' + S.sel.size + ' selected datasets.' : ds.name;
     syncStep();
     if (!prog) { host.innerHTML = '<p class="hint">No circuit yet. Build one in the Model tab.</p>'; renderStats(); return; }
     host.innerHTML = prog.params.map(function (pp) {
@@ -42,14 +49,16 @@ Y.paramsPanel = (function () {
       return '<div class="prow" data-name="' + pp.name + '"><span class="pn" title="' + esc(E.title + ', ' + pp.label + (pp.unit ? ' /' + pp.unit : '')) + '">' + pp.name + '</span>' +
         '<input class="pv" aria-label="' + pp.name + '" spellcheck="false" autocomplete="off"' + dis + '>' +
         '<span class="pu" title="' + esc(pp.unit) + '">' + esc(pp.unit) + '</span><span class="ps"></span>' +
+        '<button type="button" class="pl" aria-label="Shared or local ' + pp.name + '"></button>' +
         '<input class="pf" type="checkbox" title="Fit ' + pp.name + '" aria-label="Fit ' + pp.name + '"' + dis + '></div>';
     }).join('') + (ds ? '' : '<p class="hint">Start values for new datasets. Select a dataset to edit its values.</p>');
     renderValues();
   }
 
   function renderValues() {
-    var ds = Y.state.first();
+    var ds = Y.state.first(), list = Y.state.selected(), g = globalMode();
     if (!S.model.prog) return;
+    $('#param-list').classList.toggle('global', g);
     document.querySelectorAll('#param-list .prow').forEach(function (row) {
       var n = row.getAttribute('data-name'), pp = info(n);
       if (!pp) return;
@@ -57,8 +66,23 @@ Y.paramsPanel = (function () {
       var inp = row.querySelector('.pv'), pu = row.querySelector('.pu'), uu = Y.state.unitFor(pp.unit, ds);
       if (pu.textContent !== uu) { pu.textContent = uu; pu.title = uu; }
       if (editing !== n) inp.value = fmtVal(v);
-      row.querySelector('.pf').checked = !!fit;
-      row.classList.toggle('fixed', !fit);
+      // several selected datasets that disagree on the fit flag: mixed state; a click fits the parameter in all of them
+      var nFit = list.filter(function (x) { return x.fit[n]; }).length, mixed = list.length > 1 && nFit > 0 && nFit < list.length;
+      var pf = row.querySelector('.pf');
+      pf.checked = !!fit && !mixed; pf.indeterminate = mixed;
+      pf.title = mixed ? 'Fitted in ' + nFit + ' of ' + list.length + ' selected datasets' + (g ? '; the global fit uses the ticks of ' + ds.name : '') +
+        '. Click to fit ' + n + ' in all of them.' : (fit ? 'Fitted' : 'Held fixed') + (list.length > 1 ? ' in all ' + list.length + ' selected datasets' : '') + '. Click to ' + (fit ? 'hold ' + n + ' fixed.' : 'fit ' + n + '.');
+      row.classList.toggle('fixed', !fit && !mixed);
+      row.classList.toggle('mixed', mixed);
+      var pl = row.querySelector('.pl'), sh = !!S.model.shared[n];
+      pl.hidden = !g;
+      if (g) {
+        pl.innerHTML = LOCK_SVG[sh ? 'shared' : 'local'];
+        pl.className = 'pl ' + (sh ? 'shared' : 'local');
+        pl.title = (sh ? 'Shared: one value of ' + n + ' for all selected datasets in the global fit.' : 'Local: each dataset gets its own value of ' + n + ' in the global fit.') +
+          ' Click to make it ' + (sh ? 'local.' : 'shared.');
+        pl.disabled = S.busy;
+      }
       var se = row.querySelector('.ps'), st = ds && ds.stats;
       if (st && st.bound && st.bound[n]) { se.textContent = 'limit'; se.title = 'At its limit, no standard error'; se.className = 'ps lim'; }
       else if (st && st.se && Number.isFinite(st.se[n])) { se.textContent = st.se[n] >= 100 ? '>100%' : '±' + fmtPct(st.se[n]); se.title = 'Standard error, % of the value'; se.className = 'ps'; }
@@ -80,21 +104,30 @@ Y.paramsPanel = (function () {
       (short === 'converged' ? ' <span class="why">(' + esc(msg.replace(/^converged: /, '')) + ')</span>' : '') + '</dd></dl>';
   }
 
-  // ← → next to the dataset name: the previous or next dataset of the list (relative to the one shown, the first selected)
-  // becomes the selection, so the parameters of many datasets can be scanned from here. Without a selection, → starts at
-  // the top of the list and ← at the bottom.
+  // ← → next to the dataset name. Several datasets selected: the panel shows the previous or next of them, in a cycle;
+  // the selection is kept, so edits still apply to all of them. One or none selected: the previous or next dataset of
+  // the list becomes the selection (without a selection, → starts at the top of the list and ← at the bottom).
   function neighbour(dir) {
-    var list = S.datasets, f = Y.state.first(), i = f ? list.indexOf(f) : -1, j = i < 0 ? (dir > 0 ? 0 : list.length - 1) : i + dir;
-    return j >= 0 && j < list.length ? { ds: list[j], k: j } : null;
+    var f = Y.state.first();
+    if (S.sel.size > 1) {
+      var sl = Y.state.selected(), k = (sl.indexOf(f) + dir + sl.length) % sl.length;
+      return { ds: sl[k], k: k, n: sl.length, cycle: true };
+    }
+    var list = S.datasets, i = f ? list.indexOf(f) : -1, j = i < 0 ? (dir > 0 ? 0 : list.length - 1) : i + dir;
+    return j >= 0 && j < list.length ? { ds: list[j], k: j, n: list.length } : null;
   }
   function syncStep() {
     [['#param-prev', -1, 'Previous'], ['#param-next', 1, 'Next']].forEach(function (b) {
       var el = $(b[0]), nb = neighbour(b[1]);
-      if (nb) el.dataset.tip = b[2] + ' dataset: ' + nb.ds.name + ' (' + (nb.k + 1) + ' of ' + S.datasets.length + ')' + (S.sel.size > 1 ? ', selected alone' : '');
+      if (nb) el.dataset.tip = b[2] + (nb.cycle ? ' selected dataset: ' : ' dataset: ') + nb.ds.name + ' (' + (nb.k + 1) + ' of ' + nb.n + (nb.cycle ? ' selected; the selection is kept)' : ')');
       Y.ui.able(el, !S.datasets.length ? 'No data loaded yet.' : nb ? '' : b[1] < 0 ? 'This is the first dataset of the list.' : 'This is the last dataset of the list.');
     });
   }
-  function stepDataset(dir) { var nb = neighbour(dir); if (nb) Y.state.selectIds([nb.ds.id]); }
+  function stepDataset(dir) {
+    var nb = neighbour(dir);
+    if (!nb) return;
+    if (nb.cycle) { editing = null; Y.state.setFocus(nb.ds.id); } else Y.state.selectIds([nb.ds.id]);
+  }
 
   // Snapshot only real changes, including edits applied to several selected datasets. burst: the change is one step
   // of the mouse wheel or of an arrow key; the steps that follow each other on one parameter (and the same selection)
@@ -147,11 +180,19 @@ Y.paramsPanel = (function () {
       e.preventDefault();
       step(row.getAttribute('data-name'), e.deltaY < 0 ? 1 : -1, e);
     }, { passive: false });
+    host.addEventListener('click', function (e) {
+      var pl = e.target.closest('.pl');
+      if (!pl || S.busy) return;
+      var n = pl.closest('.prow').getAttribute('data-name'), sh = !S.model.shared[n];
+      Y.state.setShared(n, sh);
+      Y.ui.toast(n + (sh ? ' shared: one value for all datasets in the global fit.' : ' local: one value per dataset in the global fit.'), 'info');
+    });
     host.addEventListener('change', function (e) {
       if (!e.target.classList.contains('pf')) return;
       var n = e.target.closest('.prow').getAttribute('data-name'), ds = Y.state.first();
       if (S.busy) { e.target.checked = !!(ds && ds.fit[n]); Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }
       var on = e.target.checked;
+      e.target.indeterminate = false;
       if (!Y.state.selected().some(function (d) { return !!d.fit[n] !== on; })) return;
       Y.history.take('fit flag ' + n);
       Y.state.setFit(n, on);
@@ -344,11 +385,14 @@ Y.paramsPanel = (function () {
     Y.bus.on('stats', renderValues);
     Y.bus.on('data', renderValues);
     Y.bus.on('settings', syncSettings);
+    Y.bus.on('fitmode', renderValues);
+    Y.bus.on('shared', function () { renderValues(); renderLimits(); });
     // values and fit flags are locked while a fit runs: results would overwrite edits made meanwhile
     Y.bus.on('busy', function (b) {
       if (b && editing) { var a = document.activeElement; if (a && a.blur) a.blur(); }
       var on = !!Y.state.first() && !b;
       document.querySelectorAll('#param-list .pv, #param-list .pf').forEach(function (el) { el.disabled = !on; });
+      document.querySelectorAll('#param-list .pl').forEach(function (el) { el.disabled = !!b; });
     });
     renderList(); renderLimits();
   }

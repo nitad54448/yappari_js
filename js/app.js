@@ -139,7 +139,7 @@
 
     $('#btn-fit').addEventListener('click', runFit);
     document.querySelectorAll('[data-fitmode]').forEach(function (b) {
-      b.addEventListener('click', function () { Y.state.store('fitmode', b.getAttribute('data-fitmode')); syncFitbar(); syncTarget(); Y.cmd.syncButtons(); });
+      b.addEventListener('click', function () { Y.state.store('fitmode', b.getAttribute('data-fitmode')); syncFitbar(); syncTarget(); Y.cmd.syncButtons(); Y.bus.emit('fitmode'); });
     });
     Y.bus.on('selection', syncTarget); Y.bus.on('datasets', syncTarget); Y.bus.on('model', syncTarget);
     Y.bus.on('params', syncTarget); Y.bus.on('busy', syncTarget);

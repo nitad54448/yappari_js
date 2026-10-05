@@ -25,16 +25,51 @@ Y.cmd = (function () {
     zview: function (t, n) { return Y.readers.zview(t, n); },
     versa: function (t, n) { return Y.readers.versa(t, n); },
     mfli: function (t, n) { return Y.readers.mfliCsv(t, n); },
-    auto: function (t, n) { return Y.readers.auto(t, n, S.settings.sep); }
+    auto: function (t, n) { return Y.readers.autoRead(t, n, presetCache || [], S.settings.sep); }
   };
+
+  // ---------------------------------------------------------------- preset definitions (config/definitions)
+  async function getText(url) {
+    var response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) throw new Error('HTTP ' + response.status + ' for ' + url);
+    return response.text();
+  }
+  async function presetNames() {
+    var index = JSON.parse(await getText('config/definitions/index.json'));
+    if (!index || !Array.isArray(index.definitions)) throw new Error('index.json must contain a definitions array.');
+    var names = index.definitions;
+    if (names.some(function (n) { return typeof n !== 'string' || !/^[^/\\\x00-\x1f]+\.xml$/i.test(n) || n.indexOf('..') >= 0; })) throw new Error('Use XML filenames only, without directory paths.');
+    return Array.from(new Set(names)).sort(function (a, b) { return a.localeCompare(b); });
+  }
+  async function presetDefinition(name) {
+    return Y.readers.parseDefinition(await getText('config/definitions/' + encodeURIComponent(name)));
+  }
+  // Presets with <detect> rules, for File, Auto and dropped files: loaded once per session. Without HTTP(S)
+  // (index.html opened from disk) the list stays empty and only the built-in recognisers are used.
+  var presetCache = null;
+  async function detectionPresets() {
+    if (presetCache) return presetCache;
+    var list = [];
+    try {
+      var names = await presetNames();
+      await Promise.all(names.map(async function (name) {
+        try { var d = await presetDefinition(name); if (d.detect) list.push({ label: d.description || name, name: name, def: d }); }
+        catch (e) { ui.toast('Preset ' + name + ': ' + e.message, 'warn'); }
+      }));
+      list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+      presetCache = list;
+    } catch (e) { /* no index (file://): built-in detection only, retried next time */ }
+    return list;
+  }
 
   function listNames(list) {
     var s = list.slice(0, 3).map(function (d) { return d.name; }).join(', ');
     return list.length > 3 ? s + ' …' : s;
   }
 
-  // kind: three | table | zview | versa | custom (with def) | project | auto (files dropped on the window).
-  // With auto, a definition file (.xml, .ini, .json) dropped together with data files is used to read them.
+  // kind: three | table | zview | versa | custom (with def) | project | auto (File, Auto and files dropped on the window).
+  // With auto, an XML definition dropped together with data files is used to read them; otherwise the format of each
+  // file is detected from the <detect> rules of the presets, then from the built-in recognisers.
   async function readFiles(files, kind, def) {
     if (!idle()) return;
     var items = [];
@@ -54,7 +89,7 @@ Y.cmd = (function () {
           try { await openProject(it.text); } catch (e) { ui.toast(it.name + ': ' + e.message, 'err'); }
           continue;
         }
-        if (/\.(xml|ini|json)$/i.test(it.name)) {
+        if (/\.xml$/i.test(it.name) && /<impedanceFormat[\s>]/.test(head)) {
           try { def = Y.readers.parseDefinition(it.text); Y.state.store('customdef', def); }
           catch (e) { ui.toast(it.name + ': ' + e.message, 'err'); }
           continue;
@@ -63,14 +98,15 @@ Y.cmd = (function () {
       }
       if (def) {
         kind = 'custom';
-        if (!data.length) { ui.toast('Definition read, header "' + def.header + '". Drop it together with the data files, or use File, Custom format.', 'info'); return; }
-      }
+        if (!data.length) { ui.toast('Definition ' + (def.description || '') + ' read. Drop it together with the data files, or use File, Custom format.', 'info'); return; }
+      } else if (data.length) await detectionPresets();
       items = data;
     }
-    var all = [], nFiles = 0, skipped = [], warnings = [];
+    var all = [], nFiles = 0, skipped = [], warnings = [], formats = [];
     items.forEach(function (it) {
       try {
         var got = kind === 'custom' ? Y.readers.custom(it.text, it.name, def) : READ[kind](it.text, it.name);
+        if (got.format && formats.indexOf(got.format) < 0) formats.push(got.format);
         if (got.skipped) skipped.push(it.name + ' (' + got.skipped + ')');
         if (got.warning) warnings.push(got.warning);
         all = all.concat(got);
@@ -81,7 +117,8 @@ Y.cmd = (function () {
       snapshot('reading ' + plural(nFiles, 'file'));
       Y.state.addDatasets(all);
       var pts = all.reduce(function (a, d) { return a + d.f.length; }, 0);
-      ui.toast('Read ' + plural(all.length, 'dataset') + ' (' + pts + ' points) from ' + plural(nFiles, 'file') + ': ' + listNames(all) + '.', 'ok');
+      ui.toast('Read ' + plural(all.length, 'dataset') + ' (' + pts + ' points) from ' + plural(nFiles, 'file') + ': ' + listNames(all) + '.' +
+        (formats.length ? ' Format: ' + formats.join(', ') + '.' : ''), 'ok');
     }
     if (skipped.length) ui.toast('Incomplete rows (a missing or non-numeric value) were skipped: ' + skipped.join(', ') + '.', 'warn');
     warnings.forEach(function (w) { ui.toast(w, 'warn'); });
@@ -104,11 +141,17 @@ Y.cmd = (function () {
     ui.toast('Opened a project with ' + plural(S.datasets.length, 'dataset') + (S.model.cdc ? ' and the circuit ' + S.model.cdc : '') + '.', 'ok');
   }
 
-  // Native XML version 1. Keep every supported setting visible and round-trippable.
+  // Native XML version 3. Keep every supported setting visible and round-trippable.
   var DEF_FIELDS = [
-    { key: 'reader', label: 'File layout', type: 'select', options: [['table', 'Custom table'], ['mfliCsv', 'MFLI CSV (LabOne)'], ['zview', 'MFLI ZView / ZView'], ['yappariJS', 'Yappari JS Save data']] },
+    { key: 'reader', label: 'File layout', type: 'select', options: [['table', 'Custom table'], ['columnHeaders', 'Table with column headers'], ['mfliCsv', 'MFLI CSV (LabOne)'],
+      ['zview', 'MFLI ZView / ZView'], ['gamryDTA', 'Gamry DTA'], ['biologicMPT', 'BioLogic MPT'], ['versaPar', 'VersaStudio .par'], ['yappariJS', 'Yappari JS Save data']] },
     { key: 'data_source', label: 'Impedance to load', type: 'select', options: [['auto', 'Measured if present, otherwise model'], ['measured', 'Measured Zr, Zi'], ['model', 'Model Zr, Zi']] },
     { key: 'description', label: 'Description', type: 'text' },
+    { key: 'detect_file_names', label: 'Detect: file names', type: 'text', hint: 'File, Auto. Optional globs separated by spaces, e.g. *.txt *.dat; one must match.' },
+    { key: 'detect_contains', label: 'Detect: text contains', type: 'textarea', hint: 'One literal per line; all must occur in the first 64 kB. Spaces are significant.' },
+    { key: 'detect_matches', label: 'Detect: patterns', type: 'textarea', hint: 'One regular expression per line (multiline; prefix (?i) to ignore case); all must match.' },
+    { key: 'detect_excludes', label: 'Detect: text excludes', type: 'textarea', hint: 'One literal per line; none may occur.' },
+    { key: 'detect_priority', label: 'Detect: priority', type: 'number', hint: 'When several definitions match, the highest priority is tried first.' },
     { key: 'mode', label: 'Dataset separation', type: 'select', options: [['repeatedHeader', 'Repeated header'], ['single', 'One dataset per file'], ['blankLines', 'Blank lines']] },
     { key: 'header', label: 'Header text', type: 'text', hint: 'Literal text; spaces are significant. Used in repeated-header mode.' },
     { key: 'header_match', label: 'Header matching', type: 'select', options: [['contains', 'Contains'], ['startsWith', 'Starts with'], ['exact', 'Exact line']] },
@@ -133,13 +176,28 @@ Y.cmd = (function () {
     { key: 'invalid_rows', label: 'Invalid data rows', type: 'select', options: [['skipAndReport', 'Skip and report'], ['error', 'Stop with an error']] }
   ];
 
+  // Detection rules <-> flat dialog fields
+  function detectFields(d) {
+    var t = d.detect || {}, j = function (a, sep) { return (a || []).join(sep); };
+    return { detect_file_names: j(t.file_names, ' '), detect_contains: j(t.contains, '\n'), detect_matches: j(t.matches, '\n'),
+             detect_excludes: j(t.excludes, '\n'), detect_priority: t.priority || 0 };
+  }
+  function detectFromFields(v) {
+    var lines = function (s) { return String(s || '').split(/\r?\n/).filter(function (x) { return x !== ''; }); };
+    v.detect = { priority: v.detect_priority, file_names: String(v.detect_file_names || '').split(/\s+/).filter(Boolean),
+                 contains: lines(v.detect_contains), matches: lines(v.detect_matches), excludes: lines(v.detect_excludes) };
+    Object.keys(v).forEach(function (k) { if (k.indexOf('detect_') === 0) delete v[k]; });
+    return v;
+  }
+
   function customDialog() {
     if (!idle()) return;
     var def, chosen = null, request = 0, busy = false;
-    try { def = Y.readers.upgradeDefinition(Y.state.load('customdef') || Object.assign({}, Y.readers.modernDefaults, { mode: 'single' })); }
-    catch (e) { def = Object.assign({}, Y.readers.modernDefaults, { mode: 'single' }); }
+    try { def = Y.readers.normalizeModern(Y.state.load('customdef')); }
+    catch (e) { def = Object.assign({}, Y.readers.modernDefaults, { mode: 'single' }); }      // none stored, or an old format
+    def = Object.assign({}, def, detectFields(def));
     var body = document.createElement('div');
-    body.innerHTML = '<p class="intro">XML definitions (versions 1 and 2). Presets are listed in config/definitions/index.json. Select a preset, load an XML file, or edit the settings below.</p>' +
+    body.innerHTML = '<p class="intro">XML definitions (versions 1 to 3). Presets are listed in config/definitions/index.json. Select a preset, load an XML file, or edit the settings below.</p>' +
       '<div class="form-grid"><label for="f_preset">Preset</label><div><select id="f_preset" disabled><option value="">Loading presets…</option></select><small id="preset-status" role="status"></small></div>' +
       DEF_FIELDS.map(function (f) { return ui.fieldHTML(Object.assign({}, f, { value: def[f.key] })); }).join('') + '</div>' +
       '<div id="definition-preview" role="status" style="margin-top:1em;white-space:pre-wrap"></div>';
@@ -148,13 +206,14 @@ Y.cmd = (function () {
     function showLayout() {
       var kind = body.querySelector('[data-key="reader"]').value;
       DEF_FIELDS.forEach(function (f) {
-        var visible = f.key === 'reader' || f.key === 'description' || (f.key === 'data_source' ? kind === 'yappariJS' : kind === 'table');
+        var visible = f.key === 'reader' || f.key === 'description' || f.key.indexOf('detect_') === 0 || (f.key === 'data_source' ? kind === 'yappariJS' : kind === 'table');
         var e = body.querySelector('[data-key="' + f.key + '"]');
         e.parentElement.hidden = !visible;
         body.querySelector('label[for="f_' + f.key + '"]').hidden = !visible;
       });
     }
     function fill(d) {
+      d = Object.assign({}, d, detectFields(d));
       DEF_FIELDS.forEach(function (f) {
         var e = body.querySelector('[data-key="' + f.key + '"]');
         if (f.type === 'checkbox') e.checked = d[f.key] || false; else e.value = d[f.key] == null ? Y.readers.modernDefaults[f.key] : d[f.key];
@@ -165,21 +224,12 @@ Y.cmd = (function () {
     function grab() {
       if (busy) { ui.toast('Wait for the definition to finish loading.', 'info'); return null; }
       var v = ui.collect(body, DEF_FIELDS); if (!v) return null;
-      try { return Y.readers.normalizeModern(Object.assign(v, { format_version: 2 })); }
+      try { return Y.readers.normalizeModern(detectFromFields(Object.assign(v, { format_version: 3 }))); }
       catch (e) { ui.toast(e.message, 'warn'); return null; }
-    }
-    async function getText(url) {
-      var response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) throw new Error('HTTP ' + response.status + ' for ' + url);
-      return response.text();
     }
     async function loadIndex() {
       try {
-        var index = JSON.parse(await getText('config/definitions/index.json'));
-        if (!index || !Array.isArray(index.definitions)) throw new Error('index.json must contain a definitions array.');
-        var names = index.definitions;
-        if (names.some(function (n) { return typeof n !== 'string' || !/^[^/\\\x00-\x1f]+\.xml$/i.test(n) || n.indexOf('..') >= 0; })) throw new Error('Use XML filenames only, without directory paths.');
-        names = Array.from(new Set(names)).sort(function (a, b) { return a.localeCompare(b); });
+        var names = await presetNames();
         select.innerHTML = '<option value="">None — manual settings</option>';
         names.forEach(function (name) { var o = document.createElement('option'); o.value = name; o.textContent = name; select.appendChild(o); });
         select.disabled = false;
@@ -194,7 +244,7 @@ Y.cmd = (function () {
       if (!name) { setBusy(false); return; }
       setBusy(true); status.textContent = 'Loading ' + name + '…';
       try {
-        var d = Y.readers.upgradeDefinition(Y.readers.parseDefinition(await getText('config/definitions/' + encodeURIComponent(name))));
+        var d = await presetDefinition(name);
         if (id !== request) return;
         fill(d); status.textContent = name + ' loaded.';
       } catch (e) {
@@ -213,11 +263,11 @@ Y.cmd = (function () {
       onOpen: function () { body.closest('dialog').classList.add('custom-format-dialog'); },
       buttons: [
         { label: 'Load definition…', left: true, close: false, onClick: function () {
-          ui.pickFiles({ accept: '.xml,.ini,.json' }).then(async function (fs) {
+          ui.pickFiles({ accept: '.xml' }).then(async function (fs) {
             if (!fs.length) return;
             var id = ++request; setBusy(true);
             try {
-              var d = Y.readers.upgradeDefinition(Y.readers.parseDefinition(await ui.readText(fs[0])));
+              var d = Y.readers.parseDefinition(await ui.readText(fs[0]));
               if (id !== request) return;
               fill(d); select.value = ''; status.textContent = fs[0].name + ' loaded.';
             } finally { if (id === request) setBusy(false); }
@@ -225,7 +275,7 @@ Y.cmd = (function () {
         } },
         { label: 'Save definition…', left: true, close: false, onClick: function () {
           var v = grab(); if (!v) return;
-          var name = select.value || 'custom_' + ((v.description || v.header).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'definition') + '.xml';
+          var name = select.value || 'custom_' + ((v.description || v.header || v.reader).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'definition') + '.xml';
           Y.writers.download(name, Y.writers.definitionXML(v), 'application/xml');
           ui.toast('Downloaded ' + name + '. To make it a preset, place it in config/definitions/ and add its filename to index.json.', 'ok');
         } },
@@ -233,8 +283,8 @@ Y.cmd = (function () {
           var v = grab(); if (!v) return;
           ui.pickFiles({ multiple: false }).then(async function (fs) {
             if (!fs.length) return;
-            var got = Y.readers.custom(await ui.readText(fs[0]), fs[0].name, v);
-            preview.textContent = got.length + ' dataset(s), ' + got.reduce(function (n, d) { return n + d.f.length; }, 0) + ' points, ' + (got.skipped || 0) + ' invalid row(s) skipped.\n' +
+            var text = await ui.readText(fs[0]), got = Y.readers.custom(text, fs[0].name, v);
+            preview.textContent = (v.detect ? 'Detection rules: ' + (Y.readers.detects(text, fs[0].name, v) ? 'match' : 'NO match') + ' for ' + fs[0].name + '.\n' : 'No detection rules: File, Auto will not use this definition.\n') + got.length + ' dataset(s), ' + got.reduce(function (n, d) { return n + d.f.length; }, 0) + ' points, ' + (got.skipped || 0) + ' invalid row(s) skipped.\n' +
               got.slice(0, 5).map(function (d) { return d.name + ': ' + d.f.length + ' points; first point: f=' + d.f[0] + ' Hz, Zr=' + d.zr[0] + ' Ω, Zi=' + d.zi[0] + ' Ω'; }).join('\n') + (got.warning ? '\n' + got.warning : '');
           }).catch(function (e) { preview.textContent = e.message; });
         } },
@@ -307,10 +357,16 @@ Y.cmd = (function () {
 
   async function globalFit() {
     if (!idle() || !haveModel() || !haveSel(2)) return;
-    var list = sel(), first = list[0], names = Y.state.names(), b = Y.state.bounds();
+    // the dataset shown in the Parameters panel gives the fit ticks and the start values of the shared parameters
+    var first = Y.state.first(), list = [first].concat(sel().filter(function (ds) { return ds !== first; })), names = Y.state.names(), b = Y.state.bounds();
     var fit = Uint8Array.from(names, function (n) { return first.fit[n] ? 1 : 0; });
     var shared = Uint8Array.from(names, function (n) { return S.model.shared[n] ? 1 : 0; });
     if (!fit.some(function (v) { return v; })) { ui.toast('Tick "fit" next to at least one parameter of ' + first.name + '.', 'warn'); return; }
+    // the global fit fits the parameters ticked in the first dataset: say so when the others disagree
+    var mixed = names.filter(function (n) { return list.some(function (ds) { return !!ds.fit[n] !== !!first.fit[n]; }); });
+    if (mixed.length && !(await ui.confirm('The fit ticks differ between the selected datasets for ' + mixed.join(', ') + '. The global fit uses the ticks of ' +
+        first.name + ' for all of them: ' + mixed.map(function (n) { return n + (first.fit[n] ? ' fitted' : ' held fixed'); }).join(', ') + '.',
+        'Continue', false, 'Global fit'))) return;
     var job = { cdc: S.model.cdc, fit: fit, shared: shared, lo: b.lo, hi: b.hi, weight: S.settings.weight,
                 method: S.settings.method === 'LM' ? 'LM' : 'LMB', maxIter: S.settings.maxIter, tol: S.settings.tol,
                 sets: list.map(function (ds) { return Object.assign({ id: ds.id, p: Y.state.vector(ds) }, Y.state.unmasked(ds)); }) };
@@ -518,14 +574,18 @@ Y.cmd = (function () {
     var v = await ui.prompt('Save data', [
       { key: 'exp', label: 'Measured Zr, Zi', type: 'checkbox', value: true },
       { key: 'calc', label: 'Model Zr, Zi', type: 'checkbox', value: !!S.model.prog },
+      { key: 'contrib', label: 'Contributions', type: 'checkbox', value: false,
+        hint: 'f, Zr, Zi of each part in series of the circuit (partK_ columns); negligible values written as 0.' },
       { key: 'sep', label: 'Separator', type: 'select', value: S.settings.sep === 'auto' ? 'tab' : S.settings.sep,
         options: [['tab', 'TAB'], ['semicolon', 'Semicolon'], ['comma', 'Comma'], ['space', 'Space']] }
-    ], 'Save', 'One block per dataset; File, Table with column headers reads the file back.');
+    ], 'Save', 'One block per dataset; File, Auto (or Table with column headers) reads the file back.');
     if (!v) return;
     if (!v.exp && !(v.calc && S.model.prog)) { ui.toast('Nothing to save: tick the measured or the model values (a model needs a circuit).', 'warn'); return; }
-    var txt = Y.writers.dataText(sel(), { sep: v.sep, exp: v.exp, calc: v.calc && !!S.model.prog }, function (ds) { return Y.state.calcFor(ds); });
+    if (v.contrib && !S.model.prog) { ui.toast('Contributions need a circuit; saved without them.', 'warn'); v.contrib = false; }
+    var txt = Y.writers.dataText(sel(), { sep: v.sep, exp: v.exp, calc: v.calc && !!S.model.prog, contrib: v.contrib },
+      function (ds) { return Y.state.calcFor(ds); }, function (ds) { return Y.state.partsFor(ds); });
     Y.writers.download('yappari_data_' + Y.writers.fileStamp() + '.txt', txt);
-    ui.toast('Saved the data of ' + plural(S.sel.size, 'dataset') + '.', 'ok');
+    ui.toast('Saved the data of ' + plural(S.sel.size, 'dataset') + (v.contrib ? ', with contributions' : '') + '.', 'ok');
   }
   function saveProject() {
     if (!need(S.datasets.length || S.model.prog, 'Nothing to save yet.')) return;
@@ -728,7 +788,7 @@ Y.cmd = (function () {
     if (r) return r;
     var g = !!(Y.app && Y.app.fitMode && Y.app.fitMode() === 'global'), list = sel(), names = Y.state.names();
     if (g && list.length < 2) return 'A global fit needs at least two selected datasets.';
-    var ticked = g ? names.some(function (n) { return list[0].fit[n]; })
+    var ticked = g ? names.some(function (n) { return Y.state.first().fit[n]; })
                    : list.some(function (ds) { return names.some(function (n) { return ds.fit[n]; }); });
     return ticked ? '' : 'Tick “fit” next to at least one parameter (Parameters tab).';
   }
@@ -848,7 +908,8 @@ Y.cmd = (function () {
   // ---------------------------------------------------------------- menus
   function init() {
     var M = {                                  // label, command, availability rule (see WHY)
-      file: [['3 columns: f, Zr, Zi…', function () { read('three'); }, 'read'],
+      file: [['Auto: detect the format…', function () { read('auto'); }, 'read'], null,
+             ['3 columns: f, Zr, Zi…', function () { read('three'); }, 'read'],
              ['Table with column headers…', function () { read('table'); }, 'read'],
              ['ZView .z / .txt…', function () { read('zview'); }, 'read'], null,
              ['BioLogic MPT…', function () { read('biologic'); }, 'read'],

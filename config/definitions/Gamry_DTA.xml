@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<impedanceFormat version="3" reader="gamryDTA">
+  <description>Gamry DTA (ZCURVE tables)</description>
+  <detect priority="20">
+    <matches>(?i)^\s*ZCURVE\d*\s+TABLE\b</matches>
+  </detect>
+</impedanceFormat>

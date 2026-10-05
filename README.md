@@ -37,7 +37,7 @@ circuit, the element start values and the layout (tabs, side panel width) are re
 
 ## 1. Quick start
 
-1. **Read data**: *File* menu → choose the format, or simply drop files on the window. To try the program,
+1. **Read data**: *File → Auto: detect the format*, a specific format in *File*, or simply drop files on the window. To try the program,
    *File → Load 24 demo spectra* (or type `demo` in the command line).
 2. **Build the circuit** in the **Model** tab: click elements of the palette, pick a template, or type a circuit
    code such as `R(RQ)(RQ)` and press *Apply*.
@@ -91,7 +91,7 @@ the plots must be plain values (#hex, rgb(), rgba()).
 
 | Menu | Items |
 |---|---|
-| **File** | Read: 3 columns · Table with column headers · ZView · **separator** · BioLogic MPT · Gamry DTA · VersaStudio .par · Custom format, xml. Open project · Save project. Save parameters of selected · Save data of selected · Report of selected datasets. Load 24 demo spectra. |
+| **File** | Read: Auto (detect the format) · **separator** · 3 columns · Table with column headers · ZView · **separator** · BioLogic MPT · Gamry DTA · VersaStudio .par · Custom format, xml. Open project · Save project. Save parameters of selected · Save data of selected · Report of selected datasets. Load 24 demo spectra. |
 | **Data** | Undo the last command. Mask points in the current view · Unmask selected datasets · Delete points in the current view · Delete selected datasets. Normalize · Negate Zi. Add random noise · Spline to a log frequency grid · Smooth (Savitzky–Golay) · Average selected datasets. Simulate spectrum. |
 | **Analysis** | Show / Save the DRT of selected datasets · DRT λ search. Z-HIT of selected datasets · Kramers–Kronig test of selected datasets. Label a frequency on the Nyquist plot · Clear Nyquist labels. Command line help. |
 
@@ -105,7 +105,7 @@ rules. The command line and the keyboard shortcuts still run the commands, which
 | Tab | Content |
 |---|---|
 | **Datasets** | All datasets, newest on top. Colour square = plot colour; dot on the right = fit status (green converged; amber iteration limit, stalled, singular system or all fitted parameters at their limits; red failed). Selected datasets are amber. |
-| **Parameters** | Values of the first selected dataset: name, value, unit, standard error (%), fit tick box. Below: χ²w, χ²red, R², weights, fit status. At the bottom: *Copy these values to All datasets / Selected datasets*. The arrows ← → right of the dataset name (cut with … when it is long; the whole name shows on hover) select the previous or next dataset of the list, to scan the parameters of many datasets from here. |
+| **Parameters** | Values of the dataset shown (the first selected one, or the one browsed to with ← →): name, value, unit, standard error (%), fit tick box (a dash when the selected datasets disagree; the tooltip gives the count, a click fits the parameter in all; in Global mode a padlock before it shows shared or local). Below: χ²w, χ²red, R², weights, fit status. At the bottom: *Copy these values to All datasets / Selected datasets*. The arrows ← → right of the dataset name (cut with … when it is long; the whole name shows on hover) show the previous or next dataset: with several datasets selected they cycle through those, and the selection is kept; with one selected they select the previous or next dataset of the list. |
 | **Fit** | What will be fitted (number of selected datasets, circuit), mode **Individual** or **Global**, method, weights, max iterations, min χ² step (relative tolerance) and *Stop*. The **Fit** button is in the top bar, immediately left of Settings. All four fit settings stay synchronized with Settings. |
 
 Drag the **left edge of the side panel** to resize it (arrow keys when it has the focus; double-click resets).
@@ -116,7 +116,14 @@ only while a job runs.
 
 ## 3. Reading data
 
-All formats are in *File*. Several files can be chosen at once; dropped files are recognised automatically.
+All formats are in *File*. Several files can be chosen at once.
+
+* **Auto: detect the format** (also used for dropped files): each file is matched against the `<detect>` rules of the
+  presets in `config/definitions/` (highest priority first), then against the built-in recognisers (VersaStudio,
+  Gamry DTA, BioLogic MPT, ZView, MFLI CSV, Yappari JS Save data), then read as a table with column headers or as
+  blocks of three numbers. The status line names the format used. A preset that matches but cannot read the file
+  is reported and the next candidate is tried. When `index.html` is opened from disk (`file://`) the presets cannot
+  be fetched and only the built-in recognisers are used.
 Each spectrum becomes a **dataset** holding the frequency f (Hz), Zr and Zi (Ω, Zi negative for capacitive
 behaviour). Text files are read as UTF-8, or as UTF-16 when they are written that way (*Unicode text* of Excel or
 Notepad, recognised from the start of the file).
@@ -146,14 +153,14 @@ Notepad, recognised from the start of the file).
   multiple impedance sections as separate datasets. Non-impedance tables are ignored. Files without an impedance
   section are rejected; numerical data is not guessed by column position.
 * **VersaStudio .par**: each `<Segment>` with frequency and impedance (or E and I) columns.
-* **Custom format, xml** (Yappari JS 1.5): select a filename from
+* **Custom format, xml** (Yappari JS 1.5 and later): select a filename from
   `config/definitions/index.json`, load a definition, or edit the fields. Definitions use the
-  application-native XML format (versions 1 and 2). Version 2 adds specialized file layouts. The dialog supports single datasets,
+  application-native XML format (versions 1 to 3). Version 2 adds specialized file layouts; version 3 adds
+  `<detect>` rules for *Auto* and the Gamry, BioLogic, VersaStudio and column-header layouts. The dialog supports single datasets,
   repeated literal headers, blank-line blocks, full or truncated labels, end markers, line skipping,
   Cartesian/polar impedance, unit conversions, imaginary sign reversal, explicit delimiters and decimal
   separators, comments, missing values and invalid-row policies. Preview data before importing it.
-  Save definition downloads the new XML format. Existing LabVIEW XML, INI and JSON definitions can
-  still be imported; new XML is not intended for LabVIEW.
+  Save definition downloads XML version 3. LabVIEW XML, INI and JSON definitions of Yappari 5.1 are no longer read.
 
   Presets require HTTP(S) hosting (including GitHub Pages). Add your XML to `config/definitions/` and
   its filename to the `definitions` array in `index.json`; no Actions or build step is needed.
@@ -187,9 +194,8 @@ files are not uploaded to the static server. After publishing updates, hard-refr
 
 * **Open project**: a `.json` project written by *Save project* (also opens when dropped). The Log saved with it is
   shown in the Log tab, with its dates, and the Log kept for the project continues from it.
-* **Dropped files** are read automatically: ZView, VersaStudio, tables with headers, or blocks of three numbers
-  separated by text lines (`hp4192a.txt` gives its three cycles). Drop a definition file together with data files
-  to read them with it.
+* **Dropped files** are read as with *File → Auto*. Drop an XML definition together with data files to read them
+  with it instead.
 
 The example files in `files/` cover each format. The MFLI csv sample stops before the `frequency`, `realz` and
 `imagz` lines (reading it explains this); `files/type_VersaStudio.par` is a real VersaStudio file.
@@ -332,10 +338,34 @@ them is brought back to the nearest limit.
 * A fit that stops on tiny steps is checked with one Gauss-Newton step; if χ² could still drop noticeably it is
   reported as *stalled, not a minimum* (amber), not as converged.
 * Fit flags (the tick boxes) are per dataset and are copied with the values by *Copy these values to …*.
+  See [Parameters panel with several datasets](#parameters-panel-with-several-datasets).
 * Start values: type them, or turn the mouse wheel over a value (Shift: larger steps, Alt: smaller), or use the
   arrow keys. The model curve follows immediately.
 * *Simulate spectrum* (Data menu) creates a dataset from the circuit and the current values over the frequency range
   set in *Settings → Simulation*.
+
+### Parameters panel with several datasets
+
+The panel shows the values of one selected dataset, the first one of the list until ← → are used; *and N more*
+next to its name tells how many others are selected. With several datasets selected, ← → cycle through **the
+selected datasets only** and keep the selection, so the marks below stay valid while browsing. To work on one
+dataset alone, select only that one in the Datasets tab; ← → then step through the whole list. Every change made here applies to **all selected datasets**: a typed value, a mouse-wheel or
+arrow-key step, a fit tick, a shared/local padlock. One restore point covers the change for all of them.
+
+| What you see | Meaning | A click |
+|---|---|---|
+| ☑ fit tick | Fitted in every selected dataset | Holds it fixed in all |
+| ☐ empty tick, grey name and value | Held fixed in every selected dataset | Fits it in all |
+| ▬ amber dash in the tick box | *Mixed*: fitted in some selected datasets only (the tooltip gives the count, e.g. 2 of 5) | Fits it in all |
+| 🔒 grey closed padlock (Global mode only) | Shared: one value for all datasets in the global fit | Makes it local |
+| 🔓 amber open padlock (Global mode only) | Local: one value per dataset in the global fit | Makes it shared |
+| ±x % next to the value | Standard error of the last fit; amber *limit* when the parameter ended on a limit | — |
+
+The padlocks appear only when the Fit tab is set to **Global**, and are dimmed for parameters held fixed. Shared or
+local is a property of the circuit's parameter (the same as the *shared* column of *Settings → Parameter limits*),
+not of a dataset. Amber marks what deserves a look: a mixed tick (an individual fit then fits different parameters
+in different datasets; a global fit uses the ticks of the dataset shown, see below) or a local parameter in a
+global fit.
 
 ### End of a fit
 
@@ -366,7 +396,12 @@ parameter is
   the LabVIEW behaviour), or
 * **local**: one value per dataset (untick *shared*).
 
-Shared parameters start from the first selected dataset, local ones from each dataset's own values. The fit is a
+In Global mode the Parameters panel shows a padlock before each fit tick: closed (grey) = shared, open (amber) = local;
+click it to switch (see [Parameters panel with several datasets](#parameters-panel-with-several-datasets)). The fit
+ticks of the dataset shown in the Parameters panel decide which parameters are fitted; when the selected datasets disagree (amber
+dash in the tick box), a warning names the parameters concerned before the fit starts (Continue or Cancel).
+
+Shared parameters start from the dataset shown in the Parameters panel, local ones from each dataset's own values. The fit is a
 Levenberg–Marquardt on the block-arrow normal equations (Schur complement on the shared block), so hundreds of
 datasets with local parameters stay cheap. χ²w is the sum over all datasets; χ²red uses $2\sum N - p_\text{total}$.
 Bounds are kept as in a single fit, except with method LM: a parameter on a limit is held while the χ² gradient
@@ -654,7 +689,7 @@ or double-click renames; drag to reorder. `select>>text` selects by name (regula
 | Item | Content |
 |---|---|
 | **Save parameters of selected** | Tab-separated: one line per dataset with R², χ²w, χ²red, and value and SE % of each parameter. |
-| **Save data of selected…** | Measured and/or model Zr, Zi (and σ when present), one block per dataset, chosen separator; masked points included, marked in a `masked` column. Read back with *Table with column headers*; a file with the model values only reads back as data. |
+| **Save data of selected…** | Measured and/or model Zr, Zi (and σ when present), one block per dataset, chosen separator; masked points included, marked in a `masked` column. **Contributions** (off by default) adds `partK_freq/Hz`, `partK_Zr`, `partK_Zi` for each part in series of the circuit (named on a `#contributions` line); values below 10⁻⁹ of the part's largest \|Z\| are written as 0. These columns are ignored when reading. Read back with *Auto*, the `Yappari_JS.xml` preset or *Table with column headers*; a file with the model values only reads back as data. |
 | **Report of selected datasets** | HTML: statistics, parameters and six plots per dataset (Nyquist, Zr, Zi with residuals, \|Z\|, phase). Up to 30 datasets it opens in a new tab; otherwise it is downloaded. |
 | **Save project** (Ctrl+S) | JSON: data, masks, labels, circuit, limits, shared flags, settings, parameters and statistics of every dataset, and the Log (its lines, without the *Restore before* buttons: from the opening of the page, or from the project opened last, which brings its own Log). *Open project* restores everything. |
 | **Save PNG** | The current plot. |
@@ -722,7 +757,7 @@ datasets. Numbers accept SI prefixes where a frequency is expected (`1k`, `2.5M`
 | `smooth>>s&d` | Savitzky–Golay, s points on each side, degree d |
 | `average` | Mean of the selected datasets |
 | `fit`, `globalfit` | Fit the selected datasets one by one, or together |
-| `clone_all`, `clone_active` | Copy the parameters of the first selected dataset to all, or to the selected datasets |
+| `clone_all`, `clone_active` | Copy the parameters of the dataset shown in the Parameters panel to all, or to the selected datasets |
 | `mask`, `unmask` | Mask the points inside the current plot view, or show them all again |
 | `simulate` | New dataset from the circuit and the current parameters |
 | `select>>text` | Select the datasets whose name contains text (regular expressions work) |
@@ -767,14 +802,14 @@ js/core/globalfit.js  global fit with shared and local parameters (block Levenbe
 js/core/dataops.js    noise, Zi sign, correction factor, log spline, Savitzky–Golay, average, view selection
 js/core/drt.js        DRT (Tikhonov NNLS, Fisk, Gold, λ search, peaks) and Z-HIT
 js/core/kk.js         Kramers–Kronig test (Lin-KK): linear least squares on a chain of RC elements
-js/io/readers.js      3 columns, tables with headers, MFLI, ZView, VersaStudio, custom definitions
+js/io/readers.js      3 columns, tables with headers, MFLI, ZView, VersaStudio, XML definitions, format detection
 js/io/writers.js      data, parameters, project files, downloads
 js/state.js           datasets, selection, circuit, parameters, settings, event bus
 js/history.js         restore points, undo
 js/workers.js         Web Worker pool built from a Blob (works from file://), main-thread fallback
 js/ui/*.js            theme (reads style.css), plots (canvas 2D and 3D), schematic, Model tab, DRT tab, panels, dialogs, menus, report
 js/app.js             start-up, tabs, side panel, fit bar
-files/                example data files and custom-format definitions (Yappari 5.1 XML)
+files/                example data files
 config/definitions/   XML presets, index.json and schema documentation
 script/               third-party libraries, none needed for now
 tests/                node tests/run_core_tests.js runs all Node tests (core, readers, DRT, Z-HIT, the review
@@ -792,7 +827,7 @@ No library and no build step: plain JavaScript, canvas plots, one page.
 * Circuits of any depth instead of ten slots; readable parameter names instead of 4ZARR, 2MR1D …
 * Standard errors for all methods; global fit with shared and local parameters; parallel batch fits.
 * DRT with three methods and a λ search; Z-HIT; Kramers–Kronig test (Lin-KK); contributions of the parts in series; measured-error weights.
-* JSON project files. Custom-format definitions stay the Yappari 5.1 XML files, read and written.
+* JSON project files. Custom formats use a native XML schema with detection rules; Yappari 5.1 definitions are not read.
 * Restore points for every action; no dependence on the Windows decimal separator; runs in any recent browser.
 
 ---

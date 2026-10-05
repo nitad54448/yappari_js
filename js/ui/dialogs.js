@@ -77,12 +77,16 @@ Y.ui = (function () {
       ctl = '<select id="' + id + '" data-key="' + f.key + '">' + f.options.map(function (o) {
         return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(v) ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
       }).join('') + '</select>';
+    } else if (f.type === 'textarea') {
+      ctl = '<textarea id="' + id + '" data-key="' + f.key + '" rows="' + (f.rows || 2) + '" autocomplete="off" spellcheck="false">' + esc(v) + '</textarea>';
     } else if (f.type === 'checkbox') {
       ctl = '<input type="checkbox" id="' + id + '" data-key="' + f.key + '"' + (v ? ' checked' : '') + '>';
     } else {
       ctl = '<input id="' + id + '" data-key="' + f.key + '" value="' + esc(v) + '"' + (f.type === 'number' ? ' inputmode="decimal"' : '') + ' autocomplete="off" spellcheck="false">';
     }
-    return '<label for="' + id + '"' + w + '>' + esc(f.label) + '</label><div' + w + '>' + ctl + (f.hint ? '<small>' + esc(f.hint) + '</small>' : '') + '</div>';
+    // a checkbox keeps its hint on its right, so the label lines up with the box
+    var cls = f.type === 'checkbox' && f.hint ? ' class="check-hint"' : '';
+    return '<label for="' + id + '"' + w + '>' + esc(f.label) + '</label><div' + w + cls + '>' + ctl + (f.hint ? '<small>' + esc(f.hint) + '</small>' : '') + '</div>';
   }
   function collect(body, fields) {
     var out = {}, bad = false;

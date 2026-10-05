@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<impedanceFormat version="2" reader="yappariJS" source="auto">
-  <description>Yappari JS Save data exports: choose measured or model impedance.</description>
+<impedanceFormat version="3" reader="yappariJS" source="auto">
+  <description>Yappari JS Save data (measured if present, otherwise model)</description>
+  <detect priority="20">
+    <matches>^#dataset\s</matches>
+    <matches>^freq/Hz(\s|,|;)</matches>
+  </detect>
 </impedanceFormat>

@@ -33,7 +33,7 @@ Y.state = (function () {
   }
 
   var S = {
-    datasets: [], sel: new Set(), anchor: null, nextId: 1, simCount: 0, busy: false,
+    datasets: [], sel: new Set(), anchor: null, focus: null, nextId: 1, simCount: 0, busy: false,
     model: { tree: null, prog: null, cdc: '', limits: {}, shared: {}, version: 0 },
     settings: defaults()
   };
@@ -176,6 +176,7 @@ Y.state = (function () {
   function setShared(name, val) {
     S.model.shared[name] = !!val;
     store('model', { cdc: S.model.cdc, limits: S.model.limits, shared: S.model.shared });
+    Y.bus.emit('shared', { name: name });
   }
 
   // ---------------------------------------------------------------- datasets
@@ -217,7 +218,7 @@ Y.state = (function () {
     ids.forEach(function (id) { S.sel.delete(id); });
     Y.bus.emit('datasets'); Y.bus.emit('selection');
   }
-  function clearAll() { S.datasets = []; S.sel.clear(); S.anchor = null; Y.bus.emit('datasets'); Y.bus.emit('selection'); }
+  function clearAll() { S.datasets = []; S.sel.clear(); S.anchor = null; S.focus = null; Y.bus.emit('datasets'); Y.bus.emit('selection'); }
 
   function rename(id, name) { var d = byId(id); if (d && name) { d.name = name; Y.bus.emit('datasets'); } }
 
@@ -232,11 +233,14 @@ Y.state = (function () {
 
   // ---------------------------------------------------------------- selection
   function selectIds(ids, keepAnchor) {
-    S.sel = new Set(ids);
+    S.sel = new Set(ids); S.focus = null;
     if (!keepAnchor) S.anchor = ids.length ? ids[0] : null;
     Y.bus.emit('selection');
   }
-  function toggle(id) { if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); S.anchor = id; Y.bus.emit('selection'); }
+  function toggle(id) { if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); S.anchor = id; S.focus = null; Y.bus.emit('selection'); }
+  // The dataset shown in the Parameters panel when several are selected (browsed with ← →); the selection is kept.
+  // Any other change of the selection goes back to the first selected dataset of the list.
+  function setFocus(id) { if (S.sel.has(id) && S.focus !== id) { S.focus = id; Y.bus.emit('selection'); } }
   function range(id) {
     var a = S.datasets.findIndex(function (d) { return d.id === S.anchor; }), b = S.datasets.findIndex(function (d) { return d.id === id; });
     if (a < 0) a = b;
@@ -245,7 +249,11 @@ Y.state = (function () {
   }
   function selectAll() { selectIds(S.datasets.map(function (d) { return d.id; }), true); }
   function selected() { return S.datasets.filter(function (d) { return S.sel.has(d.id); }); }
-  function first() { for (var i = 0; i < S.datasets.length; i++) if (S.sel.has(S.datasets[i].id)) return S.datasets[i]; return null; }
+  function first() {
+    if (S.focus != null && S.sel.has(S.focus)) { var f = byId(S.focus); if (f) return f; }
+    for (var i = 0; i < S.datasets.length; i++) if (S.sel.has(S.datasets[i].id)) return S.datasets[i];
+    return null;
+  }
 
   // ---------------------------------------------------------------- parameters
   function vector(ds) { return Float64Array.from(names(), function (n) { return ds.p[n]; }); }
@@ -313,6 +321,17 @@ Y.state = (function () {
       ds.curve = null; ds.ver = S.model.version;
     }
     return ds.calc;
+  }
+  // Contributions of the parts of the top-level series chain (they add up to the model): one { label, i, re, im }
+  // per part at the frequencies f (default: the measured ones). [] without a circuit.
+  function partsFor(ds, f) {
+    var tree = S.model.tree;
+    if (!tree || !S.model.prog) return [];
+    f = f || ds.f;
+    return (tree.t === 's' ? tree.c : [tree]).map(function (node, i) {
+      var prog = Y.circuit.compile(node), z = Y.circuit.impedance(prog, f, Float64Array.from(prog.names, function (nm) { return ds.p[nm]; }));
+      return { label: Y.circuit.toCDC(node, true).replace(/^\[(.*)\]$/, '$1'), i: i, re: z.re, im: z.im };
+    });
   }
   // smooth model curve over the measured frequency range (for plotting lines)
   function curveFor(ds) {
@@ -452,7 +471,7 @@ Y.state = (function () {
   function commitProject(pj) {
     S.settings = pj.settings;
     store('settings', S.settings);
-    S.datasets = []; S.sel.clear();
+    S.datasets = []; S.sel.clear(); S.focus = null;
     setModel(pj.tree, { limits: pj.limits, shared: pj.shared, quiet: true });
     S.datasets = pj.raws.map(makeDataset);
     Y.bus.emit('settings', '*'); Y.bus.emit('model'); Y.bus.emit('datasets');
@@ -529,7 +548,7 @@ Y.state = (function () {
   function setBusy(b) { S.busy = b; Y.bus.emit('busy', b); }
 
   return {
-    S: S, defaults: defaults, cleanSettings: cleanSettings, validSetting: validSetting, LIMITS: LIMITS, restore: restore, store: store, load: load,
+    partsFor: partsFor, setFocus: setFocus, S: S, defaults: defaults, cleanSettings: cleanSettings, validSetting: validSetting, LIMITS: LIMITS, restore: restore, store: store, load: load,
     setSetting: setSetting, resetSettings: resetSettings, replaceSettings: replaceSettings, saveElementOverrides: saveElementOverrides,
     elementDefaultProblem: elementDefaultProblem, cleanElementOverrides: cleanElementOverrides,
     names: names, setModel: setModel, setLimit: setLimit, setShared: setShared,

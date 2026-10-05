@@ -25,7 +25,16 @@ Y.writers = (function () {
 
   // list: datasets; calcFor(ds) -> {re, im} at the data frequencies or null
   // opts: {sep, exp, calc, drt}; standard deviations are written when a dataset has them
-  function dataText(list, opts, calcFor) {
+  // opts.contrib with partsFor(ds): after the other columns, partK_freq/Hz, partK_Zr, partK_Zi for each part of the
+  // series chain (#contributions line names them). Values below 1e-9 of the part's largest |Z| are written as 0.
+  // The part columns match no heading the readers look for, so the file reads back as before.
+  function cleanPart(p) {
+    var m = 0, k;
+    for (k = 0; k < p.re.length; k++) m = Math.max(m, Math.hypot(p.re[k], p.im[k]));
+    var tiny = function (v) { return Math.abs(v) <= 1e-9 * m ? 0 : v; };
+    return { label: p.label, re: Array.from(p.re, tiny), im: Array.from(p.im, tiny) };
+  }
+  function dataText(list, opts, calcFor, partsFor) {
     var s = SEP[opts.sep] || '\t', out = [], exp = opts.exp !== false;
     var anySig = exp && list.some(function (d) { return d.sr && d.si; });
     var anyMask = list.some(function (d) { return d.mask && d.mask.some(function (m) { return m; }); });
@@ -39,6 +48,9 @@ Y.writers = (function () {
       if (anySig) head.push('sigma_Zr', 'sigma_Zi');
       if (calc) head.push('Zr_calc', 'Zi_calc');
       if (anyMask) head.push('masked');
+      var parts = opts.contrib && partsFor ? partsFor(ds).map(cleanPart) : [];
+      if (parts.length) out.push('#contributions ' + parts.map(function (p, j) { return 'part' + (j + 1) + '=' + p.label.replace(/\s+/g, ''); }).join(' '));
+      parts.forEach(function (p, j) { head.push('part' + (j + 1) + '_freq/Hz', 'part' + (j + 1) + '_Zr', 'part' + (j + 1) + '_Zi'); });
       out.push(head.join(s));
       for (var k = 0; k < ds.f.length; k++) {
         var row = [e(ds.f[k])];
@@ -46,6 +58,7 @@ Y.writers = (function () {
         if (anySig) row.push(sig ? e(ds.sr[k]) : 'NaN', sig ? e(ds.si[k]) : 'NaN');
         if (calc) row.push(e(calc.re[k]), e(calc.im[k]));
         if (anyMask) row.push(ds.mask && ds.mask[k] ? '1' : '0');
+        parts.forEach(function (p) { row.push(e(ds.f[k]), e(p.re[k]), e(p.im[k])); });
         out.push(row.join(s));
       }
       out.push('');
@@ -133,14 +146,21 @@ Y.writers = (function () {
 
   function xmlEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;'); }
 
-  // Application-native XML definition, schema version 1.
+  // Native XML version 3. Every setting is written, so a definition round-trips through parseDefinition.
   function definitionXML(def) {
-    var d = Y.readers.upgradeDefinition(def), x = xmlEsc, polar = d.representation === 'polar';
-    if (d.reader !== 'table') return ['<?xml version="1.0" encoding="UTF-8"?>',
-      '<impedanceFormat version="2" reader="' + d.reader + '"' + (d.reader === 'yappariJS' ? ' source="' + d.data_source + '"' : '') + '>',
-      '  <description>' + x(d.description) + '</description>', '</impedanceFormat>', ''].join('\n');
-    return ['<?xml version="1.0" encoding="UTF-8"?>', '<impedanceFormat version="' + d.format_version + '">',
-      '  <description>' + x(d.description) + '</description>',
+    var d = Y.readers.normalizeModern(def), x = xmlEsc, polar = d.representation === 'polar', t = d.detect, det = [];
+    if (t) {
+      det.push('  <detect priority="' + t.priority + '">');
+      [['fileName', t.file_names], ['contains', t.contains], ['matches', t.matches], ['excludes', t.excludes]].forEach(function (r) {
+        r[1].forEach(function (v) { det.push('    <' + r[0] + '>' + x(v) + '</' + r[0] + '>'); });
+      });
+      det.push('  </detect>');
+    }
+    var head = ['<?xml version="1.0" encoding="UTF-8"?>',
+      '<impedanceFormat version="3"' + (d.reader !== 'table' ? ' reader="' + d.reader + '"' : '') + (d.reader === 'yappariJS' ? ' source="' + d.data_source + '"' : '') + '>',
+      '  <description>' + x(d.description) + '</description>'].concat(det);
+    if (d.reader !== 'table') return head.concat(['</impedanceFormat>', '']).join('\n');
+    return head.concat([
       '  <table delimiter="' + x(d.separator) + '" decimalSeparator="' + x(d.decimal_separator) + '" commentPrefix="' + x(d.comment_prefix) + '" missingValues="' + x(d.missing_values) + '"/>',
       '  <datasets mode="' + d.mode + '">',
       '    <header match="' + d.header_match + '">' + x(d.header) + '</header>',
@@ -152,7 +172,7 @@ Y.writers = (function () {
       '    <frequency column="' + d.column_freq + '" unit="' + d.frequency_unit + '"/>',
       '    <' + (polar ? 'magnitude' : 'real') + ' column="' + d.column_zr + '" unit="' + d.impedance_unit + '"/>',
       '    <' + (polar ? 'phase' : 'imaginary') + ' column="' + d.column_zi + '" unit="' + (polar ? d.phase_unit : d.impedance_unit) + '"' + (polar ? '' : ' sign="' + (d.negate_zi ? '-Zi' : 'Zi') + '"') + '/>',
-      '  </columns>', '  <invalidRows action="' + d.invalid_rows + '"/>', '</impedanceFormat>', ''].join('\n');
+      '  </columns>', '  <invalidRows action="' + d.invalid_rows + '"/>', '</impedanceFormat>', '']).join('\n');
   }
 
   function download(name, text, mime) {

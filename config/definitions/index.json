@@ -4,6 +4,9 @@
     "SP2M_HP4192a.xml",
     "MFLI_csv.xml",
     "MFLI_ZView.xml",
-    "Yappari_JS.xml"
+    "Yappari_JS.xml",
+    "Gamry_DTA.xml",
+    "BioLogic_MPT.xml",
+    "VersaStudio_par.xml"
   ]
 }

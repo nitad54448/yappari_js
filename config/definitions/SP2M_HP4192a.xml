@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<impedanceFormat version="1">
-  <description>HP 4192A (custom_hp4192a.xml)</description>
+<impedanceFormat version="3">
+  <description>SP2M HP 4192A cycles</description>
+  <detect priority="50">
+    <contains>Frequency /Hz, Z_r, Z_im, cycle :</contains>
+  </detect>
   <table delimiter="tab" decimalSeparator="auto" commentPrefix="" missingValues="NA;NaN;N/A"/>
   <datasets mode="repeatedHeader">
     <header match="contains">Frequency /Hz, Z_r, Z_im, cycle :</header>

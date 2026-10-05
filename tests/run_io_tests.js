@@ -48,12 +48,13 @@ module.exports = function (Y, ok, close) {
 
   // custom: Z-MFLI example from the Yappari README
   const zm = 'Temp /K before measurement : 449.810\nmeasure started : 26/07/2023 18:33:58\nT34B descente\ntemp /K : 0.000\nfrequency /Hz, Real Z /Ohm, Im Z /Ohm\n1.000000E+6\t9.414706E+5\t-2.383074E+5\n8.154407E+5\t1.130474E+5\t-6.121182E+4\n\nend of measure : 26/07/2023 18:35:34\nTemp /K after measurement : 449.670 K\n----------\nTemp /K before measurement : 449.660\nmeasure started : 26/07/2023 18:36:07\nT34B descente\ntemp /K : 0.000\nfrequency /Hz, Real Z /Ohm, Im Z /Ohm\n1.000000E+6\t9.664908E+5\t-2.747448E+5\n8.154407E+5\t1.126409E+5\t-6.080259E+4\n6.649436E+5\t9.169096E+4\t-5.206284E+4\n\nend of measure : 26/07/2023 18:37:34\nTemp /K after measurement : 449.600 K\n----------\n';
-  d = R.custom(zm, 'ZMFLI_datafile_example.dat', { header: 'Temp /K before measurement : ', label_length: 6, separator: 'tab', ignore_first: 4, column_freq: 1, column_zr: 2, column_zi: 3, ignore_last: 4 });
+  const tdef = o => R.normalizeModern(Object.assign({}, R.modernDefaults, { mode: 'repeatedHeader', label_source: 'afterHeader' }, o));
+  d = R.custom(zm, 'ZMFLI_datafile_example.dat', tdef({ header: 'Temp /K before measurement : ', label_length: 6, separator: 'tab', ignore_first: 4, ignore_last: 4 }));
   ok(d.length === 2 && d[0].name === 'ZMFLI_datafile_example_449.81' && d[1].f.length === 3 && d[1].zi[2] === -5.206284E+4, 'custom Z-MFLI definition: ' + d.map(x => x.name + ':' + x.f.length).join(','));
 
   // custom: 5-column export, reading calculated columns
   const five = 'dev3221_imps_34, freq /Hz, Zr , Zi, Zr calc, Zi calc\n5.000000E+6;2.308040E+3;-4.358320E+3;2.656137E+3;-6.062695E+3\n4.304039E+6;2.506840E+3;-5.120760E+3;3.017911E+3;-6.767093E+3\ndev3221_imps_33, freq /Hz, Zr , Zi, Zr calc, Zi calc\n5.000000E+6;2.302790E+3;-4.372530E+3;2.825870E+3;-6.215076E+3\n';
-  d = R.custom(five, 'example_custom_5_columns.dat', { header: 'dev3221_imps_', label_length: 2, separator: 'semicolon', ignore_first: 0, column_freq: 1, column_zr: 4, column_zi: 5, ignore_last: 0 });
+  d = R.custom(five, 'example_custom_5_columns.dat', tdef({ header: 'dev3221_imps_', label_length: 2, separator: 'semicolon', column_zr: 4, column_zi: 5 }));
   ok(d.length === 2 && d[0].name.endsWith('_34') && d[0].zr[1] === 3.017911E+3 && d[1].zi[0] === -6.215076E+3, 'custom 5-column definition');
 
   // ZView .z
@@ -114,14 +115,16 @@ module.exports = function (Y, ok, close) {
   // sample files that are not in files/ are skipped (named in the output), the other checks still run
   const has = f => { const yes = fs.existsSync(path.join(FILES, f)); if (!yes) console.log('  skipped, not in files/: ' + f); return yes; };
   const mfli = 'MFLI_Zview_txt_imps_0_sample_00000.txt';
-  ['zview', 'threeColumns', 'headerTable', 'auto'].forEach(k => {
+  if (has(mfli)) ['zview', 'threeColumns', 'headerTable', 'auto'].forEach(k => {
     const m = R[k](rd(mfli), mfli, 'auto');
     ok(m.length === 1 && m[0].f.length === 120 && m[0].zr[0] === 2623.363 && m[0].zi[119] === -867096.8, 'MFLI ZView file via ' + k);
   });
-  const dz = R.parseDefinition(rd('Z_MFLI_datafile_example_template.xml')), dh = R.parseDefinition(rd('custom_hp4192a.xml'));
+  const DEFS = path.join(__dirname, '..', 'config', 'definitions'), rdef = f => fs.readFileSync(path.join(DEFS, f), 'utf8');
+  if (typeof DOMParser === 'undefined') require('./xml_shim.js');
+  const dz = R.parseDefinition(rdef('SP2M_ZHT_Mfli.xml')), dh = R.parseDefinition(rdef('SP2M_HP4192a.xml'));
   ok(dz.header === 'Temp /K before measurement : ' && dz.label_length === 6 && dz.separator === 'tab' && dz.ignore_first === 4 && dz.ignore_last === 4, 'Z-MFLI XML definition');
   ok(dh.header === 'Frequency /Hz, Z_r, Z_im, cycle :' && dh.label_length === 4 && dh.column_zi === 3, 'HP 4192A XML definition');
-  ok(Y.writers.definitionXML(dz).includes('<impedanceFormat version="1">') && Y.writers.definitionXML(dh).includes('<frequency column="1" unit="Hz"/>'), 'Legacy definitions export as native XML version 1');
+  ok(Y.writers.definitionXML(dz).includes('<impedanceFormat version="3">') && Y.writers.definitionXML(dh).includes('<frequency column="1" unit="Hz"/>'), 'definitions export as native XML version 3');
   if (has('Z_MFLI.txt')) {
     const zmf = R.custom(rd('Z_MFLI.txt'), 'Z_MFLI.txt', dz);
     ok(zmf.map(x => x.name).join() === 'Z_MFLI_449.81,Z_MFLI_449.66' && counts(zmf) === '19,14' && zmf[1].zi[13] === -9479.804, 'Z_MFLI with its definition, cut-short last dataset kept whole');
@@ -132,20 +135,22 @@ module.exports = function (Y, ok, close) {
     ok(hp.map(x => x.name).join() === 'hp4192a_0,hp4192a_1,hp4192a_2' && counts(hp) === '14,9,9', 'hp4192a with its definition');
     ok(counts(R.auto(rd('hp4192a.txt'), 'hp4192a.txt')) === '14,9,9', 'hp4192a dropped without definition');
   }
-  const ini = R.parseDefinition('[header]=Freq /Hz, Zr , Zi ; Name: \n[label_length]=0\n#data_columns=1,2,3\n');
-  ok(ini.header === 'Freq /Hz, Zr , Zi ; Name: ' && ini.column_zr === 2 && ini.separator === 'tab', 'old .ini definition');
+  let legacy = false; try { R.parseDefinition('[header]=Freq /Hz\n'); } catch (e) { legacy = true; }
+  ok(legacy, 'old .ini definitions are rejected');
   ok(R.lines('a\r\r\nb\r\nc\rd').join('|') === 'a|b|c|d', 'line endings \\r\\r\\n, \\r\\n and \\r');
 
   // VersaStudio: a real file; Z Real, Z Imag must equal E/I
-  const par = rd('type_VersaStudio.par'), vp = R.versa(par, 'type_VersaStudio.par');
-  const segRows = par.split('<Segment1>')[1].split('</Segment1>')[0].split(/\r?\n/).filter(l => /^-?\d/.test(l.trim())).map(l => l.split(',').map(Number));
-  ok(vp.length === 1 && vp[0].name === 'type_VersaStudio' && vp[0].f.length === segRows.filter(v => v[9] > 0).length && vp[0].f[0] === 100000 &&
-     vp[0].zr[0] === 55.31571 && vp[0].zi[0] === 4.575431, 'VersaStudio .par, ' + vp[0].f.length + ' points');
-  let worst = 0;
-  segRows.forEach(v => { const d = v[12] ** 2 + v[13] ** 2, zr = (v[10] * v[12] + v[11] * v[13]) / d, zi = (v[11] * v[12] - v[10] * v[13]) / d, m = Math.hypot(v[14], v[15]);
-                         worst = Math.max(worst, Math.abs(zr - v[14]) / m, Math.abs(zi - v[15]) / m); });
-  ok(worst < 1e-4, 'VersaStudio Z columns equal E/I, same sign convention (max rel. diff ' + worst.toExponential(1) + ')');
-  ok(counts(R.auto(par, 'type_VersaStudio.par')) === String(vp[0].f.length), 'VersaStudio recognised automatically');
+  if (has('type_VersaStudio.par')) {
+    const par = rd('type_VersaStudio.par'), vp = R.versa(par, 'type_VersaStudio.par');
+    const segRows = par.split('<Segment1>')[1].split('</Segment1>')[0].split(/\r?\n/).filter(l => /^-?\d/.test(l.trim())).map(l => l.split(',').map(Number));
+    ok(vp.length === 1 && vp[0].name === 'type_VersaStudio' && vp[0].f.length === segRows.filter(v => v[9] > 0).length && vp[0].f[0] === 100000 &&
+       vp[0].zr[0] === 55.31571 && vp[0].zi[0] === 4.575431, 'VersaStudio .par, ' + vp[0].f.length + ' points');
+    let worst = 0;
+    segRows.forEach(v => { const d = v[12] ** 2 + v[13] ** 2, zr = (v[10] * v[12] + v[11] * v[13]) / d, zi = (v[11] * v[12] - v[10] * v[13]) / d, m = Math.hypot(v[14], v[15]);
+                           worst = Math.max(worst, Math.abs(zr - v[14]) / m, Math.abs(zi - v[15]) / m); });
+    ok(worst < 1e-4, 'VersaStudio Z columns equal E/I, same sign convention (max rel. diff ' + worst.toExponential(1) + ')');
+    ok(counts(R.auto(par, 'type_VersaStudio.par')) === String(vp[0].f.length), 'VersaStudio recognised automatically');
+  }
   // MFLI csv: the sample stops before the frequency, realz and imagz lines -> a message naming what is there
   if (has('mfli_imps_csv.txt')) {
     let msg = '';

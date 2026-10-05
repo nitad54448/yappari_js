@@ -117,14 +117,11 @@ Y.plots = (function () {
   // exactly; on the Nyquist plot the model curve takes the colour of the part with the largest |Zi| at each
   // frequency, and each part is drawn alone, shifted along Zr as if the relaxations were separate.
   function partsOf(ds, f) {
-    var tree = S.model.tree, pc = Y.theme.get().parts;
-    if (!tree) return [];
-    return (tree.t === 's' ? tree.c : [tree]).map(function (node, i) {
-      var prog = Y.circuit.compile(node), z = Y.circuit.impedance(prog, f, Float64Array.from(prog.names, function (nm) { return ds.p[nm]; }));
+    var pc = Y.theme.get().parts;
+    return Y.state.partsFor(ds, f).map(function (p) {
       var imax = 0, zmax = 0, kmax = 0;
-      for (var k = 0; k < f.length; k++) { var a = Math.abs(z.im[k]); if (a > imax) { imax = a; kmax = k; } zmax = Math.max(zmax, Math.hypot(z.re[k], z.im[k])); }
-      return { label: Y.circuit.toCDC(node, true).replace(/^\[(.*)\]$/, '$1'), color: pc[i % pc.length],
-               re: z.re, im: z.im, resistive: !(imax > 1e-9 * zmax), kmax: kmax, i: i };
+      for (var k = 0; k < f.length; k++) { var a = Math.abs(p.im[k]); if (a > imax) { imax = a; kmax = k; } zmax = Math.max(zmax, Math.hypot(p.re[k], p.im[k])); }
+      return Object.assign(p, { color: pc[p.i % pc.length], resistive: !(imax > 1e-9 * zmax), kmax: kmax });
     });
   }
   function contribSeries(ds, kind, cv, total) {

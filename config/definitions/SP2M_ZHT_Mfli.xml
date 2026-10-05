@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<impedanceFormat version="1">
-  <description>Z-MFLI (Z_MFLI_datafile_example_template.xml)</description>
+<impedanceFormat version="3">
+  <description>SP2M Z-MFLI temperature series</description>
+  <detect priority="50">
+    <contains>Temp /K before measurement : </contains>
+  </detect>
   <table delimiter="tab" decimalSeparator="auto" commentPrefix="" missingValues="NA;NaN;N/A"/>
   <datasets mode="repeatedHeader">
     <header match="contains">Temp /K before measurement : </header>

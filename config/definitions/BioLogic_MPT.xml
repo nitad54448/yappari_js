@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<impedanceFormat version="3" reader="biologicMPT">
+  <description>BioLogic EC-Lab ASCII .mpt</description>
+  <detect priority="20">
+    <matches>(?i)^\s*EC-Lab ASCII FILE\s*$</matches>
+  </detect>
+</impedanceFormat>

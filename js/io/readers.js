@@ -1,7 +1,7 @@
 /*  File readers. Each returns an array of { name, f, zr, zi } (Float64Arrays; Zi as measured, i.e.
  *  negative for capacitive behaviour), with mask (Uint8Array) when a table marks masked points. Decimal commas are accepted whenever the field separator is not a comma.
- *  Native XML v1 definitions use browser DOMParser. Legacy LabVIEW XML, INI and JSON
- *  remain readable; numerical readers are DOM-free. writers.definitionXML writes native XML.
+ *  Definitions are native XML (<impedanceFormat>, versions 1-3) parsed with the browser DOMParser; numerical readers
+ *  are DOM-free. writers.definitionXML writes XML version 3. autoRead picks a format from <detect> rules and built-ins.
  */
 Y.readers = (function () {
   'use strict';
@@ -417,75 +417,72 @@ Y.readers = (function () {
     return out;
   }
 
-  // ---------------------------------------------------------------- custom formats
-  // Definition fields, as in the Yappari 5.1 XML: header, label_length, separator (space|comma|semicolon|tab),
-  // ignore_first, column_freq, column_zr, column_zi (columns count from 1), ignore_last.
-
-
-  // The text before the first header is ignored; each header occurrence (it can sit inside a longer line)
-  // starts a dataset. label_length characters after the header name the dataset. ignore_first lines are
-  // skipped after the header line and ignore_last lines at the end of each dataset, except when those last
-  // lines are all data: a dataset cut short (end of file) keeps all its points.
+  // ---------------------------------------------------------------- definitions (native XML only)
+  // Reads a file with a definition: a specialized reader, or the generic table layout.
+  var SPECIAL = {
+    mfliCsv: function (t, n) { return mfliCsv(t, n); }, zview: function (t, n) { return zview(t, n); },
+    gamryDTA: function (t, n) { return gamryDTA(t, n); }, biologicMPT: function (t, n) { return biologicMPT(t, n); },
+    versaPar: function (t, n) { return versa(t, n); }, columnHeaders: function (t, n) { return headerTable(t, n); },
+    yappariJS: function (t, n, d) { return yappariExport(t, n, d.data_source); }
+  };
   function custom(text, fileName, def) {
-    if (def && def.format_version != null) {
-      var native = normalizeModern(def);
-      if (native.reader === 'mfliCsv') return mfliCsv(text, fileName);
-      if (native.reader === 'zview') return zview(text, fileName);
-      if (native.reader === 'yappariJS') return yappariExport(text, fileName, native.data_source);
-      return customModern(text, fileName, native);
-    }
-    if (!def || !def.header) throw new Error('the definition needs a header text that separates the datasets');
-    var src = String(text), header = String(def.header), parts = src.split(header), base = baseName(fileName), out = [], skipped = 0;
-    if (parts.length < 2 && header.trim() && header.trim() !== header) { header = header.trim(); parts = src.split(header); }
-    parts.shift();
-    if (!parts.length) throw new Error(base + ': header "' + def.header + '" not found');
-    var cf = (def.column_freq || 1) - 1, cr = (def.column_zr || 2) - 1, ci = (def.column_zi || 3) - 1, nl = def.ignore_last || 0;
-    parts.forEach(function (block, idx) {
-      var L = lines(block);
-      var label = def.label_length > 0 ? L[0].replace(/^\s+/, '').slice(0, def.label_length).trim() : '';
-      var body = L.slice(1);
-      while (body.length && !body[body.length - 1].trim()) body.pop();
-      body = body.slice(def.ignore_first || 0);
-      var sep = (!def.separator || def.separator === 'auto') ? detectSeparator(body) : def.separator;
-      var split = splitter(sep), dc = sep !== 'comma';
-      var row = function (line) {
-        var fl = split(line);
-        if (sep === 'space') fl = fl.filter(Boolean);
-        var a = num(fl[cf], dc), b = num(fl[cr], dc), c = num(fl[ci], dc);
-        return a > 0 && isFinite(a) && isFinite(b) && isFinite(c) ? [a, b, def.negate_zi ? -c : c] : null;
-      };
-      if (nl > 0 && !(body.length >= nl && body.slice(body.length - nl).every(row))) body = body.slice(0, Math.max(0, body.length - nl));
-      var f = [], zr = [], zi = [];
-      body.forEach(function (line) {
-        if (!line.trim()) return;
-        var r = row(line);
-        if (r) { f.push(r[0]); zr.push(r[1]); zi.push(r[2]); }
-        else if (/^[-+.]?\d/.test(line.trim()) && split(line).length > Math.max(cf, cr, ci)) skipped++;
-      });
-      if (f.length) out.push(pack(base + '_' + (label || idx), f, zr, zi));
-    });
-    if (!out.length) throw new Error(base + ': the header was found but no numeric rows in columns ' + (cf + 1) + ', ' + (cr + 1) + ', ' + (ci + 1));
-    out.skipped = skipped;
-    return out;
+    var d = normalizeModern(def);
+    return d.reader === 'table' ? customModern(text, fileName, d) : SPECIAL[d.reader](text, fileName, d);
   }
 
-  // Versioned, application-native definitions. Legacy readers remain available for imported files.
+  // Versioned, application-native definitions (XML versions 1 to 3; version 3 adds <detect> and more readers).
   var MODERN_DEFAULTS = {
-    format_version: 1, reader: 'table', data_source: 'auto', description: '', mode: 'repeatedHeader', header: '', header_match: 'contains',
+    format_version: 3, reader: 'table', data_source: 'auto', description: '', mode: 'repeatedHeader', header: '', header_match: 'contains',
     label_source: 'afterHeader', label_length: 0, end_marker: '', ignore_first: 0, ignore_last: 0,
     footer_policy: 'keepNumeric', separator: 'tab', decimal_separator: 'auto', comment_prefix: '',
     missing_values: 'NA;NaN;N/A', representation: 'cartesian', column_freq: 1, column_zr: 2, column_zi: 3,
-    frequency_unit: 'Hz', impedance_unit: 'ohm', phase_unit: 'deg', negate_zi: false, invalid_rows: 'skipAndReport'
+    frequency_unit: 'Hz', impedance_unit: 'ohm', phase_unit: 'deg', negate_zi: false, invalid_rows: 'skipAndReport', detect: null
   };
+  var READERS = ['table'].concat(Object.keys(SPECIAL)), V3_READERS = ['gamryDTA', 'biologicMPT', 'versaPar', 'columnHeaders'];
+  // <detect> rules (XML version 3): fileName globs (any may match), contains / matches (all must hold),
+  // excludes (none may occur). Text rules look at the first SCAN characters. A pattern starting with (?i) ignores case.
+  var SCAN = 65536;
+  function compileRx(p) {
+    var ci = p.indexOf('(?i)') === 0;
+    try { return new RegExp(ci ? p.slice(4) : p, ci ? 'im' : 'm'); }
+    catch (e) { throw new Error('Invalid detection pattern ' + p + ': ' + e.message); }
+  }
+  function globRx(g) { return new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i'); }
+  function normalizeDetect(x) {
+    if (x == null) return null;
+    var list = function (v) { return (Array.isArray(v) ? v : v == null ? [] : [v]).map(String).filter(function (t) { return t !== ''; }); };
+    var o = { priority: Number(x.priority == null || x.priority === '' ? 0 : x.priority), file_names: list(x.file_names),
+              contains: list(x.contains), matches: list(x.matches), excludes: list(x.excludes) };
+    if (!Number.isSafeInteger(o.priority)) throw new Error('Detection priority must be an integer.');
+    o.matches.forEach(compileRx);
+    if (!o.file_names.length && !o.contains.length && !o.matches.length) return null;
+    return o;
+  }
+  function detects(text, fileName, d) {
+    var x = d && d.detect;
+    if (!x) return false;
+    var name = String(fileName || '').replace(/^.*[\\/]/, '');
+    if (x.file_names.length && !x.file_names.some(function (g) { return globRx(g).test(name); })) return false;
+    var head = lines(String(text).slice(0, SCAN)).join('\n');
+    return x.contains.every(function (c) { return head.indexOf(c) >= 0; }) &&
+      x.matches.every(function (p) { return compileRx(p).test(head); }) &&
+      !x.excludes.some(function (c) { return head.indexOf(c) >= 0; });
+  }
+  function ruleCount(d) { var x = d.detect; return x.file_names.length + x.contains.length + x.matches.length + x.excludes.length; }
+
   function normalizeModern(input) {
+    if (!input || input.format_version == null) throw new Error('Not a native definition (XML <impedanceFormat>).');
     var d = Object.assign({}, MODERN_DEFAULTS, input);
-    if ([1, 2].indexOf(Number(d.format_version)) < 0) throw new Error('Unsupported XML definition version: ' + d.format_version);
+    if ([1, 2, 3].indexOf(Number(d.format_version)) < 0) throw new Error('Unsupported XML definition version: ' + d.format_version);
     d.format_version = Number(d.format_version);
-    if (['table', 'mfliCsv', 'zview', 'yappariJS'].indexOf(d.reader) < 0) throw new Error('Unknown reader: ' + d.reader);
+    if (READERS.indexOf(d.reader) < 0) throw new Error('Unknown reader: ' + d.reader);
     if (['auto', 'measured', 'model'].indexOf(d.data_source) < 0) throw new Error('Unknown impedance source: ' + d.data_source);
+    if (V3_READERS.indexOf(d.reader) >= 0 && d.format_version < 3) throw new Error('Reader ' + d.reader + ' requires XML version 3.');
+    d.detect = normalizeDetect(d.detect);
+    if (d.detect && d.format_version < 3) throw new Error('<detect> requires XML version 3.');
     if (d.reader !== 'table') {
-      if (d.format_version < 2) throw new Error('Specialized readers require XML version 2.');
-      var profile = { format_version: 2, reader: d.reader, description: String(d.description) };
+      if (d.format_version < 2) throw new Error('Specialized readers require XML version 2 or later.');
+      var profile = { format_version: d.format_version, reader: d.reader, description: String(d.description), detect: d.detect };
       if (d.reader === 'yappariJS') profile.data_source = d.data_source;
       return profile;
     }
@@ -510,11 +507,6 @@ Y.readers = (function () {
     if (typeof d.negate_zi !== 'boolean') throw new Error('negate_zi must be true or false.');
     if (d.representation === 'polar' && d.negate_zi) throw new Error('Imaginary sign reversal applies only to Cartesian data.');
     return d;
-  }
-  function upgradeDefinition(d) {
-    if (d.format_version != null) return normalizeModern(d);
-    // Old label_length=0 means index; new length=0 means the full label.
-    return normalizeModern(Object.assign({}, d, { format_version: 1, label_source: d.label_length > 0 ? 'afterHeader' : 'index' }));
   }
   function customModern(text, fileName, d) {
     var base = baseName(fileName), blocks = [], cur = null, skipped = 0, examples = [];
@@ -647,11 +639,17 @@ Y.readers = (function () {
       var node = found[0]; if (node) check(node, attrs, children || []); return node;
     }
     function attr(el, name, fallback) { return el && el.hasAttribute(name) ? el.getAttribute(name) : fallback; }
-    check(root, ['version', 'reader', 'source'], ['description', 'table', 'datasets', 'columns', 'invalidRows']);
+    check(root, ['version', 'reader', 'source'], ['description', 'detect', 'table', 'datasets', 'columns', 'invalidRows']);
     var d = { format_version: attr(root, 'version', ''), reader: attr(root, 'reader', 'table'), data_source: attr(root, 'source', 'auto') };
     var desc = child(root, 'description', [], []); d.description = desc ? desc.textContent : '';
+    var det = child(root, 'detect', ['priority'], ['fileName', 'contains', 'matches', 'excludes']);
+    if (det) {
+      var all = function (tag) { return Array.from(det.children).filter(function (c) { check(c, [], []); return c.tagName === tag; }).map(function (c) { return c.textContent; }); };
+      d.detect = { priority: attr(det, 'priority', 0), file_names: all('fileName'), contains: all('contains'), matches: all('matches'), excludes: all('excludes') };
+      if (!d.detect.file_names.length && !d.detect.contains.length && !d.detect.matches.length) throw new Error('<detect> needs a fileName, contains or matches rule.');
+    }
     if (d.reader !== 'table') {
-      if (Array.from(root.children).some(function (c) { return c.tagName !== 'description'; })) throw new Error('Specialized definitions accept description only; their layout is fixed.');
+      if (Array.from(root.children).some(function (c) { return c.tagName !== 'description' && c.tagName !== 'detect'; })) throw new Error('Specialized definitions accept description and detect only; their layout is fixed.');
       if (d.reader !== 'yappariJS' && root.hasAttribute('source')) throw new Error('Source applies only to the Yappari JS reader.');
       return normalizeModern(d);
     }
@@ -688,72 +686,10 @@ Y.readers = (function () {
     return normalizeModern(d);
   }
 
-  // ---------------------------------------------------------------- definition files
-  function decodeXML(s) {
-    return String(s).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-      .replace(/&#x([0-9a-f]+);/gi, function (m, x) { return String.fromCharCode(parseInt(x, 16)); })
-      .replace(/&#(\d+);/g, function (m, d) { return String.fromCharCode(+d); }).replace(/&amp;/g, '&');
-  }
-
-  // Yappari 5.1 definition: LabVIEW XML of a cluster (header, label length, data_separator, ignore first,
-  // column_freq, column_Zr, column_Zi, ignore last). Element names are matched loosely.
-  function fromXML(t) {
-    if (!/<LVData/i.test(t)) throw new Error('not a Yappari 5.1 definition (LabVIEW XML)');
-    var f = {}, re = /<(String|U8|U16|U32|U64|I8|I16|I32|I64|DBL|SGL|EW|EB|EL|Boolean)>\s*<Name>([\s\S]*?)<\/Name>([\s\S]*?)<\/\1>/g, m;
-    while ((m = re.exec(t))) {
-      var vm = /<Val>([\s\S]*?)<\/Val>/.exec(m[3]);
-      if (!vm) continue;
-      var val = decodeXML(vm[1]);
-      if (/^E[WBL]$/.test(m[1])) {
-        var ch = [], cre = /<Choice>([\s\S]*?)<\/Choice>/g, c;
-        while ((c = cre.exec(m[3]))) ch.push(decodeXML(c[1]).trim().toLowerCase());
-        if (ch[+val] != null) val = ch[+val];
-      }
-      f[decodeXML(m[2]).toLowerCase().replace(/[^a-z]/g, '')] = val;
-    }
-    var cl = /<Cluster>\s*<Name>([\s\S]*?)<\/Name>/.exec(t);
-    return { header: f.header, label_length: f.labellength, separator: f.dataseparator || f.separator,
-             ignore_first: f.ignorefirst, ignore_last: f.ignorelast, column_freq: f.columnfreq,
-             column_zr: f.columnzr, column_zi: f.columnzi, cluster: cl ? decodeXML(cl[1]) : undefined };
-  }
-
-  // older Yappari .ini definitions:  [header]=...  [label_length]=0  #data_columns=1,2,3
-  function fromINI(t) {
-    var d = {};
-    lines(t).forEach(function (l) {
-      var m = /^\s*(?:\[([^\]]+)\]|#?\s*([A-Za-z_ ]+?))\s*=(.*)$/.exec(l);
-      if (!m) return;
-      var key = (m[1] || m[2]).toLowerCase().replace(/[^a-z]/g, ''), val = m[3];
-      if (key === 'header') d.header = val;
-      else if (key === 'datacolumns' || key === 'columns') { var c = val.split(/[,;\s]+/).filter(Boolean).map(Number); d.column_freq = c[0]; d.column_zr = c[1]; d.column_zi = c[2]; }
-      else if (key === 'labellength') d.label_length = val;
-      else if (key === 'ignorefirst') d.ignore_first = val;
-      else if (key === 'ignorelast') d.ignore_last = val;
-      else if (key === 'separator' || key === 'dataseparator') d.separator = val;
-    });
-    return d;
-  }
-
-  function normalizeDef(d) {
-    if (!d || d.header == null || String(d.header) === '') throw new Error('the definition has no header text');
-    var raw = d.separator == null ? 'tab' : String(d.separator);
-    var sep = { '\t': 'tab', ',': 'comma', ';': 'semicolon', ' ': 'space' }[raw] || raw.trim().toLowerCase();
-    if (['space', 'comma', 'semicolon', 'tab', 'auto'].indexOf(sep) < 0) sep = 'tab';
-    var int = function (v, dflt) { v = Number(v); return isFinite(v) && v >= 0 ? Math.round(v) : dflt; };
-    return { header: String(d.header), label_length: int(d.label_length, 0), separator: sep, ignore_first: int(d.ignore_first, 0),
-             column_freq: int(d.column_freq, 1) || 1, column_zr: int(d.column_zr, 2) || 2, column_zi: int(d.column_zi, 3) || 3,
-             ignore_last: int(d.ignore_last, 0), negate_zi: !!d.negate_zi, cluster: d.cluster };
-  }
-
   function parseDefinition(text) {
-    var t = String(text).replace(/^\uFEFF/, '').trim(), d;
-    if (t.charAt(0) === '<') {
-      if (!/<LVData[\s>]/i.test(t)) return fromModernXML(t);
-      d = fromXML(t);
-    }
-    else if (t.charAt(0) === '{') d = JSON.parse(t);
-    else d = fromINI(t);
-    return d.format_version != null ? normalizeModern(d) : normalizeDef(d);
+    var t = String(text).replace(/^\uFEFF/, '').trim();
+    if (!/<impedanceFormat[\s>]/.test(t)) throw new Error('Not a definition: expected XML with an <impedanceFormat> root.');
+    return fromModernXML(t);
   }
 
   // ---------------------------------------------------------------- automatic choice (files dropped on the window)
@@ -773,12 +709,27 @@ Y.readers = (function () {
     return null;
   }
 
+  // Built-in recognisers, tried in order. strict: a recognised file that fails to read is an error (no guessing).
+  var BUILTIN = [
+    { name: 'VersaStudio .par', strict: true, test: function (h) { return /<Segment\d*>/i.test(h); }, read: versa },
+    { name: 'Gamry DTA', test: function (h) { return /^\s*ZCURVE\d*\s+TABLE\b/im.test(h); }, read: gamryDTA },
+    { name: 'BioLogic MPT', test: function (h) { return /^\s*EC-Lab ASCII FILE\s*$/im.test(h.slice(0, 200)); }, read: biologicMPT },
+    { name: 'ZView', strict: true, test: looksZView, read: zview },
+    { name: 'MFLI CSV (LabOne)', strict: true, test: isMfliCsv, read: mfliCsv },
+    { name: 'Yappari JS Save data', test: function (h) { return /^#dataset\s/m.test(h) && /^freq\/Hz(\s|,|;)/m.test(h); },
+      read: function (t, n) { return yappariExport(t, n, 'auto'); } }
+  ];
   function auto(text, fileName, sep) {
-    if (/<Segment\d*>/i.test(text)) return versa(text, fileName);
-    if (looksZView(text)) return zview(text, fileName);
-    if (isMfliCsv(text)) return mfliCsv(text, fileName);
-    try { return headerTable(text, fileName); } catch (e) { /* no usable column header */ }
-    var out = numericBlocks(text, fileName, sep), hl = headingsAbove(text);
+    var head = lines(String(text).slice(0, SCAN)).join('\n'), out;
+    for (var i = 0; i < BUILTIN.length; i++) {
+      var b = BUILTIN[i];
+      if (!b.test(head)) continue;
+      if (b.strict) { out = b.read(text, fileName); out.format = b.name; return out; }
+      try { out = b.read(text, fileName); out.format = b.name; return out; } catch (e) { /* fall through to the generic readers */ }
+    }
+    try { out = headerTable(text, fileName); out.format = 'table with column headers'; return out; } catch (e) { /* no usable column header */ }
+    out = numericBlocks(text, fileName, sep); out.format = 'numeric columns f, Zr, Zi';
+    var hl = headingsAbove(text);
     // columns read by position under headings that name other quantities (admittance, |Z| and phase in an unknown
     // form ...) would be wrong without a word: the caller shows this warning
     if (hl) out.warning = baseName(fileName) + ': the column headings "' + hl.slice(0, 60) + '" were not recognised, so columns 1, 2 and 3 ' +
@@ -786,8 +737,27 @@ Y.readers = (function () {
     return out;
   }
 
+  // File, Auto and dropped files. defs: [{ label, def }] (definitions with <detect> rules, e.g. the presets).
+  // Matching definitions are tried by priority, then by number of rules; the built-in recognisers come last.
+  // The result carries .format, the name of the layout used.
+  function autoRead(text, fileName, defs, sep) {
+    var cands = (defs || []).filter(function (c) { return detects(text, fileName, c.def); }).sort(function (a, b) {
+      return b.def.detect.priority - a.def.detect.priority || ruleCount(b.def) - ruleCount(a.def);
+    }), failed = [], out;
+    for (var i = 0; i < cands.length; i++) {
+      try {
+        out = custom(text, fileName, cands[i].def);
+        if (out.length) { out.format = cands[i].label; return out; }
+      } catch (e) { failed.push(cands[i].label + ' (' + e.message + ')'); }
+    }
+    try { out = auto(text, fileName, sep); }
+    catch (e) { throw new Error(baseName(fileName) + ': format not recognised. ' + (failed.length ? 'Matching definitions failed: ' + failed.join('; ') + '. ' : '') + e.message); }
+    if (failed.length) out.warning = (out.warning ? out.warning + ' ' : '') + baseName(fileName) + ': matching definition(s) failed, ' + failed.join('; ') + '; read as ' + out.format + '.';
+    return out;
+  }
+
   return { gamryDTA: gamryDTA, biologicMPT: biologicMPT, threeColumns: threeColumns, headerTable: headerTable, mfliCsv: mfliCsv, zview: zview, versa: versa, custom: custom,
-           numericBlocks: numericBlocks, auto: auto, parseDefinition: parseDefinition, normalizeDef: normalizeDef,
-           detectSeparator: detectSeparator, parseHeader: parseHeader, colName: colName, modernDefaults: MODERN_DEFAULTS, normalizeModern: normalizeModern, upgradeDefinition: upgradeDefinition, separators: SEPARATORS,
+           numericBlocks: numericBlocks, auto: auto, autoRead: autoRead, detects: detects, parseDefinition: parseDefinition, readerNames: READERS,
+           detectSeparator: detectSeparator, parseHeader: parseHeader, colName: colName, modernDefaults: MODERN_DEFAULTS, normalizeModern: normalizeModern, separators: SEPARATORS,
            baseName: baseName, lines: lines, decode: decode };
 })();

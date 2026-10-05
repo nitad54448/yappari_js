@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<impedanceFormat version="3" reader="versaPar">
+  <description>VersaStudio .par</description>
+  <detect priority="20">
+    <matches>(?i)&lt;Segment\d*&gt;</matches>
+  </detect>
+</impedanceFormat>

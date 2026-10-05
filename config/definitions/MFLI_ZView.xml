@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<impedanceFormat version="2" reader="zview">
-  <description>MFLI ZView text and ZView .z exports.</description>
+<impedanceFormat version="3" reader="zview">
+  <description>MFLI ZView text / ZView .z</description>
+  <detect priority="10">
+    <matches>(?i)ZPLOT|^[ \t]*End Comments[ \t]*$</matches>
+  </detect>
 </impedanceFormat>
