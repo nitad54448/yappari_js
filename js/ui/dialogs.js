@@ -124,20 +124,29 @@ Y.ui = (function () {
   }
 
   // ---------------------------------------------------------------- status line and log
-  // snap: id of the restore point taken before the action this line reports (Restore button, js/history.js)
-  function log(msg, kind, snap) {
+  // snap: id of the restore point taken before the action this line reports (Restore button, js/history.js).
+  // merge: key of a burst of small edits (see Y.history.take); with no new restore point, the newest line of the same
+  // burst is updated in place instead of a new line being added
+  function log(msg, kind, snap, merge) {
     var list = $('#log-list');
     if (!list) return;
+    var top = list.firstChild;
+    if (merge && !snap && top && top.getAttribute('data-merge') === merge) {
+      top.querySelector('time').textContent = new Date().toLocaleTimeString();
+      top.querySelector('span').textContent = msg;
+      return;
+    }
     var li = h('li', { class: kind || 'info' });
+    if (merge) li.setAttribute('data-merge', merge);
     li.innerHTML = '<time>' + new Date().toLocaleTimeString() + '</time><span>' + esc(msg) + '</span>' +
       (snap ? '<button type="button" class="restore" data-restore="' + snap + '" title="Bring back the datasets, the selection and the circuit as they were just before this action">Restore before</button>' : '');
     list.insertBefore(li, list.firstChild);
     while (list.children.length > 500) list.removeChild(list.lastChild);
   }
-  function toast(msg, kind) {
+  function toast(msg, kind, merge) {
     var el = $('#status-msg');
     if (el) { el.textContent = msg; el.className = 'msg ' + (kind || 'info'); el.title = msg; }
-    log(msg, kind, Y.history ? Y.history.takePending() : null);
+    log(msg, kind, Y.history ? Y.history.takePending() : null, merge);
   }
 
   // ---------------------------------------------------------------- drop-down menus

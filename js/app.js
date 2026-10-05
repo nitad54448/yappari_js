@@ -163,7 +163,9 @@
       $('#btn-stop').hidden = !b;                  // the Fit button follows Y.cmd.why('fit')
     });
 
-    var hist = Y.state.load('history') || [], hi = hist.length, cl = $('#cmdline');
+    var hist = Y.state.load('history'), cl = $('#cmdline');
+    hist = Array.isArray(hist) ? hist.filter(function (v) { return typeof v === 'string'; }).slice(-50) : [];   // as stored by the browser
+    var hi = hist.length;
     cl.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') {
         e.preventDefault();                    // the Enter key must not also activate the button of a dialog the command opens

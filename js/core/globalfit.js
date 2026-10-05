@@ -2,8 +2,9 @@
  *  Each fitted parameter is either shared (one value for all datasets) or local (one value per dataset).
  *  All shared = Yappari's global_fit_selected_datasets.
  *  Levenberg-Marquardt on the block-arrow normal equations (Schur complement on the shared block),
- *  so hundreds of datasets with local parameters stay cheap. Bounds are applied by projection,
- *  except for method 'LM' (unbounded).
+ *  so hundreds of datasets with local parameters stay cheap. Bounds (except for method 'LM', unbounded) are kept
+ *  with an active set, as in a single fit: a variable on a limit whose gradient points outwards is held for the
+ *  step, and the steps of the others are projected into the box.
  *
  *  job = { cdc, sets:[{id, f, zr, zi, p}], fit, shared (Uint8Array over all parameters), lo, hi,
  *          weight, method, maxIter, tol }
@@ -113,35 +114,64 @@ Y.defineCore('globalfit', function (Y) {
         }
       }
 
-      // damped step (Schur complement on the shared block) from X into Xn; false when the system is singular
-      function step(mu) {
+      // gradient (JᵀR) of variable k of X
+      function grad(k) { return k < nS ? gS[k] : gL[((k - nS) / nL) | 0][(k - nS) % nL]; }
+      // Variables on a limit whose gradient points outwards are held for the next step, as in a single fit (Y.fit):
+      // their rows and columns leave the system, so the others take the best step with them held. 1 = held.
+      function held() {
+        var h = new Uint8Array(nX);
+        if (!bounded) return h;
+        for (var k = 0; k < nX; k++) {
+          var g = grad(k), atLo = X[k] <= lo[k] + 1e-12 * (1 + Math.abs(lo[k])), atHi = X[k] >= hi[k] - 1e-12 * (1 + Math.abs(hi[k]));
+          if ((atLo && g > 0) || (atHi && g < 0)) h[k] = 1;
+        }
+        return h;
+      }
+
+      // damped step (Schur complement on the shared block) from X into Xn, the variables flagged in hold kept where
+      // they are; false when the system is singular
+      function step(mu, hold) {
         var a, b, c, i;
-        var M = Float64Array.from(A), rhs = new Float64Array(nS), chol = [], zg = [], ok = true;
-        for (a = 0; a < nS; a++) { rhs[a] = -gS[a]; M[a * nS + a] += mu * Math.max(A[a * nS + a], 1e-300); }
+        var M = Float64Array.from(A), rhs = new Float64Array(nS), chol = [], zg = [], Bh = [], ok = true;
+        for (a = 0; a < nS; a++) {
+          rhs[a] = -gS[a]; M[a * nS + a] += mu * Math.max(A[a * nS + a], 1e-300);
+          if (hold[a]) { for (c = 0; c < nS; c++) { M[a * nS + c] = 0; M[c * nS + a] = 0; } M[a * nS + a] = 1; rhs[a] = 0; }
+        }
         for (i = 0; i < nd && nL; i++) {
-          var Dd = Float64Array.from(D[i]);
+          var Dd = Float64Array.from(D[i]), Bi = Float64Array.from(B[i]), gi = Float64Array.from(gL[i]), off = nS + i * nL;
           for (b = 0; b < nL; b++) Dd[b * nL + b] += mu * Math.max(D[i][b * nL + b], 1e-300);
+          for (b = 0; b < nL; b++) if (hold[off + b]) {
+            for (c = 0; c < nL; c++) { Dd[b * nL + c] = 0; Dd[c * nL + b] = 0; }
+            Dd[b * nL + b] = 1; gi[b] = 0;
+            for (a = 0; a < nS; a++) Bi[a * nL + b] = 0;
+          }
+          for (a = 0; a < nS; a++) if (hold[a]) for (b = 0; b < nL; b++) Bi[a * nL + b] = 0;
           var Lc = LA.cholesky(Dd, nL);
           if (!Lc) { ok = false; break; }
-          chol.push(Lc);
-          zg.push(LA.cholSolve(Lc, gL[i], nL));
+          chol.push(Lc); Bh.push(Bi);
+          zg.push(LA.cholSolve(Lc, gi, nL));
           for (a = 0; a < nS; a++) {
             var col = new Float64Array(nL);
-            for (b = 0; b < nL; b++) col[b] = B[i][a * nL + b];
+            for (b = 0; b < nL; b++) col[b] = Bi[a * nL + b];
             var z = LA.cholSolve(Lc, col, nL);                 // D^-1 B^T e_a
-            for (c = 0; c < nS; c++) { var t = 0; for (b = 0; b < nL; b++) t += B[i][c * nL + b] * z[b]; M[c * nS + a] -= t; }
+            for (c = 0; c < nS; c++) { var t = 0; for (b = 0; b < nL; b++) t += Bi[c * nL + b] * z[b]; M[c * nS + a] -= t; }
           }
-          for (a = 0; a < nS; a++) { var t3 = 0; for (b = 0; b < nL; b++) t3 += B[i][a * nL + b] * zg[i][b]; rhs[a] += t3; }
+          for (a = 0; a < nS; a++) { var t3 = 0; for (b = 0; b < nL; b++) t3 += Bi[a * nL + b] * zg[i][b]; rhs[a] += t3; }
         }
         var dS = ok ? (nS ? LA.solveSPD(M, rhs, nS) : new Float64Array(0)) : null;
         if (!dS) return false;
         Xn.set(X);
         for (a = 0; a < nS; a++) Xn[a] = X[a] + dS[a];
         for (i = 0; i < nd && nL; i++) {
-          var v = new Float64Array(nL);
-          for (b = 0; b < nL; b++) { var t4 = -gL[i][b]; for (a = 0; a < nS; a++) t4 -= B[i][a * nL + b] * dS[a]; v[b] = t4; }
+          var v = new Float64Array(nL), o2 = nS + i * nL;
+          for (b = 0; b < nL; b++) {
+            if (hold[o2 + b]) continue;
+            var t4 = -gL[i][b];
+            for (a = 0; a < nS; a++) t4 -= Bh[i][a * nL + b] * dS[a];
+            v[b] = t4;
+          }
           var dl = LA.cholSolve(chol[i], v, nL);
-          for (b = 0; b < nL; b++) Xn[nS + i * nL + b] = X[nS + i * nL + b] + dl[b];
+          for (b = 0; b < nL; b++) Xn[o2 + b] = X[o2 + b] + dl[b];
         }
         if (bounded) for (a = 0; a < nX; a++) Xn[a] = Math.min(hi[a], Math.max(lo[a], Xn[a]));
         return true;
@@ -153,15 +183,20 @@ Y.defineCore('globalfit', function (Y) {
 
       var f = total(X, R);
       if (!(f < Infinity)) throw new Error('the model gives non-finite values at the start values');
-      var mu = -1, nu = 2, it, conv = 0, needJ = true, msg = 'iteration limit reached';
+      var mu = -1, nu = 2, it, conv = 0, needJ = true, msg = 'iteration limit reached', hold = null;
       if (!Number.isInteger(job.maxIter) || job.maxIter < 1 || job.maxIter > 65535) throw new Error('Maximum iterations must be an integer from 1 to 65535');
       var Xn = new Float64Array(nX), st = new Float64Array(nX), maxIter = job.maxIter, tol = job.tol > 0 ? job.tol : 1e-12;
       for (it = 0; it < maxIter; it++) {
         if (needJ) {
           blocks(false); needJ = false;
           if (mu < 0) mu = 1e-3;          // dimensionless: the damping is mu × the diagonal of JᵀJ
+          hold = held();
+          var gmax = 0, nFree = 0;
+          for (a = 0; a < nX; a++) if (!hold[a]) { nFree++; gmax = Math.max(gmax, Math.abs(grad(a))); }
+          if (!nFree) { msg = 'all fitted parameters are at their limits'; break; }
+          if (gmax <= 1e-14 * f) { msg = 'converged: zero gradient'; break; }
         }
-        if (!step(mu)) { mu *= nu; nu *= 2; if (mu > 1e30) { msg = 'singular system'; break; } continue; }
+        if (!step(mu, hold)) { mu *= nu; nu *= 2; if (mu > 1e30) { msg = 'singular system'; break; } continue; }
         for (a = 0; a < nX; a++) st[a] = Xn[a] - X[a];
         // predicted decrease with the undamped blocks
         var gs = 0, sAs = 0;
@@ -190,12 +225,12 @@ Y.defineCore('globalfit', function (Y) {
       }
       f = total(X, R);
       // a stop that looks like convergence is checked with one nearly undamped step (see Y.fit.stalled)
-      if (/^converged/.test(msg) && f > 0) {
+      if (/^converged/.test(msg) && !/zero gradient/.test(msg) && f > 0) {
         var scale = 0;
         probs.forEach(function (P) { for (var k = 0; k < P.n; k++) { var u = P.swr[k] * P.zr[k], w2 = P.swi[k] * P.zi[k]; scale += u * u + w2 * w2; } });
         if (f > 1e-16 * scale) {
           blocks(true);
-          if (step(1e-9) && total(Xn, Rn) < f * (1 - Math.max(1e-6, 100 * tol))) msg = Y.fit.STALL_MSG;
+          if (step(1e-9, held()) && total(Xn, Rn) < f * (1 - Math.max(1e-6, 100 * tol))) msg = Y.fit.STALL_MSG;
           f = total(X, R);
         }
       }
@@ -276,7 +311,7 @@ Y.defineCore('globalfit', function (Y) {
           var jj = order[q], xv = xs[ii][q], sev = q < nS ? seS[q] : seL[ii][q - nS];
           var onB = bounded && (xv <= P.lo[q] + 1e-9 * (1 + Math.abs(P.lo[q])) || xv >= P.hi[q] - 1e-9 * (1 + Math.abs(P.hi[q])));
           if (onB) { atBound[jj] = 1; continue; }
-          se[jj] = P.isLog[q] ? 100 * sev : 100 * sev / Math.abs(P.p[jj]);
+          se[jj] = P.isLog[q] ? 100 * sev : 100 * sev * P.sc[q] / Math.abs(P.p[jj]);
         }
         var localDof = m - nL - nS / nd;
         return { id: job.sets[ii].id, p: Float64Array.from(P.p), se: se, atBound: atBound, chi2w: chi,

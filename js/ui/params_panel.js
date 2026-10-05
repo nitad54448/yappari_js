@@ -96,12 +96,16 @@ Y.paramsPanel = (function () {
   }
   function stepDataset(dir) { var nb = neighbour(dir); if (nb) Y.state.selectIds([nb.ds.id]); }
 
-  // Snapshot only real changes, including edits applied to several selected datasets.
-  function changeValue(n, v) {
-    if (!Y.state.selected().some(function (ds) { return ds.p[n] !== v; })) return;
-    Y.history.take('parameter ' + n);
+  // Snapshot only real changes, including edits applied to several selected datasets. burst: the change is one step
+  // of the mouse wheel or of an arrow key; the steps that follow each other on one parameter (and the same selection)
+  // share one restore point and one line of the Log, so undo goes back to before them.
+  function changeValue(n, v, burst) {
+    var list = Y.state.selected();
+    if (!list.some(function (ds) { return ds.p[n] !== v; })) return;
+    var merge = burst ? 'step ' + n + ' ' + list.map(function (ds) { return ds.id; }).join(',') : null;
+    Y.history.take('parameter ' + n, { merge: merge });
     Y.state.setParam(n, v);
-    Y.ui.toast(n + ' set to ' + fmtVal(v) + '.', 'info');
+    Y.ui.toast(n + ' set to ' + fmtVal(v) + '.', 'info', merge);
   }
 
   function commitInput(inp) {
@@ -123,7 +127,7 @@ Y.paramsPanel = (function () {
     if (pp.scale === 'log' && v > 0) v *= Math.pow(big ? 1.1 : fine ? 1.002 : 1.02, dir);
     else v += dir * (big ? 0.05 : fine ? 0.001 : 0.005);
     editing = null;
-    changeValue(n, clampVal(n, +v.toPrecision(12)));
+    changeValue(n, clampVal(n, +v.toPrecision(12)), true);
   }
 
   function bindList() {
@@ -172,7 +176,7 @@ Y.paramsPanel = (function () {
     { legend: 'Simulation', fields: [
       { key: 'simStart', label: 'Start frequency /Hz', type: 'num', positive: true },
       { key: 'simEnd', label: 'End frequency /Hz', type: 'num', positive: true },
-      { key: 'simPoints', label: 'Points, log spaced', type: 'int', min: 2 }] },
+      { key: 'simPoints', label: 'Points, log spaced', type: 'int', min: 2, max: Y.state.LIMITS.points }] },
     { legend: 'Plots', fields: [
       { key: 'maxPlots', label: 'Datasets drawn at most', type: 'int', min: 1, hint: 'Larger selections are thinned out evenly for drawing; fits use all of them.' },
       { key: 'nyqEqual', label: 'Same scale on both Nyquist axes', type: 'check' },
@@ -180,6 +184,11 @@ Y.paramsPanel = (function () {
       { key: 'resid', label: 'Residuals', type: 'select', options: [['abs', 'Absolute, in the unit of Z'], ['rel', 'Relative, % of |Z|']] },
       { key: 'phase', label: 'Phase unit', type: 'select', options: [['deg', 'Degrees'], ['rad', 'Radians']] }] }
   ];
+  // what a numeric field accepts, for the message shown when a value is refused
+  function rangeText(f) {
+    if (f.type === 'int') return 'enter a whole number' + (f.min != null && f.max != null ? ' from ' + f.min + ' to ' + f.max : f.min != null ? ' of at least ' + f.min : '');
+    return f.positive ? 'enter a positive number' : 'enter a valid number';
+  }
   function spec(k) { for (var i = 0; i < GROUPS.length; i++) for (var j = 0; j < GROUPS[i].fields.length; j++) if (GROUPS[i].fields[j].key === k) return GROUPS[i].fields[j]; return {}; }
 
   function renderSettings() {
@@ -217,7 +226,7 @@ Y.paramsPanel = (function () {
       var bad = !isFinite(v) || (f.min != null && v < f.min) || (f.max != null && v > f.max) || (f.strict && !Number.isInteger(v)) || (f.positive && !(v > 0));
       el.classList.toggle('invalid', bad);
       if (bad) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
-      if (bad) { Y.ui.toast(f.label + (f.strict ? ': enter a whole number from 1 to 65535.' : ': enter a valid number.'), 'warn'); return; }
+      if (bad) { Y.ui.toast(f.label + ': ' + rangeText(f) + '.', 'warn'); return; }
     } else v = el.value;
     if (f.type === 'int' || f.type === 'num') el.value = v;
     Y.state.setSetting(k, v);

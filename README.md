@@ -125,7 +125,10 @@ behaviour).
 * **Table with column headers**: any text table whose header names a frequency, a real and an imaginary column
   (`frequency, realz, imagz`, `freq/Hz, Re(Z)/Ohm, -Im(Z)/Ohm`, `Freq, Zreal, Zimag`, `Z'`, `-Z''` …): EC-Lab,
   Gamry and similar exports. A `chunk` column (Zurich Instruments LabOne) splits the sweeps into datasets; a
-  `-Im` column is negated. Files written by *Save data* are read back this way, names, normalization and masked
+  `-Im` column is negated (typographic signs such as `−Z″` count as `-Z''`). Without real and imaginary columns, a
+  modulus and a phase (`|Z|`, `Zmod` …; `Phase`, `Zphz`, `θ` …, in degrees unless the heading says rad) are
+  converted. Dropped files whose headings name a frequency but no such columns are read by position (f, Zr, Zi)
+  with a warning. Files written by *Save data* are read back this way, names, normalization and masked
   points included.
 * **MFLI csv** (Zurich Instruments LabOne sweeper export, `;` or `,`): one line per field and sweep,
   `chunk;timestamp;size;fieldname;values…`. Each chunk is a dataset (`name_0`, `name_1` …); f comes from the
@@ -278,15 +281,17 @@ and error bars are drawn on the Nyquist, Zr and Zi plots.
 | **NM** | Nelder–Mead simplex with bounds. No derivatives; slower, useful from poor start values. |
 
 Parameters spanning decades (R, C, L, Q, A_w, B, τ) are fitted internally as $x = \ln p$: they stay positive and
-values of very different size are handled evenly; the solution is the same. n, α and β are varied in absolute
+values of very different size are handled evenly; the solution is the same. A lower limit of 0 keeps this; with a
+negative lower limit the parameter is fitted linearly, scaled by its start value. n, α and β are varied in absolute
 steps. Limits are set per parameter in *Settings → Parameter limits for the current circuit*; a value typed outside
 them is brought back to the nearest limit.
 
 ### Running fits
 
 * **Individual** mode: each selected dataset is fitted on its own, from its own start values, in parallel Web
-  Workers (the status bar shows how many). *Stop* interrupts a running batch; a running global fit is stopped
-  at once and its result discarded (parameters unchanged).
+  Workers (the status bar shows how many). *Stop* ends a running batch at once: the datasets already fitted keep
+  their results, the fits still running are abandoned (their workers are replaced) and those datasets keep their
+  values. A running global fit is stopped at once and its result discarded (parameters unchanged).
 * A fit that stops on tiny steps is checked with one Gauss-Newton step; if χ² could still drop noticeably it is
   reported as *stalled, not a minimum* (amber), not as converged.
 * Fit flags (the tick boxes) are per dataset and are copied with the values by *Copy these values to …*.
@@ -327,7 +332,8 @@ parameter is
 Shared parameters start from the first selected dataset, local ones from each dataset's own values. The fit is a
 Levenberg–Marquardt on the block-arrow normal equations (Schur complement on the shared block), so hundreds of
 datasets with local parameters stay cheap. χ²w is the sum over all datasets; χ²red uses $2\sum N - p_\text{total}$.
-Bounds are applied by projection, except with method LM. Typical uses: a series of spectra at several temperatures
+Bounds are kept as in a single fit, except with method LM: a parameter on a limit is held while the χ² gradient
+points outwards, and the steps of the others are projected into the limits. Typical uses: a series of spectra at several temperatures
 with a common geometric capacitance, or spectra where a shared n of a CPE is wanted.
 
 Standard errors come from the covariance of all the parameters together. As in a single fit, a parameter that ends
@@ -412,8 +418,9 @@ $$Z(\omega) = R_\infty + R_\text{pol}\int_{-\infty}^{\infty} \frac{g(\tau)}{1 + 
 
 * $R_\infty$ = Zr at the highest frequency, $R_\text{pol}$ = Zr at the lowest frequency − $R_\infty$, both from the
   data, as in Yappari 5.1.
-* τ is log-spaced over $1/\omega_\text{max} … 1/\omega_\text{min}$ with the density of the data (at least 10 points
-  per decade), so gaps in the frequencies leave no holes in g. Masked points are used.
+* τ is log-spaced over $1/\omega_\text{max} … 1/\omega_\text{min}$ with the density of the data, at least 10 points
+  per decade (so gaps in the frequencies leave no holes in g) and at most 20 (the cost grows as the cube of the
+  number of τ values, so dense sweeps stay fast). Masked points are used.
 * Discretised, the problem is $A\,g = y$, where y holds the chosen parts of $(Z - R_\infty)/R_\text{pol}$; dividing by
   $R_\text{pol}$ makes λ independent of the size of the impedance.
 
@@ -620,7 +627,8 @@ Closing the page with datasets loaded asks for confirmation; data are not kept b
 Before every command or action that changes datasets, a **restore point** keeps the datasets (data, masks,
 parameters, fit results, labels), the selection and the circuit. In the **Log** tab, the line of each such action
 has a *Restore before* button that brings back that state; a restore can itself be restored or undone. `undo` (or
-*Data → Undo the last command*) goes back one step at a time. Restore points live in memory, up to 256 MB (the
+*Data → Undo the last command*) goes back one step at a time. Steps of the mouse wheel or the arrow keys on one
+parameter that follow each other (less than 1.5 s apart) share one restore point and one line of the Log. Restore points live in memory, up to 256 MB (the
 oldest are dropped first), and are lost when the page is closed: *Save project* keeps a state for good.
 
 ---
@@ -635,7 +643,7 @@ oldest are dropped first), and are lost when the page is closed: *Save project* 
 | | Stop when χ² changes less than | 10⁻¹² | Relative change between two iterations. |
 | Data files | Column separator | Detect automatically | 3-column files and saved data. |
 | | Use measured standard deviations as weights | off | w = 1/σ² when the file has σ. |
-| Simulation | Start, end frequency, points | 10⁻³ Hz, 10⁶ Hz, 128 | Log-spaced grid for *Simulate spectrum*. |
+| Simulation | Start, end frequency, points | 10⁻³ Hz, 10⁶ Hz, 128 | Log-spaced grid for *Simulate spectrum*; positive frequencies, 2 to 100 000 points. |
 | Plots | Datasets drawn at most | 60 | Larger selections are thinned out for drawing. |
 | | Same scale on both Nyquist axes | on | |
 | | Square Nyquist plot | off | Square frame and saved image, also in the Nyquist toolbar. |
@@ -643,6 +651,12 @@ oldest are dropped first), and are lost when the page is closed: *Save project* 
 | | Phase unit | Degrees | Or radians. |
 | Limits | Min, max, shared | per element | For the current circuit; *shared* is used by the global fit. |
 | Start values | Value, min, max, fitted | per element | Used when an element is added; min below max, the value between them; stored in the browser; *Reset element values*. |
+
+Settings read from a settings or project file, or kept by the browser, are checked the same way: a value of the wrong
+type or outside its range (a non-positive frequency, more than 100 000 points, a DRT λ outside 10⁻¹² – 10³ or more than
+100 000 Gold iterations, an unknown separator, theme or method) is ignored, and limits of the circuit that are not two
+numbers with min below max fall back to those of the element. Spline: 3 to 100 000 frequencies; smoothing: 1 to 1000
+points on each side, degree 0 to 10.
 
 ---
 

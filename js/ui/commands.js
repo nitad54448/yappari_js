@@ -65,11 +65,12 @@ Y.cmd = (function () {
       }
       items = data;
     }
-    var all = [], nFiles = 0, skipped = [];
+    var all = [], nFiles = 0, skipped = [], warnings = [];
     items.forEach(function (it) {
       try {
         var got = kind === 'custom' ? Y.readers.custom(it.text, it.name, def) : READ[kind](it.text, it.name);
         if (got.skipped) skipped.push(it.name + ' (' + got.skipped + ')');
+        if (got.warning) warnings.push(got.warning);
         all = all.concat(got);
         nFiles++;
       } catch (e) { ui.toast(e.message, 'err'); }
@@ -81,6 +82,7 @@ Y.cmd = (function () {
       ui.toast('Read ' + plural(all.length, 'dataset') + ' (' + pts + ' points) from ' + plural(nFiles, 'file') + ': ' + listNames(all) + '.', 'ok');
     }
     if (skipped.length) ui.toast('Incomplete rows (a missing or non-numeric value) were skipped: ' + skipped.join(', ') + '.', 'warn');
+    warnings.forEach(function (w) { ui.toast(w, 'warn'); });
   }
 
   async function read(kind) {
@@ -181,11 +183,11 @@ Y.cmd = (function () {
     var b = Y.state.bounds(), cdc = S.model.cdc, jobs = list.map(function (ds) { return Y.state.jobFor(ds, b); });
     var nSig = jobs.filter(function (j) { return j.sr; }).length;
     snapshot('fit of ' + plural(list.length, 'dataset'));
-    var t0 = performance.now(), last = 0, nOk = 0, nMax = 0, nStall = 0, nOther = 0, nBad = 0, results;
+    var t0 = performance.now(), last = 0, nOk = 0, nMax = 0, nStall = 0, nOther = 0, nBad = 0, results, job = null;
     Y.state.setBusy(true);
     ui.progress(0, jobs.length);
     try {
-      running = Y.pool.fitMany(jobs, function (r, ji) {
+      running = job = Y.pool.fitMany(jobs, function (r, ji) {
         if (S.model.cdc !== cdc) return;
         var ds = Y.state.byId(r.id);
         if (!ds) return;
@@ -205,17 +207,18 @@ Y.cmd = (function () {
       ui.progress(0, 0);
       Y.bus.emit('stats');
     }
-    var n = results.filter(Boolean).length, dt = ((performance.now() - t0) / 1000).toFixed(2);
+    var n = results.filter(Boolean).length, dt = ((performance.now() - t0) / 1000).toFixed(2), stopped = job.stopped();
     if (list.length === 1 && results[0] && results[0].ok) {
       var r = results[0];
       ui.toast('Fit of ' + list[0].name + ': χ²red ' + fmt(r.chi2red) + ', R² ' + (Number.isFinite(r.r2) ? r.r2.toFixed(6) : '—') + ', ' +
         r.iter + ' iterations, ' + r.msg + (nSig ? ', weights 1/σ² (' + jobs[0].sigma + ')' : '') + '.', Y.fit.status(r.msg));
     } else {
-      ui.toast('Fitted ' + n + ' of ' + plural(list.length, 'dataset') + ' in ' + dt + ' s: ' + nOk + ' converged' +
+      ui.toast((stopped ? 'Stopped. ' : '') + 'Fitted ' + n + ' of ' + plural(list.length, 'dataset') + ' in ' + dt + ' s: ' + nOk + ' converged' +
         (nMax ? ', ' + nMax + ' stopped at the iteration limit' : '') + (nStall ? ', ' + nStall + ' stalled before a minimum' : '') +
         (nOther ? ', ' + nOther + ' ended otherwise (singular system, or all fitted parameters at their limits)' : '') +
         (nBad ? ', ' + nBad + ' failed' : '') +
-        (S.settings.useSigma ? '; measured σ used for ' + nSig + ' of them' : '') + '.', nBad || nMax || nStall || nOther ? 'warn' : 'ok');
+        (S.settings.useSigma ? '; measured σ used for ' + nSig + ' of them' : '') + '.' +
+        (stopped && n < list.length ? ' The ' + (list.length - n) + ' not fitted keep their values.' : ''), stopped || nBad || nMax || nStall || nOther ? 'warn' : 'ok');
     }
   }
 
@@ -223,7 +226,7 @@ Y.cmd = (function () {
     if (!running) return;
     if (running.global) {
       if (!running.cancel()) ui.toast('This global fit runs on the main thread and cannot be stopped.', 'warn');
-    } else { running.cancel(); ui.toast('Stopping. Datasets already handed to the workers finish first.', 'info'); }
+    } else running.cancel();                           // fitSelected reports what was fitted before the stop
   }
 
   async function globalFit() {
@@ -338,7 +341,7 @@ Y.cmd = (function () {
 
   function simulate() {
     if (!idle() || !haveModel()) return;
-    var st = S.settings, f = Y.dataops.logspace(st.simStart, st.simEnd, Math.max(2, st.simPoints | 0)), src = Y.state.first();
+    var st = S.settings, f = Y.dataops.logspace(st.simStart, st.simEnd, Math.min(Y.state.LIMITS.points, Math.max(2, st.simPoints | 0))), src = Y.state.first();
     var pv = src ? Y.state.vector(src) : Float64Array.from(S.model.prog.params, function (pp) { return Y.paramDefault(pp.kind, pp.pi).def; });
     var z = Y.circuit.impedance(S.model.prog, f, pv);
     snapshot('simulate');
@@ -388,8 +391,18 @@ Y.cmd = (function () {
     Y.state.addDatasets(out, { selectAll: true });
     ui.toast(label + ': ' + plural(out.length, 'new dataset') + ' named ' + prefix + '…', 'ok');
   }
-  function splineN(n) { derive('sp_', function (ds) { return Y.dataops.spline(ds, Math.max(3, n | 0)); }, 'Spline on ' + n + ' log-spaced frequencies'); }
-  function smoothN(side, deg) { derive('sm_', function (ds) { return Y.dataops.smooth(ds, Math.max(1, side | 0), Math.max(0, deg | 0)); }, 'Savitzky–Golay smoothing'); }
+  // a spline gets 3 to LIMITS.points frequencies; smoothing 1 to 1000 points on each side and a degree from 0 to 10
+  // (larger values only cost time: a window wider than the data is narrowed to it)
+  function splineN(n) {
+    var m = Math.round(n), L = Y.state.LIMITS.points;
+    if (!(m >= 3 && m <= L)) { ui.toast('Spline: enter a whole number of frequencies from 3 to ' + L + '.', 'warn'); return; }
+    derive('sp_', function (ds) { return Y.dataops.spline(ds, m); }, 'Spline on ' + m + ' log-spaced frequencies');
+  }
+  function smoothN(side, deg) {
+    var sd = Math.round(side), dg = Math.round(deg);
+    if (!(sd >= 1 && sd <= 1000 && dg >= 0 && dg <= 10)) { ui.toast('Smoothing: 1 to 1000 points on each side, and a polynomial degree from 0 to 10.', 'warn'); return; }
+    derive('sm_', function (ds) { return Y.dataops.smooth(ds, sd, dg); }, 'Savitzky–Golay smoothing');
+  }
   async function spline() {
     if (!haveSel()) return;
     var v = await ui.prompt('Spline to a log frequency grid', [{ key: 'n', label: 'Number of frequencies', type: 'number', value: 128 }], 'Create datasets',

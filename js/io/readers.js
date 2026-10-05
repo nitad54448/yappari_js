@@ -84,16 +84,25 @@ Y.readers = (function () {
   }
 
   // ---------------------------------------------------------------- tables with a column header
+  // a column heading reduced for matching: lower case, no quotes or spaces; typographic minus signs and dashes
+  // (−, –) become -, primes (′, ″, ’) become ' and '', so "−Z″" and "-Z''" are the same heading
+  function colName(c) {
+    return String(c).trim().toLowerCase().replace(/^"|"$/g, '').replace(/\s+/g, '')
+      .replace(/[\u2010-\u2014\u2212\ufe63\uff0d]/g, '-').replace(/\u2033/g, "''").replace(/[\u2032\u2019]/g, "'");
+  }
   function isFreq(s) { return /freq/.test(s) || /^f($|[\/(\[_])/.test(s); }
   function isImag(s) { return /imag/.test(s) || /^-?im\(?z/.test(s) || /^-?z''/.test(s) || /^-?z_?i($|[\/(\[_])/.test(s) || /^-?z_?im/.test(s); }
   function isReal(s) { return /real/.test(s) || /^re\(?z/.test(s) || /^z'($|[^'])/.test(s) || /^z_?r($|[\/(\[_])/.test(s) || /^z_?re/.test(s); }
+  // modulus and phase of Z (|Z|, Zmod, mod(Z), absz ...; phase, Zphz, θ ...), used when there are no Zr and Zi columns
+  function isMod(s) { return /^\|z\|/.test(s) || /^(z_?)?mod(ulus)?($|[\/(\[_])/.test(s) || /^(abs\(?z|z_?abs)/.test(s); }
+  function isPhase(s) { return /^-?(phase|phz|z_?ph|theta|θ|φ|phi|arg)/.test(s) && !/\(y\)|admit/.test(s); }
 
   function parseHeader(line, compact) {
     if (!/[A-Za-z]/.test(line)) return null;
     var sep = line.indexOf('\t') >= 0 ? 'tab' : line.indexOf(';') >= 0 ? 'semicolon' : line.indexOf(',') >= 0 ? 'comma' : 'space';
-    var cols = splitter(sep)(line).map(function (c) { return c.trim().toLowerCase().replace(/^"|"$/g, '').replace(/\s+/g, ''); });
+    var cols = splitter(sep)(line).map(colName);
     if (compact) cols = cols.filter(function (c) { return c !== ''; });
-    var h = { sep: sep, n: cols.length, cf: -1, cr: -1, ci: -1, cc: -1, cm: -1, sr: -1, si: -1, neg: false }, calc = [];
+    var h = { sep: sep, n: cols.length, cf: -1, cr: -1, ci: -1, cc: -1, cm: -1, sr: -1, si: -1, neg: false, cmod: -1, cph: -1 }, calc = [];
     cols.forEach(function (s, k) {
       if (s && /calc/.test(s)) calc.push(k);
       if (!s || /calc|fit|sim|pwr/.test(s)) return;
@@ -106,10 +115,15 @@ Y.readers = (function () {
       if (h.cm < 0 && /^mask(ed)?$/.test(s)) { h.cm = k; return; }     // 1 = masked point (written by Save data)
       if (h.cf < 0 && isFreq(s)) { h.cf = k; return; }
       if (h.ci < 0 && isImag(s)) { h.ci = k; h.neg = s.charAt(0) === '-'; return; }
-      if (h.cr < 0 && isReal(s)) { h.cr = k; }
+      if (h.cr < 0 && isReal(s)) { h.cr = k; return; }
+      if (h.cmod < 0 && isMod(s)) { h.cmod = k; return; }
+      if (h.cph < 0 && isPhase(s)) { h.cph = k; h.phNeg = s.charAt(0) === '-'; h.phRad = /rad/.test(s) && !/deg|°/.test(s); }
     });
+    // no measured real and imaginary columns, but a modulus and a phase: Zr = |Z| cos θ, Zi = |Z| sin θ, θ in degrees
+    // unless the heading says rad (tableRows converts them)
+    if (h.cf >= 0 && (h.cr < 0 || h.ci < 0) && h.cmod >= 0 && h.cph >= 0) { h.cr = h.cmod; h.ci = h.cph; h.polar = true; h.neg = false; }
     // no measured real and imaginary columns: model columns (Save data with "Model Zr, Zi" only) are read instead
-    if (h.cf >= 0 && (h.cr < 0 || h.ci < 0) && calc.length) {
+    else if (h.cf >= 0 && (h.cr < 0 || h.ci < 0) && calc.length) {
       var mr = -1, mi = -1;
       calc.forEach(function (k) {
         var s = cols[k].replace(/[_.\-]*calc\w*/, '');            // Zr_calc -> zr, Z''calc -> z''
@@ -181,6 +195,7 @@ Y.readers = (function () {
         var fields = split(L[j]), ok = fields.length > h.maxCol, fv, rv, iv;
         if (ok) {
           fv = num(fields[h.cf], dc); rv = num(fields[h.cr], dc); iv = num(fields[h.ci], dc);
+          if (h.polar) { var th = (h.phNeg ? -iv : iv) * (h.phRad ? 1 : Math.PI / 180); iv = rv * Math.sin(th); rv = rv * Math.cos(th); }
           ok = fv > 0 && isFinite(fv) && isFinite(rv) && isFinite(iv);
         }
         if (!ok && /^[-+.]?\d/.test(t) && fields.length >= 3) skipped++;
@@ -471,16 +486,37 @@ Y.readers = (function () {
   }
 
   // ---------------------------------------------------------------- automatic choice (files dropped on the window)
+  // The line just above the first data row, when it looks like the column headings of the table: it names a
+  // frequency and has as many columns as the data rows. null otherwise.
+  function headingsAbove(text) {
+    var L = lines(String(text).slice(0, 20000)), prev = null;
+    for (var i = 0; i < L.length; i++) {
+      var t = L[i].trim();
+      if (!t) continue;
+      if (!/^[-+.]?\d/.test(t)) { if (/[A-Za-z]/.test(t)) prev = t; continue; }
+      if (!prev) return null;
+      var hs = prev.indexOf('\t') >= 0 ? 'tab' : prev.indexOf(';') >= 0 ? 'semicolon' : prev.indexOf(',') >= 0 ? 'comma' : 'space';
+      var cols = splitter(hs)(prev).map(colName).filter(Boolean), nData = numericFields(L[i], detectSeparator([L[i]])).length;
+      return cols.length >= 3 && cols.length === nData && cols.some(isFreq) ? prev : null;
+    }
+    return null;
+  }
+
   function auto(text, fileName, sep) {
     if (/<Segment\d*>/i.test(text)) return versa(text, fileName);
     if (looksZView(text)) return zview(text, fileName);
     if (isMfliCsv(text)) return mfliCsv(text, fileName);
     try { return headerTable(text, fileName); } catch (e) { /* no usable column header */ }
-    return numericBlocks(text, fileName, sep);
+    var out = numericBlocks(text, fileName, sep), hl = headingsAbove(text);
+    // columns read by position under headings that name other quantities (admittance, |Z| and phase in an unknown
+    // form ...) would be wrong without a word: the caller shows this warning
+    if (hl) out.warning = baseName(fileName) + ': the column headings "' + hl.slice(0, 60) + '" were not recognised, so columns 1, 2 and 3 ' +
+      'were read as f, Zr and Zi. Check the plots; File, Table with column headers reads Zr and Zi, or |Z| and phase, by name.';
+    return out;
   }
 
   return { threeColumns: threeColumns, headerTable: headerTable, mfliCsv: mfliCsv, zview: zview, versa: versa, custom: custom,
            numericBlocks: numericBlocks, auto: auto, parseDefinition: parseDefinition, normalizeDef: normalizeDef,
-           detectSeparator: detectSeparator, parseHeader: parseHeader, presets: PRESETS, separators: SEPARATORS,
+           detectSeparator: detectSeparator, parseHeader: parseHeader, colName: colName, presets: PRESETS, separators: SEPARATORS,
            baseName: baseName, lines: lines };
 })();

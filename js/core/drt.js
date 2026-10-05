@@ -3,8 +3,8 @@
  *  DRT, distribution of relaxation times (series RC behaviour):
  *    Z(w) = Rinf + Rpol * integral g(tau) / (1 + j w tau) dln(tau),   integral g dln(tau) = 1
  *    Rinf = Zr at the highest frequency, Rpol = Zr at the lowest frequency - Rinf (from the data, as in Yappari 5.1).
- *    tau grid: log-spaced over 1/w_max .. 1/w_min with the density of the data (at least 10 per decade), so gaps
- *    in the frequencies leave no holes in the distribution. Masked points are used (masks apply to fits only). The system is divided by Rpol, so lambda does not depend on the
+ *    tau grid: log-spaced over 1/w_max .. 1/w_min with the density of the data, at least 10 per decade (so gaps
+ *    in the frequencies leave no holes in the distribution) and at most 20 (the cost grows as the cube of it). Masked points are used (masks apply to fits only). The system is divided by Rpol, so lambda does not depend on the
  *    size of the impedance.
  *    'tikhonov'  min |A g - y|^2 + lambda^2 |g|^2 with g >= 0 (active-set NNLS of Bro & De Jong, normal equations)
  *    'fisk'      iterated Tikhonov: g <- max(0, g + 0.1 (A'A + lambda^2 I)^-1 A'(y - A g)) from the Tikhonov
@@ -36,6 +36,7 @@ Y.drt = (function () {
   function maxAbs(v) { var m = 0; for (var i = 0; i < v.length; i++) m = Math.max(m, Math.abs(v[i])); return m; }
   function median(a) { var s = Array.prototype.slice.call(a).sort(function (x, y) { return x - y; }), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
 
+  var TAU_PER_DECADE = 20;
   function prepare(ds) {
     var c = Y.dataops.cleanSorted(ds), n = c.f.length;
     if (n < 6) throw new Error('the DRT needs at least 6 points');
@@ -43,7 +44,9 @@ Y.drt = (function () {
     if (!(rpol > 0)) throw new Error('Rpol = Zr(lowest f) − Zr(highest f) = ' + rpol.toPrecision(3) + ' Ω is not positive, no DRT');
     var w = new Float64Array(n), k;
     for (k = 0; k < n; k++) w[k] = 2 * Math.PI * c.f[k];
-    var lt0 = Math.log(1 / w[n - 1]), lt1 = Math.log(1 / w[0]), nt = Math.max(n, Math.ceil((lt1 - lt0) / Math.LN10 * 10) + 1), h = (lt1 - lt0) / (nt - 1);
+    // τ points: the density of the data, at least 10 and at most TAU_PER_DECADE per decade (the cost grows as nt³)
+    var lt0 = Math.log(1 / w[n - 1]), lt1 = Math.log(1 / w[0]), dec = (lt1 - lt0) / Math.LN10;
+    var nt = Math.min(Math.max(n, Math.ceil(dec * 10) + 1), Math.max(Math.ceil(dec * TAU_PER_DECADE) + 1, 6)), h = (lt1 - lt0) / (nt - 1);
     var tau = new Float64Array(nt), lt = new Float64Array(nt), dl = new Float64Array(nt).fill(h);
     for (k = 0; k < nt; k++) { lt[k] = lt0 + k * h; tau[k] = Math.exp(lt[k]); }
     return { f: c.f, w: w, zr: c.zr, zi: c.zi, n: n, nt: nt, rinf: rinf, rpol: rpol, tau: tau, lt: lt, dl: dl };

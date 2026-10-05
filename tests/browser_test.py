@@ -7,6 +7,10 @@ os.makedirs(OUT, exist_ok=True)
 logs = []
 def shot(pg, name): pg.screenshot(path=os.path.join(OUT, name + '.png'))
 def status(pg): return pg.inner_text('#status-msg')
+def contrib(pg, on):
+    """Show contributions on or off with the checkbox of the Model tab, where it lives (#contrib-model)."""
+    pg.evaluate("Y.app.showTab('model')")
+    (pg.check if on else pg.uncheck)('#contrib-model')
 with sync_playwright() as p:
     b = p.chromium.launch()
     pg = b.new_page(viewport={'width': 1440, 'height': 900})
@@ -136,7 +140,7 @@ with sync_playwright() as p:
     z1 = pg.evaluate('Y.state.first().zr[5]')
     pg.fill('#cmdline', 'undo'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(100)
     print('undo: %.7g -> %.7g -> %.7g |' % (z0, z1, pg.evaluate('Y.state.first().zr[5]')), status(pg))
-    pg.evaluate("Y.app.showTab('nyq')"); pg.check('#contrib-toggle')
+    contrib(pg, True); pg.evaluate("Y.app.showTab('nyq')")
     pg.fill('#cmdline', 'label>>1k'); pg.press('#cmdline', 'Enter'); pg.fill('#cmdline', 'label>>10'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(300)
     print('labels:', status(pg)); shot(pg, 'a_contrib_nyq')
     pg.evaluate("Y.app.showTab('zi')"); pg.wait_for_timeout(300); shot(pg, 'a_contrib_zi')
@@ -196,11 +200,11 @@ with sync_playwright() as p:
     # contributions follow the legend; normalization by electrode area and back
     pg.evaluate("Y.cmd.runCommand('select>>^demo_02$')"); pg.evaluate("Y.app.showTab('nyq')"); pg.wait_for_timeout(100)
     pg.keyboard.press('F9'); pg.wait_for_timeout(1500)
-    pg.check('#contrib-toggle'); pg.wait_for_timeout(300)
+    contrib(pg, True); pg.evaluate("Y.app.showTab('nyq')"); pg.wait_for_timeout(300)
     cvis = pg.evaluate("""() => { const n = Y.plots._plots.nyq, id = Y.state.first().id, parts = () => n.visibleSeries().filter(s => String(s.group).startsWith('part')).length;
         const a = parts(); n.hidden.add('part1'); n.draw(); const b = parts(); n.hidden.delete('part1'); n.hidden.add(id); n.draw(); const c = parts(); n.hidden.clear(); n.draw(); return [a, b, c]; }""")
     print('contribution curves visible: all %d, part 1 hidden %d, dataset hidden %d' % tuple(cvis))
-    pg.uncheck('#contrib-toggle'); pg.wait_for_timeout(200)
+    contrib(pg, False); pg.evaluate("Y.app.showTab('nyq')"); pg.wait_for_timeout(200)
     get = "(() => { const d = Y.state.first(); return [d.zr[5], d.p.R2, d.p.Q1, d.p.Q1_n, d.stats && d.stats.chi2red]; })()"
     before = pg.evaluate(get)
     pg.click('[data-menu="data"]'); pg.click('text=Normalize: area'); pg.wait_for_timeout(200)
@@ -284,6 +288,21 @@ with sync_playwright() as p:
         im.src = Y.plots.imagesFor(Y.state.first(), 560, 360).nyq; })""")
     print('dark page: report image corner %s, report text in light ink: %s' % (rl[0], rl[1]))
     pg.evaluate("Y.state.setSetting('theme', 'light')")
+    # Stop ends a batch of long fits at once (40 000-point spectra, Nelder-Mead: tens of seconds each); the datasets not
+    # fitted keep their values, and the workers that were replaced fit normally afterwards
+    pg.evaluate("""(() => { const prog = Y.circuit.compile(Y.circuit.parse('R(RQ)(RQ)')), f = Y.dataops.logspace(1e6, 1e-2, 40000), raws = [];
+      for (let i = 0; i < 4; i++) { const z = Y.circuit.impedance(prog, f, Float64Array.from([50, 1.2e4, 2e-10, 0.93, 4e4, 6e-7, 0.82]));
+        raws.push({ name: 'long_' + i, f: f, zr: z.re, zi: z.im }); }
+      Y.state.addDatasets(raws, { selectAll: true }); Y.state.setSetting('method', 'NM'); Y.state.setSetting('maxIter', 65535);
+      Y.state.store('fitmode', 'single'); })()""")
+    before = pg.evaluate("Y.state.selected().map(d => d.p.R2)")
+    pg.evaluate("Y.app.showSide('fit')"); pg.click('[data-fitmode=\"single\"]'); pg.click('#btn-fit'); pg.wait_for_timeout(1500)
+    t0 = time.time(); pg.click('#btn-stop'); pg.wait_for_function('!Y.state.S.busy', timeout=120000); dt = time.time() - t0
+    after = pg.evaluate("Y.state.selected().map(d => d.p.R2)")
+    print('stop: busy cleared %.2f s after Stop | values of the datasets not fitted unchanged: %s |' % (dt, before == after), status(pg)[:90])
+    pg.evaluate("Y.state.setSetting('method', 'TRDL'); Y.state.setSetting('maxIter', 2500); Y.cmd.runCommand('select>>^demo_0[0-2]$')")
+    pg.click('#btn-fit'); pg.wait_for_function('!Y.state.S.busy', timeout=60000)
+    print('  next fit after the stop:', status(pg)[:70])
     b.close()
 print('\n'.join(logs) if logs else 'no console errors or warnings')
 from PIL import Image

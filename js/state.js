@@ -54,9 +54,33 @@ Y.state = (function () {
   }
 
   // ---------------------------------------------------------------- settings
+  // Largest number of points of a simulated or splined spectrum, largest number of Gold iterations (the top of the DRT
+  // slider) and range of log10 λ of the DRT. Settings from files and from the browser outside these are not used.
+  var LIMITS = { points: 100000, goldIter: 100000, lambdaLog: [-12, 3] };
   function validMaxIter(v) { return Number.isInteger(v) && v >= 1 && v <= 65535; }
+  function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function oneOf() { var a = Array.prototype.slice.call(arguments); return function (v) { return a.indexOf(v) >= 0; }; }
+  function intIn(lo, hi) { return function (v) { return Number.isInteger(v) && v >= lo && v <= hi; }; }
+  function numIn(lo, hi) { return function (v) { return typeof v === 'number' && v >= lo && v <= hi; }; }
+  function positive(v) { return typeof v === 'number' && v > 0 && v < Infinity; }
+  // the values each setting may take (the type is checked against the default as well)
+  var VALID = {
+    sep: oneOf('auto', 'tab', 'space', 'comma', 'semicolon'),
+    method: function (v) { return own(Y.fit.methods, v); },
+    weight: function (v) { return own(Y.fit.weightModes, v); },
+    maxIter: validMaxIter, tol: positive, simStart: positive, simEnd: positive,
+    simPoints: intIn(2, LIMITS.points), maxPlots: intIn(1, Infinity), legendMax: intIn(0, Infinity),
+    resid: oneOf('abs', 'rel'), phase: oneOf('deg', 'rad'), theme: oneOf('system', 'light', 'dark'),
+    view3d: oneOf('nyq', 'nyqcalc', 'zr', 'zi', 'zrdiff', 'zidiff'),
+    drtMethod: oneOf('tikhonov', 'fisk', 'gold'), drtSource: oneOf('both', 're', 'im'), drtX: oneOf('f', 'tau'),
+    drtLambda: numIn(LIMITS.lambdaLog[0], LIMITS.lambdaLog[1]), drtIter: numIn(0, Math.log10(LIMITS.goldIter))
+  };
+  function validSetting(key, v) {
+    var d0 = defaults();
+    return own(d0, key) && typeof v === typeof d0[key] && !(typeof v === 'number' && !isFinite(v)) && (!own(VALID, key) || VALID[key](v));
+  }
   function setSetting(key, val) {
-    if (key === 'maxIter' && !validMaxIter(val)) return;
+    if (!validSetting(key, val)) return;
     S.settings[key] = val;
     store('settings', S.settings);
     Y.bus.emit('settings', key);
@@ -93,18 +117,15 @@ Y.state = (function () {
     });
     return out;
   }
-  // settings from a file: known keys with the type of their default (finite numbers only), on top of base (the
-  // defaults when omitted); an unknown fit method or weight, or bad iterations or tolerance, fall back to the default
+  // settings from a file or from the browser: known keys with the type of their default and a valid value (see
+  // VALID) replace those of base (the defaults when omitted); the others are ignored. A value of base that is not valid
+  // (an older version, an edited file) falls back to the default.
   function cleanSettings(src, base) {
     var st = Object.assign(defaults(), base || {}), d0 = defaults();
     if (src && typeof src === 'object' && !Array.isArray(src)) Object.keys(src).forEach(function (k) {
-      var v = src[k];
-      if (k in d0 && typeof v === typeof d0[k] && !(typeof v === 'number' && !isFinite(v))) st[k] = v;
+      if (validSetting(k, src[k])) st[k] = src[k];
     });
-    if (!(st.method in Y.fit.methods)) st.method = d0.method;
-    if (!(st.weight in Y.fit.weightModes)) st.weight = d0.weight;
-    if (!validMaxIter(st.maxIter)) st.maxIter = d0.maxIter;
-    if (!(st.tol > 0)) st.tol = d0.tol;
+    Object.keys(d0).forEach(function (k) { if (!validSetting(k, st[k])) st[k] = d0[k]; });
     return st;
   }
 
@@ -125,15 +146,20 @@ Y.state = (function () {
     ds.p = np; ds.fit = nf;
   }
 
-  // opts: {limits, shared} to restore, quiet: no event
+  // limits of one parameter that can be used: finite numbers, min below max
+  function validLimit(L) { return !!L && typeof L === 'object' && typeof L.min === 'number' && typeof L.max === 'number' && isFinite(L.min) && isFinite(L.max) && L.min < L.max; }
+
+  // opts: {limits, shared} to restore, quiet: no event. Limits that cannot be used (from the browser, an older
+  // version ...) are replaced by the defaults of the element.
   function setModel(tree, opts) {
     opts = opts || {};
     var prog = tree ? Y.circuit.compile(tree) : null, old = S.model, limits = {}, shared = {};
-    var oldL = opts.limits || old.limits, oldS = opts.shared || old.shared;
+    var isObj = function (o) { return !!o && typeof o === 'object' && !Array.isArray(o); };
+    var oldL = isObj(opts.limits) ? opts.limits : old.limits, oldS = isObj(opts.shared) ? opts.shared : old.shared;
     if (prog) prog.params.forEach(function (pp) {
-      var d = defaultsFor(pp);
-      limits[pp.name] = oldL[pp.name] ? { min: oldL[pp.name].min, max: oldL[pp.name].max } : { min: d.min, max: d.max };
-      shared[pp.name] = oldS[pp.name] != null ? !!oldS[pp.name] : true;
+      var d = defaultsFor(pp), L = own(oldL, pp.name) ? oldL[pp.name] : null;
+      limits[pp.name] = validLimit(L) ? { min: L.min, max: L.max } : { min: d.min, max: d.max };
+      shared[pp.name] = own(oldS, pp.name) && oldS[pp.name] != null ? !!oldS[pp.name] : true;
     });
     var same = old.prog && prog && old.prog.cdc === prog.cdc;
     S.model = { tree: tree, prog: prog, cdc: prog ? prog.cdc : '', limits: limits, shared: shared, version: old.version + 1 };
@@ -498,7 +524,7 @@ Y.state = (function () {
   function setBusy(b) { S.busy = b; Y.bus.emit('busy', b); }
 
   return {
-    S: S, defaults: defaults, cleanSettings: cleanSettings, restore: restore, store: store, load: load,
+    S: S, defaults: defaults, cleanSettings: cleanSettings, validSetting: validSetting, LIMITS: LIMITS, restore: restore, store: store, load: load,
     setSetting: setSetting, resetSettings: resetSettings, replaceSettings: replaceSettings, saveElementOverrides: saveElementOverrides,
     elementDefaultProblem: elementDefaultProblem, cleanElementOverrides: cleanElementOverrides,
     names: names, setModel: setModel, setLimit: setLimit, setShared: setShared,

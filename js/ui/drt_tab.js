@@ -57,10 +57,16 @@ Y.drtTab = (function () {
     $('#drt-source').addEventListener('change', function (e) { set('drtSource', e.target.value); });
     $('#drt-x').addEventListener('change', function (e) { Y.state.setSetting('drtX', e.target.value); [P.res, P.g, P.z].forEach(function (p) { p.setOptions({ xlabel: xLabel() }); }); render(true); });
     $('#drt-slider').addEventListener('input', function (e) { set(gold() ? 'drtIter' : 'drtLambda', +e.target.value); });
+    // typed value: Gold iterations from 1 to LIMITS.goldIter, λ from 1e-12 to 1000 (Y.state.LIMITS)
     $('#drt-par').addEventListener('change', function (e) {
-      var v = Y.ui.parseNum(e.target.value);
-      if (!(v > 0)) { syncControls(); return; }
-      set(gold() ? 'drtIter' : 'drtLambda', Math.log10(v));
+      var v = Y.ui.parseNum(e.target.value), L = Y.state.LIMITS, lg = Math.log10(v);
+      var ok = gold() ? v >= 1 && v <= L.goldIter : lg >= L.lambdaLog[0] && lg <= L.lambdaLog[1];
+      if (!ok) {
+        Y.ui.toast(gold() ? 'Gold iterations: enter a number from 1 to ' + L.goldIter + '.' :
+          'λ: enter a number from 1E' + L.lambdaLog[0] + ' to 1E' + L.lambdaLog[1] + '.', 'warn');
+        syncControls(); return;
+      }
+      set(gold() ? 'drtIter' : 'drtLambda', lg);
     });
     $('#drt-search').addEventListener('click', searchDialog);
     $('#drt-all').addEventListener('click', saveSelected);
@@ -77,18 +83,31 @@ Y.drtTab = (function () {
 
   // The distributions of the selected datasets (as plotted, at most 12; Gold, being slow, only the first) are
   // drawn in the dataset colours; spectra, residuals and peaks are those of the first selected dataset.
-  var MAX_OVERLAY = 12;
+  // The first dataset is computed and drawn at once; the others are computed afterwards in short slices, so a large
+  // selection does not block the window. A newer update (selection, method, λ ...) cancels the slices still to run.
+  var MAX_OVERLAY = 12, gen = 0;
   function update() {
-    var sel = Y.plots.plotted(), ds = sel[0];
+    var my = ++gen, sel = Y.plots.plotted(), ds = sel[0];
     if (!ds) { current = null; lastId = null; clear('Select one or more datasets to see their distribution of relaxation times.'); return; }
-    var o = opts(), list = gold() ? [ds] : sel.slice(0, MAX_OVERLAY), all = [], t0 = performance.now();
+    var o = opts(), list = gold() ? [ds] : sel.slice(0, MAX_OVERLAY), all = [], t0 = performance.now(), i = 1;
     try { ds.drt = Y.drt.compute(ds, o); all.push({ ds: ds, r: ds.drt }); }
     catch (e) { current = null; lastId = null; clear(ds.name + ': ' + e.message); return; }
-    list.slice(1).forEach(function (d) { try { d.drt = Y.drt.compute(d, o); all.push({ ds: d, r: d.drt }); } catch (e) { /* shown for the first one only */ } });
-    var key = all.map(function (it) { return it.ds.id; }).join(','), fresh = key !== lastId;
+    var key = list.map(function (d) { return d.id; }).join(','), fresh = key !== lastId;   // same datasets: keep the zoom
     lastId = key;
-    current = { ds: ds, r: ds.drt, all: all, left: S.sel.size - all.length, ms: performance.now() - t0 };
-    render(fresh);
+    function show(final) {
+      current = { ds: ds, r: ds.drt, all: all.slice(), left: S.sel.size - (final ? all.length : list.length), ms: performance.now() - t0 };
+      render(fresh);
+    }
+    if (list.length > 1) show(false);
+    (function more() {
+      if (my !== gen) return;
+      var t = performance.now();
+      while (i < list.length && performance.now() - t < 30) {
+        var d = list[i++];
+        try { d.drt = Y.drt.compute(d, o); all.push({ ds: d, r: d.drt }); } catch (e) { /* shown for the first one only */ }
+      }
+      if (i < list.length) setTimeout(more, 0); else show(true);
+    })();
   }
   function clear(msg) {
     [P.res, P.g, P.z].forEach(function (p) { p.setSeries([]); });

@@ -8,7 +8,8 @@
  *          (central differences). Parameters sitting on a bound get no SE.
  *
  *  Internally, parameters with scale 'log' are fitted as x = ln(p): positivity is automatic and
- *  values spanning many decades (Q, C, R) are handled evenly. The solution is the same.
+ *  values spanning many decades (Q, C, R) are handled evenly. The solution is the same. A lower limit of 0 keeps
+ *  this (ln 0 = −∞); a 'log' parameter that must be fitted linearly (negative lower limit) is scaled by its size.
  *
  *  Measured standard deviations (job.sr, job.si) replace the weights: w = 1/sigma^2 for each part.
  *  Stop messages start with "converged:" followed by the rule that ended the fit (all are normal ends);
@@ -65,24 +66,37 @@ Y.defineCore('fit', function (Y) {
     else for (q = 0; q < this.p.length; q++) if (job.fit[q]) free.push(q);
     this.free = free;
     var nf = free.length;
-    this.isLog = new Uint8Array(nf); this.lo = new Float64Array(nf); this.hi = new Float64Array(nf);
+    // Solver variables. A 'log' parameter with a positive value is fitted as x = ln p; a lower limit of 0 is then
+    // ln 0 = −∞ (no lower limit for x). The others are fitted as x = p / s: s = 1 for n, α, β, and for a 'log'
+    // parameter that must stay linear (negative lower limit, start value 0, or negative with LM) s is its size, so
+    // that difference steps, step caps and the trust region follow it (1e-9 F as well as 1e4 Ω).
+    this.isLog = new Uint8Array(nf); this.sc = new Float64Array(nf); this.lo = new Float64Array(nf); this.hi = new Float64Array(nf);
     for (q = 0; q < nf; q++) {
-      var j = free[q], v = this.p[j], lo = job.lo[j], hi = job.hi[j];
+      var j = free[q], v = this.p[j], lo = job.lo[j], hi = job.hi[j], logKind = prog.params[j].scale === 'log';
       if (lo > hi) { var t = lo; lo = hi; hi = t; }
-      var logOK = prog.params[j].scale === 'log' && v > 0 && (!this.bounded || lo > 0);
+      var logOK = logKind && v > 0 && (!this.bounded || (lo >= 0 && hi > 0));
       this.isLog[q] = logOK ? 1 : 0;
-      if (this.bounded) { this.lo[q] = logOK ? Math.log(lo) : lo; this.hi[q] = logOK ? Math.log(hi) : hi; }
+      this.sc[q] = logOK || !logKind ? 1 : linScale(v, lo, hi);
+      if (this.bounded) { this.lo[q] = logOK ? Math.log(lo) : lo / this.sc[q]; this.hi[q] = logOK ? Math.log(hi) : hi / this.sc[q]; }
       else { this.lo[q] = -Infinity; this.hi[q] = Infinity; }
     }
     this.nev = 0;
     this._r1 = new Float64Array(2 * n); this._r2 = new Float64Array(2 * n);
   }
 
+  // size of a 'log' parameter that is fitted linearly: its start value, else its smallest nonzero finite limit, else 1
+  function linScale(v, lo, hi) {
+    var a = Math.abs(v);
+    if (a > 0 && a < Infinity) return a;
+    var c = [Math.abs(lo), Math.abs(hi)].filter(function (b) { return b > 0 && b < Infinity; });
+    return c.length ? Math.min.apply(null, c) : 1;
+  }
+
   Problem.prototype.initialX = function () {
     var nf = this.free.length, x = new Float64Array(nf);
     for (var q = 0; q < nf; q++) {
       var v = this.p[this.free[q]];
-      x[q] = this.isLog[q] ? Math.log(v) : v;
+      x[q] = this.isLog[q] ? Math.log(v) : v / this.sc[q];
       if (this.bounded) x[q] = Math.min(this.hi[q], Math.max(this.lo[q], x[q]));
     }
     return x;
@@ -91,7 +105,7 @@ Y.defineCore('fit', function (Y) {
   Problem.prototype.setX = function (x) {
     for (var q = 0; q < x.length; q++) {
       var j = this.free[q];
-      this.p[j] = this.isLog[q] ? Math.exp(x[q]) : x[q];
+      this.p[j] = this.isLog[q] ? Math.exp(x[q]) : x[q] * this.sc[q];
     }
   };
 
@@ -407,7 +421,7 @@ Y.defineCore('fit', function (Y) {
       if (inv) for (a = 0; a < sub; a++) {
         q = idx[a];
         var j = P.free[q], vv = chi2red * inv[a * sub + a];
-        if (vv >= 0) se[j] = P.isLog[q] ? 100 * Math.sqrt(vv) : 100 * Math.sqrt(vv) / Math.abs(P.p[j]);
+        if (vv >= 0) se[j] = P.isLog[q] ? 100 * Math.sqrt(vv) : 100 * Math.sqrt(vv) * P.sc[q] / Math.abs(P.p[j]);
       }
       P.resid(x, r);
     }

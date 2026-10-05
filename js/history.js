@@ -5,7 +5,7 @@
  */
 Y.history = (function () {
   'use strict';
-  var S = Y.state.S, MAX_BYTES = 256 * 1024 * 1024, MAX_POINTS = 200;
+  var S = Y.state.S, MAX_BYTES = 256 * 1024 * 1024, MAX_POINTS = 200, MERGE_MS = 1500;
   var points = [], nextId = 1, pending = null, bytes = 0;
 
   function record(d) {
@@ -29,13 +29,18 @@ Y.history = (function () {
     if (b) b.remove();
     if (pending === pt.id) pending = null;
   }
-  // opts.settings: also keep the settings (for actions that replace them, such as opening a project)
+  // opts.settings: also keep the settings (for actions that replace them, such as opening a project).
+  // opts.merge: a key for a burst of small edits (mouse wheel or arrow keys on one parameter). While the newest restore
+  // point has the same key and is less than MERGE_MS old (counted from the last edit), no new one is taken, so the
+  // burst is one step of undo and older restore points are not pushed out.
   function take(label, opts) {
+    var last = points[points.length - 1], now = Date.now(), merge = (opts && opts.merge) || null;
+    if (merge && last && last.merge === merge && now - last.at < MERGE_MS) { last.at = now; pending = null; return last.id; }
     var recs = S.datasets.map(record);
     var pt = { id: nextId++, label: label, time: new Date(), cdc: S.model.cdc, limits: JSON.parse(JSON.stringify(S.model.limits)),
                settings: opts && opts.settings ? JSON.parse(JSON.stringify(S.settings)) : null,
                shared: Object.assign({}, S.model.shared), recs: recs, sel: Array.from(S.sel), simCount: S.simCount,
-               bytes: recs.reduce(function (a, r) { return a + r.bytes; }, 0) };
+               bytes: recs.reduce(function (a, r) { return a + r.bytes; }, 0), merge: merge, at: now };
     points.push(pt); bytes += pt.bytes; pending = pt.id;
     while (points.length > 1 && (bytes > MAX_BYTES || points.length > MAX_POINTS)) drop(points.shift());
     info();

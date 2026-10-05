@@ -2,8 +2,9 @@
  *  separate worker file has to be fetched: this works from file:// as well as from a web server.
  *  If workers cannot be created, jobs run on the main thread in small time slices.
  *
- *  Y.pool.fitMany(jobs, onResult, onProgress) -> { promise, cancel }
+ *  Y.pool.fitMany(jobs, onResult, onProgress) -> { promise, cancel, stopped }
  *  Y.pool.globalFit(job) -> { promise, cancel }
+ *  Stop (cancel) takes effect at once: the workers still fitting are terminated and replaced by fresh ones.
  */
 Y.pool = (function () {
   'use strict';
@@ -12,10 +13,10 @@ Y.pool = (function () {
   function workerMain() {
     /* global self */
     self.onmessage = function (e) {
-      var m = e.data, out = [];
-      if (m.type === 'fit') for (var i = 0; i < m.jobs.length; i++) out.push(Y.fit.run(m.jobs[i]));
-      else if (m.type === 'global') out.push(Y.globalFit.run(m.job));
-      self.postMessage({ results: out });
+      var m = e.data;
+      // one message per fit, so that a Stop loses only the fits still running
+      if (m.type === 'fit') for (var i = 0; i < m.jobs.length; i++) self.postMessage({ k: m.first + i, result: Y.fit.run(m.jobs[i]), last: i === m.jobs.length - 1 });
+      else if (m.type === 'global') self.postMessage({ results: [Y.globalFit.run(m.job)] });
     };
   }
 
@@ -38,6 +39,14 @@ Y.pool = (function () {
     workers.forEach(function (wk) { try { wk.w.terminate(); } catch (e) { /* */ } });
     workers = []; url = null;
   }
+  // a worker whose work is abandoned (Stop): terminated, and a fresh one takes its place in the pool
+  function restart(wk) {
+    try { wk.w.terminate(); } catch (e) { /* */ }
+    wk.busy = false;
+    var at = workers.indexOf(wk);
+    if (at < 0) return;
+    try { wk.w = new Worker(url); } catch (e) { workers.splice(at, 1); }
+  }
 
   // run the jobs listed in idx on the main thread, in ~25 ms slices
   function mainThread(jobs, idx, results, onResult, onProgress, state, done) {
@@ -56,40 +65,50 @@ Y.pool = (function () {
   function fitMany(jobs, onResult, onProgress) {
     onResult = onResult || function () {};
     onProgress = onProgress || function () {};
-    var state = { cancelled: false, done: 0 }, results = new Array(jobs.length);
+    var state = { cancelled: false, done: 0 }, results = new Array(jobs.length), settle = null;
     var promise = new Promise(function (resolve) {
+      settle = resolve;
       init();
       var all = jobs.map(function (_, k) { return k; });
       if (broken || !workers.length) { mainThread(jobs, all, results, onResult, onProgress, state, function () { resolve(results); }); return; }
       var next = 0, inflight = 0, failed = false;
       var chunk = Math.max(1, Math.min(16, Math.ceil(jobs.length / (workers.length * 6))));
       function feed(wk) {
-        if (failed) return;
-        if (state.cancelled || next >= jobs.length) { wk.busy = false; if (!inflight) resolve(results); return; }
+        if (failed || state.cancelled) return;
+        if (next >= jobs.length) { wk.busy = false; if (!inflight) resolve(results); return; }
         var start = next, end = Math.min(jobs.length, next + chunk);
         next = end; inflight++; wk.busy = true;
         wk.w.onmessage = function (e) {
-          if (failed) return;
-          inflight--;
-          e.data.results.forEach(function (r, k) { results[start + k] = r; onResult(r, start + k); });
-          state.done += end - start;
+          if (failed || state.cancelled) return;
+          var d = e.data;
+          results[d.k] = d.result; onResult(d.result, d.k);
+          state.done++;
           onProgress(state.done, jobs.length);
-          feed(wk);
+          if (d.last) { inflight--; feed(wk); }
         };
         wk.w.onerror = function (ev) {
           if (ev && ev.preventDefault) ev.preventDefault();
-          if (failed) return;
+          if (failed || state.cancelled) return;
           failed = true; broken = true;
           console.warn('worker failed, continuing on the main thread', ev && ev.message);
           terminateAll();
           var todo = all.filter(function (k) { return !results[k]; });
           mainThread(jobs, todo, results, onResult, onProgress, state, function () { resolve(results); });
         };
-        wk.w.postMessage({ type: 'fit', jobs: jobs.slice(start, end) });
+        wk.w.postMessage({ type: 'fit', first: start, jobs: jobs.slice(start, end) });
       }
       workers.slice().forEach(feed);
     });
-    return { promise: promise, cancel: function () { state.cancelled = true; } };
+    // Stop: no new fit starts, the workers still fitting are terminated (and replaced), and the promise resolves at
+    // once with the results so far; the datasets whose fits were abandoned keep their values. On the main thread
+    // (no workers) the fit that is running ends first.
+    function cancel() {
+      if (state.cancelled) return;
+      state.cancelled = true;
+      workers.slice().forEach(function (wk) { if (wk.busy) restart(wk); });
+      settle(results);
+    }
+    return { promise: promise, cancel: cancel, stopped: function () { return state.cancelled; } };
   }
 
   // A global fit is one long job: Stop terminates its worker (a fresh one replaces it) and the promise
