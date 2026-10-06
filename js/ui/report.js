@@ -33,8 +33,8 @@ Y.report = (function () {
     }).join('');
     var stats = st && st.chi2w != null ?
       '<table><tr><th>χ²w</th><td>' + fmt(st.chi2w) + '</td><th>χ²red</th><td>' + fmt(st.chi2red) + '</td><th>R²</th><td>' +
-      (Number.isFinite(st.r2) ? st.r2.toFixed(6) : '—') + '</td><th>Points</th><td>' + (st.n || '') + '</td></tr></table><p class="muted">' +
-      (st.global ? 'Global fit. ' : '') + (st.method ? esc(Y.fit.methods[st.method] || st.method) + (st.maxIter != null ? ', at most ' + st.maxIter + ' iterations, tolerance ' + st.tol : '') + '. ' : '') + (st.weight === 'sigma' ? 'Weights 1/σ², ' + esc(st.sigma || 'measured') + '. ' : '') + esc(st.msg || '') + (st.iter != null ? ', ' + st.iter + ' iterations' : '') + '.</p>' :
+      (Number.isFinite(st.r2) ? st.r2.toFixed(6) : '—') + '</td><th>Points</th><td>' + esc(st.n || '') + '</td></tr></table><p class="muted">' +
+      (st.global ? 'Global fit. ' : '') + (st.method ? esc(Y.fit.methods[st.method] || st.method) + (st.maxIter != null ? ', at most ' + esc(st.maxIter) + ' iterations, tolerance ' + esc(st.tol) : '') + '. ' : '') + (st.weight === 'sigma' ? 'Weights 1/σ², ' + esc(st.sigma || 'measured') + '. ' : '') + esc(st.msg || '') + (st.iter != null ? ', ' + esc(st.iter) + ' iterations' : '') + '.</p>' :
       '<p class="muted">Not fitted with these values.</p>';
     var pics = ['nyq', 'zr', 'zi', 'mod', 'ph', 'res'].filter(function (k) { return img[k]; })
       .map(function (k) { return '<img alt="" src="' + img[k] + '">'; }).join('');

@@ -19,10 +19,19 @@ Y.drtTab = (function () {
   }
   function parText() { return gold() ? String(Math.round(Math.pow(10, S.settings.drtIter))) : fmt(Math.pow(10, S.settings.drtLambda)); }
 
+  // Slider ranges, log10 of λ (1e-6 to 1) and of the Gold iterations (100 to 100 000). A value outside them, typed or
+  // from a settings or project file, widens the range of its slider to whole decades around it (within
+  // Y.state.LIMITS) for the rest of the session, so the slider always shows the value in use.
+  var RANGE = { lambda: [-6, 0], gold: [2, 5] };
+  function widen(r, v, lim) {
+    if (!isFinite(v)) return r;
+    return [v < r[0] ? Math.max(lim[0], Math.floor(v)) : r[0], v > r[1] ? Math.min(lim[1], Math.ceil(v)) : r[1]];
+  }
   function syncControls() {
-    var st = S.settings, sl = $('#drt-slider');
+    var st = S.settings, sl = $('#drt-slider'), L = Y.state.LIMITS, k = gold() ? 'gold' : 'lambda', v = gold() ? st.drtIter : st.drtLambda;
     $('#drt-method').value = st.drtMethod; $('#drt-source').value = st.drtSource; $('#drt-x').value = st.drtX;
-    if (gold()) { sl.min = 2; sl.max = 5; sl.step = 0.05; sl.value = st.drtIter; } else { sl.min = -6; sl.max = 0; sl.step = 0.05; sl.value = st.drtLambda; }   // Gold: 100 to 100 000
+    RANGE[k] = widen(RANGE[k], v, gold() ? [0, Math.log10(L.goldIter)] : L.lambdaLog);
+    sl.min = RANGE[k][0]; sl.max = RANGE[k][1]; sl.step = 0.05; sl.value = v;
     $('#drt-par-name').textContent = gold() ? 'Iterations' : 'λ';
     if (document.activeElement !== $('#drt-par')) $('#drt-par').value = parText();
     $('#drt-search').textContent = gold() ? 'Search iterations…' : 'Search λ…';
@@ -57,7 +66,8 @@ Y.drtTab = (function () {
     $('#drt-source').addEventListener('change', function (e) { set('drtSource', e.target.value); });
     $('#drt-x').addEventListener('change', function (e) { Y.state.setSetting('drtX', e.target.value); [P.res, P.g, P.z].forEach(function (p) { p.setOptions({ xlabel: xLabel() }); }); render(true); });
     $('#drt-slider').addEventListener('input', function (e) { set(gold() ? 'drtIter' : 'drtLambda', +e.target.value); });
-    // typed value: Gold iterations from 1 to LIMITS.goldIter, λ from 1e-12 to 1000 (Y.state.LIMITS)
+    // typed value: Gold iterations from 1 to LIMITS.goldIter, λ from 1e-12 to 1000 (Y.state.LIMITS); outside the
+    // slider's range, the slider is widened to it (syncControls)
     $('#drt-par').addEventListener('change', function (e) {
       var v = Y.ui.parseNum(e.target.value), L = Y.state.LIMITS, lg = Math.log10(v);
       var ok = gold() ? v >= 1 && v <= L.goldIter : lg >= L.lambdaLog[0] && lg <= L.lambdaLog[1];
@@ -245,5 +255,6 @@ Y.drtTab = (function () {
   }
 
   return { init: init, show: show, plots: function () { return P.res ? [P.res, P.g, P.z] : []; },
-           saveSelected: saveSelected, searchDialog: searchDialog };
+           saveSelected: saveSelected, searchDialog: searchDialog,
+           _widen: widen };   // for tests/run_review5_tests.js only
 })();

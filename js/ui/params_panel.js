@@ -100,7 +100,7 @@ Y.paramsPanel = (function () {
     var wname = { mod: '1/|Z|', mod2: '1/|Z|²', unit: '1', sigma: '1/σ², ' + (st.sigma || 'measured') }[st.weight] || st.weight || '';
     host.innerHTML = '<dl><dt>χ²<sub>w</sub></dt><dd>' + fmtStat(st.chi2w) + '</dd><dt>χ²<sub>red</sub></dt><dd>' + fmtStat(st.chi2red) +
       '</dd><dt>R²</dt><dd>' + (Number.isFinite(st.r2) ? st.r2.toFixed(6) : '—') + '</dd><dt>Weights</dt><dd>' + esc(wname) +
-      '</dd><dt>Fit</dt><dd title="' + esc(msg) + '">' + (st.global ? 'global, ' : '') + (st.iter != null ? st.iter + ' it, ' : '') + esc(short) +
+      '</dd><dt>Fit</dt><dd title="' + esc(msg) + '">' + (st.global ? 'global, ' : '') + (st.iter != null ? esc(st.iter) + ' it, ' : '') + esc(short) +
       (short === 'converged' ? ' <span class="why">(' + esc(msg.replace(/^converged: /, '')) + ')</span>' : '') + '</dd></dl>';
   }
 

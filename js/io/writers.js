@@ -15,7 +15,8 @@ Y.writers = (function () {
   function normLine(norm) {
     return '#normalization ' + norm.type + ' k=' + e(norm.k) + (norm.A != null ? ' A=' + e(norm.A) : '') + (norm.L != null ? ' L=' + e(norm.L) : '') + ' unit=' + zu(norm);
   }
-  function e(v) { return (typeof v === 'number' && isFinite(v)) ? v.toExponential(6).toUpperCase() : 'NaN'; }
+  // numbers of the text files: 9 significant digits, so data and parameters read back almost unchanged
+  function e(v) { return (typeof v === 'number' && isFinite(v)) ? v.toExponential(8).toUpperCase() : 'NaN'; }
   function stamp(d) {
     d = d || new Date();
     function two(n) { return (n < 10 ? '0' : '') + n; }

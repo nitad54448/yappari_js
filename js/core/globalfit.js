@@ -4,7 +4,8 @@
  *  Levenberg-Marquardt on the block-arrow normal equations (Schur complement on the shared block),
  *  so hundreds of datasets with local parameters stay cheap. Bounds (except for method 'LM', unbounded) are kept
  *  with an active set, as in a single fit: a variable on a limit whose gradient points outwards is held for the
- *  step, and the steps of the others are projected into the box.
+ *  step, and the steps of the others are projected into the box. The projected step is capped as in a single fit (a
+ *  factor e^3 for log-scaled parameters).
  *
  *  job = { cdc, sets:[{id, f, zr, zi, p}], fit, shared (Uint8Array over all parameters), lo, hi,
  *          weight, method, maxIter, tol }
@@ -78,6 +79,10 @@ Y.defineCore('globalfit', function (Y) {
           X[k] = xi0[nS + bb]; lo[k] = P.lo[nS + bb]; hi[k] = P.hi[nS + bb];
         }
       });
+      // log-scaled variables (x = ln p), for the step cap of step()
+      var isLog = new Uint8Array(nX);
+      for (a = 0; a < nS; a++) isLog[a] = probs[0].isLog[a];
+      probs.forEach(function (P, ii) { for (var bb = 0; bb < nL; bb++) isLog[nS + ii * nL + bb] = P.isLog[nS + bb]; });
       var xs = probs.map(function () { return new Float64Array(nV); });
       function xOf(ii, V) {
         var out = xs[ii];
@@ -160,8 +165,8 @@ Y.defineCore('globalfit', function (Y) {
         }
         var dS = ok ? (nS ? LA.solveSPD(M, rhs, nS) : new Float64Array(0)) : null;
         if (!dS) return false;
-        Xn.set(X);
-        for (a = 0; a < nS; a++) Xn[a] = X[a] + dS[a];
+        dX.fill(0);
+        for (a = 0; a < nS; a++) dX[a] = dS[a];
         for (i = 0; i < nd && nL; i++) {
           var v = new Float64Array(nL), o2 = nS + i * nL;
           for (b = 0; b < nL; b++) {
@@ -171,9 +176,20 @@ Y.defineCore('globalfit', function (Y) {
             v[b] = t4;
           }
           var dl = LA.cholSolve(chol[i], v, nL);
-          for (b = 0; b < nL; b++) Xn[o2 + b] = X[o2 + b] + dl[b];
+          for (b = 0; b < nL; b++) dX[o2 + b] = dl[b];
         }
-        if (bounded) for (a = 0; a < nX; a++) Xn[a] = Math.min(hi[a], Math.max(lo[a], Xn[a]));
+        // the step, projected into the limits, is capped as in a single fit (a factor e^3 for log-scaled parameters), so
+        // that a poor start cannot fling parameters to 0 or infinity in one jump. The cap applies to the projected step:
+        // a parameter held by its limit does not shorten the steps of all the others (of every dataset).
+        var scl = 1;
+        for (a = 0; a < nX; a++) {
+          if (!(Math.abs(dX[a]) < Infinity)) return false;
+          var d = bounded ? Math.min(hi[a], Math.max(lo[a], X[a] + dX[a])) - X[a] : dX[a];
+          var cap = isLog[a] ? 3 : 0.5 * Math.max(Math.abs(X[a]), 1);
+          dX[a] = d;
+          if (Math.abs(d) * scl > cap) scl = cap / Math.abs(d);
+        }
+        for (a = 0; a < nX; a++) Xn[a] = X[a] + scl * dX[a];
         return true;
       }
 
@@ -185,7 +201,7 @@ Y.defineCore('globalfit', function (Y) {
       if (!(f < Infinity)) throw new Error('the model gives non-finite values at the start values');
       var mu = -1, nu = 2, it, conv = 0, needJ = true, msg = 'iteration limit reached', hold = null;
       if (!Number.isInteger(job.maxIter) || job.maxIter < 1 || job.maxIter > 65535) throw new Error('Maximum iterations must be an integer from 1 to 65535');
-      var Xn = new Float64Array(nX), st = new Float64Array(nX), maxIter = job.maxIter, tol = job.tol > 0 ? job.tol : 1e-12;
+      var Xn = new Float64Array(nX), dX = new Float64Array(nX), st = new Float64Array(nX), maxIter = job.maxIter, tol = job.tol > 0 ? job.tol : 1e-12;
       for (it = 0; it < maxIter; it++) {
         if (needJ) {
           blocks(false); needJ = false;

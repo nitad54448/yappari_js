@@ -312,10 +312,10 @@ and error bars are drawn on the Nyquist, Zr and Zi plots.
 
 | Method | Description |
 |---|---|
-| **TRDL** (default) | Trust-region dogleg with box bounds (dogbox variant). Robust, respects the limits. |
+| **TRDL** (default) | Trust-region dogleg with box bounds (dogbox variant). Robust, respects the limits. A parameter on a limit that the Gauss–Newton step would push further out is held there for that step, so the fit does not crawl along the limit. |
 | **LMB** | Levenberg–Marquardt with bounds (projection). |
 | **LM** | Levenberg–Marquardt without bounds (limits ignored). |
-| **NM** | Nelder–Mead simplex with bounds. No derivatives; slower, useful from poor start values. |
+| **NM** | Nelder–Mead simplex with bounds. No derivatives; slower, useful from poor start values. One iteration counts n simplex steps (n fitted parameters), about the model evaluations of one iteration of the other methods. |
 
 Parameters spanning decades (R, C, L, Q, A_w, B, τ) are fitted internally as $x = \ln p$: they stay positive and
 values of very different size are handled evenly; the solution is the same. A lower limit of 0 keeps this; with a
@@ -402,7 +402,9 @@ Shared parameters start from the dataset shown in the Parameters panel, local on
 Levenberg–Marquardt on the block-arrow normal equations (Schur complement on the shared block), so hundreds of
 datasets with local parameters stay cheap. χ²w is the sum over all datasets; χ²red uses $2\sum N - p_\text{total}$.
 Bounds are kept as in a single fit, except with method LM: a parameter on a limit is held while the χ² gradient
-points outwards, and the steps of the others are projected into the limits. Typical uses: a series of spectra at several temperatures
+points outwards, and the steps of the others are projected into the limits. Steps are capped as in a single fit (R, C, Q …
+change by at most a factor e³ per iteration), so a poor start cannot send a parameter to 0 or infinity in one jump.
+Typical uses: a series of spectra at several temperatures
 with a common geometric capacitance, or spectra where a shared n of a CPE is wanted.
 
 Standard errors come from the covariance of all the parameters together. As in a single fit, a parameter that ends
@@ -507,7 +509,8 @@ $$Z(\omega) = R_\infty + R_\text{pol}\int_{-\infty}^{\infty} \frac{g(\tau)}{1 + 
   * **Gold**: multiplicative deconvolution of the non-negative system; the number of iterations regularises
     (50 000 by default, 100 to 100 000 with the slider; fewer = smoother).
 * **Data**: Zr and Zi, Zi only or Zr only.
-* **λ** (or iterations for Gold): slider and value. Larger λ = smoother g, larger misfit.
+* **λ** (or iterations for Gold): slider and value. Larger λ = smoother g, larger misfit. The slider spans λ = 10⁻⁶ … 1
+  (Gold: 100 … 100 000 iterations); a value typed outside it (λ from 10⁻¹² to 10³, Gold from 1 iteration) widens it.
 * **Show**: g (distribution), Spectrum (measured and rebuilt Zr, −Zi), Residuals (|ΔZ|), Peaks (table).
 * **Axis**: frequency (g placed at $f = 1/(2\pi\tau)$) or time constant (spectra placed at $\tau = 1/(2\pi f)$), for all
   views, so the peaks of g line up with the features of the spectra.
@@ -693,6 +696,8 @@ or double-click renames; drag to reorder. `select>>text` selects by name (regula
 | **Save DRT…** | See [Save DRT](#save-drt). |
 | **Settings file** | *Settings → Save settings… / Load settings… / Reset settings*. |
 
+The text files (parameters, data, DRT) write numbers with 9 significant digits.
+
 Closing the page with datasets loaded asks for confirmation; data are not kept between sessions unless saved.
 
 ---
@@ -719,7 +724,7 @@ more), and are lost when the page is closed: *Save project* keeps a state for go
 |---|---|---|---|
 | Fit | Method | TRDL | See [Methods](#methods) (also in the Fit tab). |
 | | Weight of each point | 1/\|Z\| | See [Quantity minimised](#quantity-minimised) (also in the Fit tab). |
-| | Maximum iterations | 2500 | Integer from 1 to 65535 (u16 > 0), synchronized with the Fit panel. |
+| | Maximum iterations | 2500 | Integer from 1 to 65535 (u16 > 0), synchronized with the Fit panel. For Nelder–Mead one iteration is n simplex steps. |
 | | Stop when χ² changes less than | 10⁻¹² | Relative change between two iterations. |
 | Data files | Column separator | Detect automatically | 3-column files and saved data. |
 | | Use measured standard deviations as weights | off | w = 1/σ² when the file has σ. |
@@ -736,7 +741,8 @@ Settings read from a settings or project file, or kept by the browser, are check
 type or outside its range (a non-positive frequency, more than 100 000 points, a DRT λ outside 10⁻¹² – 10³ or more than
 100 000 Gold iterations, an unknown separator, theme or method) is ignored, and limits of the circuit that are not two
 numbers with min below max fall back to those of the element. Spline: 3 to 100 000 frequencies; smoothing: 1 to 1000
-points on each side, degree 0 to 10.
+points on each side, degree 0 to 10. The fit statistics of a project keep only the fields a fit writes, each with its
+type, and dataset names are one line (line breaks and tabs become spaces).
 
 ---
 

@@ -181,9 +181,12 @@ Y.state = (function () {
 
   // ---------------------------------------------------------------- datasets
   function nanIfNull(v) { return v == null ? NaN : v; }
+  // a dataset name is one line of text: line breaks and tabs (from a project file, a pasted name ...) would break the
+  // blocks of Save data and the columns of Save parameters, so control characters become spaces
+  function cleanName(s) { return String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim(); }
   function makeDataset(raw) {
     var n = raw.f.length;
-    var ds = { id: S.nextId++, name: raw.name || 'data', f: Float64Array.from(raw.f), zr: Float64Array.from(raw.zr),
+    var ds = { id: S.nextId++, name: cleanName(raw.name) || 'data', f: Float64Array.from(raw.f), zr: Float64Array.from(raw.zr),
                zi: Float64Array.from(raw.zi), mask: raw.mask ? Uint8Array.from(raw.mask) : new Uint8Array(n),
                sr: raw.sr ? Float64Array.from(raw.sr, nanIfNull) : null, si: raw.si ? Float64Array.from(raw.si, nanIfNull) : null,
                notes: raw.notes ? raw.notes.slice() : [], norm: raw.norm && raw.norm.k > 0 ? Object.assign({}, raw.norm) : null,
@@ -220,7 +223,7 @@ Y.state = (function () {
   }
   function clearAll() { S.datasets = []; S.sel.clear(); S.anchor = null; S.focus = null; Y.bus.emit('datasets'); Y.bus.emit('selection'); }
 
-  function rename(id, name) { var d = byId(id); if (d && name) { d.name = name; Y.bus.emit('datasets'); } }
+  function rename(id, name) { var d = byId(id), nm = cleanName(name); if (d && nm) { d.name = nm; Y.bus.emit('datasets'); } }
 
   function move(id, beforeId) {
     var d = byId(id);
@@ -406,6 +409,23 @@ Y.state = (function () {
   // current circuit, datasets and settings as they were. Returns the prepared project for commitProject.
   var PROJECT_VERSION = 1;
   var STAT_NUM = ['chi2w', 'chi2red', 'r2', 'globalChi2red'];
+  // Fit statistics read from a project: only the fields a fit writes, each with its type (numbers, texts, flags, and
+  // the standard errors and limit marks per parameter); anything else is dropped, so that no text from a file reaches
+  // the page as HTML. JSON writes NaN as null: those statistics come back as NaN, never mistaken for numbers.
+  function cleanStats(st) {
+    var out = {}, isNum = function (v) { return typeof v === 'number' && isFinite(v); };
+    STAT_NUM.forEach(function (k) { if (k in st) out[k] = isNum(st[k]) ? st[k] : NaN; });
+    ['n', 'iter', 'maxIter', 'tol'].forEach(function (k) { if (isNum(st[k])) out[k] = st[k]; });
+    ['msg', 'method', 'weight', 'sigma'].forEach(function (k) { if (typeof st[k] === 'string') out[k] = st[k].slice(0, 2000); });
+    ['ok', 'global'].forEach(function (k) { if (typeof st[k] === 'boolean') out[k] = st[k]; });
+    [['se', isNum], ['bound', function (v) { return v === true; }]].forEach(function (e) {
+      var src = st[e[0]];
+      if (!src || typeof src !== 'object' || Array.isArray(src)) return;
+      out[e[0]] = {};
+      Object.keys(src).forEach(function (n) { if (e[1](src[n])) out[e[0]][n] = src[n]; });
+    });
+    return out;
+  }
   function prepareProject(doc) {
     if (!doc || typeof doc !== 'object' || doc.format !== 'yappari-js-project') throw new Error('not a Yappari JS project file');
     if (doc.version != null && !(doc.version >= 1 && doc.version <= PROJECT_VERSION))
@@ -454,10 +474,7 @@ Y.state = (function () {
       Object.keys(r.p || {}).forEach(function (pn) { if (!(typeof r.p[pn] === 'number' && isFinite(r.p[pn]))) bad(what + ': parameter ' + pn); });
       if (r.norm != null && !(isObj(r.norm) && r.norm.k > 0 && isFinite(r.norm.k) && /^(factor|area|resist)$/.test(r.norm.type))) bad(what + ': normalization');
       if (r.stats != null && !isObj(r.stats)) bad(what + ': fit statistics');
-      // JSON writes NaN as null: statistics come back as NaN, so they are never mistaken for numbers
-      var stats = r.stats ? Object.assign({}, r.stats) : null;
-      if (stats) STAT_NUM.forEach(function (k) { if (k in stats && stats[k] == null) stats[k] = NaN; });
-      return Object.assign({}, r, { stats: stats });
+      return Object.assign({}, r, { stats: r.stats ? cleanStats(r.stats) : null });
     });
     // the Log saved with the project ({ t, kind, msg }); it only informs, so unreadable lines are left out
     var KINDS = ['info', 'ok', 'warn', 'err', 'cmd'];
@@ -558,6 +575,7 @@ Y.state = (function () {
     vector: vector, setParam: setParam, setFit: setFit, copyParams: copyParams, applyResult: applyResult,
     invalidate: invalidate, invalidateAll: invalidateAll, calcFor: calcFor, curveFor: curveFor,
     bounds: bounds, unmasked: unmasked, fitData: fitData, sigmaFor: sigmaFor, jobFor: jobFor, jobMeta: jobMeta, fitSummary: fitSummary, loadProject: loadProject, prepareProject: prepareProject, commitProject: commitProject, setBusy: setBusy, fromRecord: fromRecord,
-    zUnit: zUnit, zUnitOf: zUnitOf, unitFor: unitFor, paramUnit: paramUnit, normText: normText, normalize: normalize
+    zUnit: zUnit, zUnitOf: zUnitOf, unitFor: unitFor, paramUnit: paramUnit, normText: normText, normalize: normalize,
+    cleanName: cleanName, cleanStats: cleanStats
   };
 })();

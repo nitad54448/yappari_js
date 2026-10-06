@@ -18,6 +18,8 @@
  *
  *  Methods:  'TRDL' trust-region dogleg with box bounds (dogbox variant)   'LMB' Levenberg-Marquardt with bounds
  *            'LM'   Levenberg-Marquardt without bounds                        'NM'  Nelder-Mead with bounds
+ *  For Nelder-Mead one iteration is n simplex steps (n fitted parameters), about the model evaluations of one iteration
+ *  of the other methods, so maxIter limits all methods alike and the iterations reported never exceed it.
  *
  *  job = { id, cdc, f, zr, zi (Float64Array, unmasked points), p (all parameters, circuit order),
  *          fit (Uint8Array 1 = free), lo, hi (limits), method, weight, maxIter, tol }
@@ -240,80 +242,129 @@ Y.defineCore('fit', function (Y) {
   }
 
   // ---------------------------------------------------------------- trust-region dogleg with bounds
+  // Gauss-Newton step for the free variables F0 (tiny ridge for safety): { plain: the step of all of them (null when the
+  // system cannot be solved), F, pg: the variables that move and their step once a free variable sitting on a limit
+  // that the step pushes out of the box is held there }. Held one at a time, the farthest out first, the step of the
+  // others recomputed each time; a held variable is released again when the model, with the step of the others, pulls
+  // it back into the box. F is F0 itself when nothing is held.
+  function gnStep(P, x, A, g, F0, nf, maxd) {
+    var n0 = F0.length, side = new Int8Array(n0), held = new Uint8Array(n0), any = false, gmax = 0, a, b, q;
+    function solve(F) {
+      var n = F.length, M = new Float64Array(n * n), rhs = new Float64Array(n), i, j;
+      for (i = 0; i < n; i++) {
+        rhs[i] = -g[F[i]];
+        for (j = 0; j < n; j++) M[i * n + j] = A[F[i] * nf + F[j]];
+        M[i * n + i] += 1e-12 * maxd + 1e-300;
+      }
+      var sol = LA.solveSPD(M, rhs, n);
+      if (sol) for (i = 0; i < n; i++) if (!(Math.abs(sol[i]) < Infinity)) return null;
+      return sol;
+    }
+    for (a = 0; a < n0; a++) {
+      q = F0[a]; gmax = Math.max(gmax, Math.abs(g[q]));
+      if (!P.bounded) continue;
+      if (x[q] <= P.lo[q] + 1e-12 * (1 + Math.abs(P.lo[q]))) side[a] = -1;
+      else if (x[q] >= P.hi[q] - 1e-12 * (1 + Math.abs(P.hi[q]))) side[a] = 1;
+      if (side[a]) any = true;
+    }
+    var plain = solve(F0), none = { plain: plain, F: F0, pg: plain };
+    if (!plain || !any) return none;
+    for (var pass = 0, nh = 0; pass < 2 * n0 + 2; pass++) {
+      var F = [], ia = [];
+      for (a = 0; a < n0; a++) if (!held[a]) { F.push(F0[a]); ia.push(a); }
+      var st = nh ? solve(F) : plain;
+      if (!st || !F.length) return none;
+      var out = -1, ov = 0;                                // the step farthest out of the box from a limit
+      for (b = 0; b < F.length; b++) { var v = side[ia[b]] * st[b]; if (v > ov) { ov = v; out = ia[b]; } }
+      if (out >= 0) { held[out] = 1; nh++; continue; }
+      var back = -1, bv = 1e-9 * gmax;                     // a held variable that the model now pulls back in
+      for (a = 0; a < n0; a++) if (held[a]) {
+        q = F0[a];
+        var w = g[q];
+        for (b = 0; b < F.length; b++) w += A[q * nf + F[b]] * st[b];
+        if (side[a] * w > bv) { bv = side[a] * w; back = a; }
+      }
+      if (back >= 0) { held[back] = 0; nh--; continue; }
+      return nh ? { plain: plain, F: F, pg: st } : none;
+    }
+    return none;                                           // no settled set: nothing held
+  }
+
+  // Dogleg step of the variables F, in the box = trust region (inf-norm, Delta) intersected with the limits: the
+  // Gauss-Newton step pg when it fits, otherwise the Cauchy step along -g, or the path from it towards pg up to the side
+  // of the box. Returns { x: the new point, s: the step } (all the variables; the others do not move).
+  function dogleg(P, x, A, g, F, pg, Delta, nf) {
+    var nF = F.length, a, c, q, gg = 0, gAg = 0;
+    for (a = 0; a < nF; a++) {
+      var ga = g[F[a]], t = 0;
+      gg += ga * ga;
+      for (c = 0; c < nF; c++) t += A[F[a] * nf + F[c]] * g[F[c]];
+      gAg += ga * t;
+    }
+    var alpha = gAg > 0 ? gg / gAg : Delta / (Math.sqrt(gg) || 1);
+    var pc = new Float64Array(nF), lb = new Float64Array(nF), ub = new Float64Array(nF), p = new Float64Array(nF);
+    for (a = 0; a < nF; a++) {
+      q = F[a]; pc[a] = -alpha * g[q];
+      lb[a] = P.bounded ? Math.max(P.lo[q] - x[q], -Delta) : -Delta;
+      ub[a] = P.bounded ? Math.min(P.hi[q] - x[q], Delta) : Delta;
+    }
+    function frac(v) {                                     // largest t in [0,1] with t*v inside the box
+      var tt = 1;
+      for (var i = 0; i < nF; i++) {
+        if (v[i] > 0) tt = Math.min(tt, ub[i] / v[i]);
+        else if (v[i] < 0) tt = Math.min(tt, lb[i] / v[i]);
+      }
+      return Math.max(0, tt);
+    }
+    if (pg && frac(pg) >= 1) p.set(pg);
+    else {
+      var tc = frac(pc);
+      if (tc < 1 || !pg) for (a = 0; a < nF; a++) p[a] = tc * pc[a];
+      else {
+        var tt = 1;
+        for (a = 0; a < nF; a++) {
+          var d = pg[a] - pc[a];
+          if (d > 0) tt = Math.min(tt, (ub[a] - pc[a]) / d);
+          else if (d < 0) tt = Math.min(tt, (lb[a] - pc[a]) / d);
+        }
+        tt = Math.max(0, tt);
+        for (a = 0; a < nF; a++) p[a] = pc[a] + tt * (pg[a] - pc[a]);
+      }
+    }
+    var xn = Float64Array.from(x), s = new Float64Array(nf);
+    for (a = 0; a < nF; a++) {
+      q = F[a];
+      var v = x[q] + p[a];
+      if (P.bounded) v = Math.min(P.hi[q], Math.max(P.lo[q], v));
+      xn[q] = v; s[q] = v - x[q];
+    }
+    return { x: xn, s: s };
+  }
+
   function trdl(P, x, o) {
     var nf = x.length, m = 2 * P.n;
     var r = new Float64Array(m), rn = new Float64Array(m), J = new Float64Array(m * nf);
     var A = new Float64Array(nf * nf), g = new Float64Array(nf), act = new Uint8Array(nf);
-    var xn = new Float64Array(nf), s = new Float64Array(nf);
     var f = P.resid(x, r);
     if (!(f < Infinity)) return { x: x, it: 0, msg: 'the model gives non-finite values at the start values', fail: true };
-    var Delta = 1, needJ = true, conv = 0, msg = 'iteration limit reached', it, q, a, c;
+    var Delta = 1, needJ = true, conv = 0, msg = 'iteration limit reached', it, q;
     for (it = 0; it < o.maxIter; it++) {
       if (needJ) { P.jac(x, r, J, false); normalEq(J, r, m, nf, A, g); needJ = false; }
       if (!activeSet(P, x, g, act)) { msg = 'all fitted parameters are at their limits'; break; }
       var F = [], gmax = 0, maxd = 0;
       for (q = 0; q < nf; q++) if (!act[q]) { F.push(q); gmax = Math.max(gmax, Math.abs(g[q])); maxd = Math.max(maxd, A[q * nf + q]); }
       if (gmax <= 1e-14 * f) { msg = 'converged: zero gradient'; break; }
-      var nF = F.length, M = new Float64Array(nF * nF), gF = new Float64Array(nF), nb = new Float64Array(nF);
-      for (a = 0; a < nF; a++) {
-        gF[a] = g[F[a]]; nb[a] = -gF[a];
-        for (c = 0; c < nF; c++) M[a * nF + c] = A[F[a] * nf + F[c]];
+      // The dogleg of the free variables; when a free variable sits on a limit that the Gauss-Newton step pushes out
+      // of the box, also the dogleg of the others with that variable held there (gnStep), and the step with the larger
+      // predicted decrease is taken. The usual step stops at such a limit after a tiny move, and the fit crawled for
+      // thousands of iterations (n of a CPE at 1.2, for example); the step taken is never predicted to lower χ² less
+      // than the usual one, so the method keeps its convergence.
+      var gn = gnStep(P, x, A, g, F, nf, maxd), dl = dogleg(P, x, A, g, F, gn.plain, Delta, nf), pred = predicted(A, g, dl.s, nf);
+      if (gn.F !== F) {
+        var dh = dogleg(P, x, A, g, gn.F, gn.pg, Delta, nf), ph = predicted(A, g, dh.s, nf);
+        if (ph > pred) { dl = dh; pred = ph; }
       }
-      // Cauchy step along -g
-      var gg = 0, gAg = 0;
-      for (a = 0; a < nF; a++) {
-        gg += gF[a] * gF[a];
-        var t = 0;
-        for (c = 0; c < nF; c++) t += M[a * nF + c] * gF[c];
-        gAg += gF[a] * t;
-      }
-      var alpha = gAg > 0 ? gg / gAg : Delta / (Math.sqrt(gg) || 1);
-      var pc = new Float64Array(nF);
-      for (a = 0; a < nF; a++) pc[a] = -alpha * gF[a];
-      // Gauss-Newton step (tiny ridge for safety)
-      var Mr = Float64Array.from(M);
-      for (a = 0; a < nF; a++) Mr[a * nF + a] += 1e-12 * maxd + 1e-300;
-      var pg = LA.solveSPD(Mr, nb, nF);
-      if (pg) for (a = 0; a < nF; a++) if (!(Math.abs(pg[a]) < Infinity)) { pg = null; break; }
-      // box = trust region (inf-norm) intersected with the bounds, relative to x
-      var lb = new Float64Array(nF), ub = new Float64Array(nF);
-      for (a = 0; a < nF; a++) {
-        q = F[a];
-        lb[a] = P.bounded ? Math.max(P.lo[q] - x[q], -Delta) : -Delta;
-        ub[a] = P.bounded ? Math.min(P.hi[q] - x[q], Delta) : Delta;
-      }
-      var stepFrac = function (v) {          // largest t in [0,1] with t*v inside the box
-        var tt = 1;
-        for (var i2 = 0; i2 < nF; i2++) {
-          if (v[i2] > 0) tt = Math.min(tt, ub[i2] / v[i2]);
-          else if (v[i2] < 0) tt = Math.min(tt, lb[i2] / v[i2]);
-        }
-        return Math.max(0, tt);
-      };
-      var p = new Float64Array(nF);
-      if (pg && stepFrac(pg) >= 1) p.set(pg);
-      else {
-        var tc = stepFrac(pc);
-        if (tc < 1 || !pg) for (a = 0; a < nF; a++) p[a] = tc * pc[a];
-        else {
-          var tt = 1;
-          for (a = 0; a < nF; a++) {
-            var d = pg[a] - pc[a];
-            if (d > 0) tt = Math.min(tt, (ub[a] - pc[a]) / d);
-            else if (d < 0) tt = Math.min(tt, (lb[a] - pc[a]) / d);
-          }
-          tt = Math.max(0, tt);
-          for (a = 0; a < nF; a++) p[a] = pc[a] + tt * (pg[a] - pc[a]);
-        }
-      }
-      xn.set(x); s.fill(0);
-      for (a = 0; a < nF; a++) {
-        q = F[a];
-        var v = x[q] + p[a];
-        if (P.bounded) v = Math.min(P.hi[q], Math.max(P.lo[q], v));
-        xn[q] = v; s[q] = v - x[q];
-      }
-      var pred = predicted(A, g, s, nf), pinf = maxAbs(s), xnorm = maxAbs(x);
+      var xn = dl.x, pinf = maxAbs(dl.s), xnorm = maxAbs(x);
       var fn = P.resid(xn, rn);
       var rho = (pred > 0 && fn < Infinity) ? (f - fn) / pred : -1;
       if (rho < 0.25) Delta = Math.max(0.25 * pinf, 1e-300);
@@ -330,10 +381,12 @@ Y.defineCore('fit', function (Y) {
   }
 
   // ---------------------------------------------------------------- Nelder-Mead with bounds
+  // At most maxIter x n simplex steps; the iterations reported are the steps / n (see the header)
   function nelderMead(P, x0, o) {
     var n = x0.length, rt = new Float64Array(2 * P.n), lo = P.lo, hi = P.hi;
     var alpha = 1, gamma = n > 1 ? 1 + 2 / n : 2, rho = n > 1 ? 0.75 - 1 / (2 * n) : 0.5, sigma = n > 1 ? 1 - 1 / n : 0.5;
     var maxIt = Math.max(o.maxIter, 1) * Math.max(n, 1), totalIt = 0;
+    function iters() { return Math.ceil(totalIt / Math.max(n, 1)); }
     function clip(v) { if (P.bounded) for (var j = 0; j < n; j++) v[j] = Math.min(hi[j], Math.max(lo[j], v[j])); return v; }
     function F(v) { return P.resid(v, rt); }
     function run(start, scale) {
@@ -382,12 +435,12 @@ Y.defineCore('fit', function (Y) {
       return { x: S[best], f: fs[best] };
     }
     var res = run(x0, 1);
-    if (!(res.f < Infinity)) return { x: x0, it: totalIt, msg: 'the model gives non-finite values at the start values', fail: true };
+    if (!(res.f < Infinity)) return { x: x0, it: iters(), msg: 'the model gives non-finite values at the start values', fail: true };
     var res2 = run(res.x, 0.1);                       // one restart guards against a collapsed simplex
     if (res2.f < res.f) res = res2;
     var msg = totalIt >= maxIt ? 'iteration limit reached' : 'converged: simplex collapsed';
     P.resid(res.x, rt);
-    return { x: res.x, it: totalIt, msg: msg };
+    return { x: res.x, it: iters(), msg: msg };
   }
 
   // ---------------------------------------------------------------- statistics
