@@ -158,17 +158,30 @@ Y.defineCore('circuit', function (Y) {
         } else {                                         // parallel: 1 / sum(1/Z)
           var a1 = op.ins;
           for (k = 0; k < n; k++) {
-            var yr = 0, yi = 0, shortc = false;
+            // Scale every admittance by the smallest finite branch component.
+            // This avoids squaring raw impedances or overflowing 1/Z for tiny Z.
+            var scale = Infinity, shortc = false, invalid = false;
             for (j = 0; j < a1.length; j++) {
-              var zr = SR[a1[j]][k], zi = SI[a1[j]][k], d = zr * zr + zi * zi;
-              if (d === 0) { shortc = true; break; }
-              if (d === Infinity) continue;              // open branch
-              yr += zr / d; yi -= zi / d;
+              var zr = SR[a1[j]][k], zi = SI[a1[j]][k];
+              if (zr === 0 && zi === 0) { shortc = true; break; }
+              if (Number.isNaN(zr) || Number.isNaN(zi)) { invalid = true; continue; }
+              scale = Math.min(scale, Math.max(Math.abs(zr), Math.abs(zi)));
             }
-            if (shortc) { oR[k] = 0; oI[k] = 0; }
+            if (shortc) { oR[k] = 0; oI[k] = 0; continue; }
+            if (invalid) { oR[k] = NaN; oI[k] = NaN; continue; }
+            if (scale === Infinity) { oR[k] = Infinity; oI[k] = 0; continue; }
+            var yr = 0, yi = 0;
+            for (j = 0; j < a1.length; j++) {
+              var br = SR[a1[j]][k], bi = SI[a1[j]][k], bs = Math.max(Math.abs(br), Math.abs(bi));
+              if (bs === Infinity) continue;             // genuinely open branch
+              var nr = br / bs, ni = bi / bs, d = nr * nr + ni * ni, ratio = scale / bs;
+              yr += ratio * nr / d; yi -= ratio * ni / d;
+            }
+            var ys = Math.max(Math.abs(yr), Math.abs(yi));
+            if (ys === 0) { oR[k] = Infinity; oI[k] = 0; }
             else {
-              var dd = yr * yr + yi * yi;
-              if (dd === 0) { oR[k] = Infinity; oI[k] = 0; } else { oR[k] = yr / dd; oI[k] = -yi / dd; }
+              var ar = yr / ys, ai = yi / ys, den = ar * ar + ai * ai;
+              oR[k] = (scale / ys) * (ar / den); oI[k] = -(scale / ys) * (ai / den);
             }
           }
         }

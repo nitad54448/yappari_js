@@ -105,6 +105,20 @@ Y.writers = (function () {
   // log: the lines of the Log kept for the project ({ t, kind, msg }, Y.ui.logEntries), without Restore buttons
   function projectJSON(state, log) {
     var m = state.model;
+    // JSON silently turns non-finite numbers into null, which cannot be reopened as data.
+    state.datasets.forEach(function (ds) {
+      ['f', 'zr', 'zi'].forEach(function (key) {
+        if (!ds[key] || ds[key].length !== ds.f.length) throw new Error(ds.name + ': inconsistent ' + key + ' length');
+        for (var k = 0; k < ds[key].length; k++) {
+          var v = ds[key][k];
+          if (!Number.isFinite(v) || (key === 'f' && !(v > 0)))
+            throw new Error(ds.name + ': invalid ' + key + ' at point ' + (k + 1));
+        }
+      });
+      Object.keys(ds.p).forEach(function (n) {
+        if (!Number.isFinite(ds.p[n])) throw new Error(ds.name + ': non-finite parameter ' + n);
+      });
+    });
     var doc = {
       format: 'yappari-js-project', version: 1, saved: stamp(),
       settings: state.settings,

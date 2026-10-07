@@ -79,6 +79,15 @@ Y.defineCore('elements', function (Y) {
     return function (w, p, o, re, im) {
       var A = p[o], B = p[o + 1], t = [0, 0];
       for (var k = 0; k < w.length; k++) {
+        // coth(z)/z = 1/z² + 1/3 - z²/45 + 2z⁴/945 - z⁶/4725 + ...,
+        // with z² = j*w*B². Avoid subtracting huge, nearly equal terms in Zr.
+        var x = w[k] * B * B;
+        if (useCoth && B !== 0 && Math.abs(x) < 0.01) {
+          var x2 = x * x, ab = A * B;
+          re[k] = ab * (1 / 3 - 2 * x2 / 945 + 2 * x2 * x2 / 93555);
+          im[k] = -A / (w[k] * B) - ab * x * (1 / 45 - x2 / 4725);
+          continue;
+        }
         var sw = Math.sqrt(w[k] / 2);            // sqrt(j w) = sw (1 + j)
         var pr = A / (2 * sw), pi = -pr;         // A / sqrt(j w) = A (1 - j) / (2 sw)
         tanhDiag(B * sw, t);
@@ -111,8 +120,8 @@ Y.defineCore('elements', function (Y) {
     z: function (w, p, o, re, im) {
       var R = p[o], tau = p[o + 1];
       for (var k = 0; k < w.length; k++) {
-        var x = w[k] * tau, m = Math.sqrt(1 + x * x);       // |1 + j x|
-        var sr = Math.sqrt((m + 1) / 2), si = Math.sqrt(x * x / (2 * (m + 1)));
+        var x = w[k] * tau, m = Math.hypot(1, x);          // |1 + j x|
+        var sr = Math.sqrt(m / 2 + 0.5), si = x / (2 * sr); // signed imaginary part of sqrt(1 + j x)
         re[k] = R * sr / m; im[k] = -R * si / m;
       }
     }

@@ -1,3 +1,5 @@
+
+
 /*  Yappari JS - global namespace.
  *
  *  Every file attaches its functions to the global object `Y`.
@@ -10,7 +12,7 @@
 (function (root) {
   'use strict';
   var Y = root.Y || (root.Y = {});
-  Y.version = '1.7 (06 oct 2026)';
+  Y.version = '1.7.1 (07 oct 2026)';
   Y.coreSources = Y.coreSources || [];
   Y.defineCore = function (name, factory) {
     Y.coreSources.push('/* ' + name + ' */\n(' + factory.toString() + ')(Y);');

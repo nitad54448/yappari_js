@@ -1,8 +1,11 @@
 """Drives index.html in headless Chromium (file://). Usage: python3 tests/browser_test.py [screenshot dir]"""
 import os, sys, time
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from browser_fixtures import write_fixtures
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/yappari_shots'
+OUT = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(ROOT, 'test-output', 'browser')
 os.makedirs(OUT, exist_ok=True)
 logs = []
 def shot(pg, name): pg.screenshot(path=os.path.join(OUT, name + '.png'))
@@ -11,7 +14,8 @@ def contrib(pg, on):
     """Show contributions on or off with the checkbox of the Model tab, where it lives (#contrib-model)."""
     pg.evaluate("Y.app.showTab('model')")
     (pg.check if on else pg.uncheck)('#contrib-model')
-with sync_playwright() as p:
+with TemporaryDirectory(prefix="fixtures-", dir=OUT) as fixture_dir, sync_playwright() as p:
+    fixtures = write_fixtures(fixture_dir)
     b = p.chromium.launch()
     pg = b.new_page(viewport={'width': 1440, 'height': 900})
     pg.on('console', lambda m: logs.append(m.type + ': ' + m.text) if m.type in ('error', 'warning') else None)
@@ -29,52 +33,64 @@ with sync_playwright() as p:
     items = [m for n in ('file', 'data', 'analysis') for m in menu_state(n)]
     print('no data: available', [m[0] for m in items if not m[1]], '| greyed out: %d' % sum(1 for m in items if m[1]))
     print('  Fit button disabled:', pg.evaluate("document.getElementById('btn-fit').disabled"), '|', pg.get_attribute('#btn-fit', 'title'))
-    # read a 3-column file through the real menu and file chooser
-    tmp = '/tmp/yappari_cell.dat'
-    with open(tmp, 'w') as fh:
-        fh.write('Freq /Hz, Zr , Zi ; Name: test\n')
-        for k in range(40):
-            f = 10 ** (6 - 8 * k / 39); w = 2 * 3.141592653589793 * f
-            z = 20 + 1000 / complex(1, w * 1000 * 1e-6)
-            fh.write('%.6E\t%.6E\t%.6E\n' % (f, z.real, z.imag))
-    pg.click('[data-menu="file"]')
-    with pg.expect_file_chooser() as fc:
-        pg.click('#menu-pop button >> nth=0')
-    fc.value.set_files(tmp)
-    pg.wait_for_timeout(300)
-    print('read file:', status(pg))
-    # the example files through the real menus and dialogs
+    # Use current menu labels, the samples included in this project, and local
+    # generated fixtures. Imports must add data (or report the expected error).
     FILES = os.path.join(ROOT, 'files')
-    def read_menu(index, path):
+    DEFS = os.path.join(ROOT, 'config', 'definitions')
+
+    def choose_file_item(label):
         pg.click('[data-menu="file"]')
+        pg.locator('#menu-pop').get_by_role('menuitem', name=label, exact=True).click()
+
+    def read_menu(label, path, error=None):
+        assert os.path.isfile(path), 'Missing fixture: ' + path
+        before = pg.evaluate('Y.state.S.datasets.length')
         with pg.expect_file_chooser() as fc:
-            pg.click('#menu-pop button >> nth=%d' % index)
-        fc.value.set_files(path); pg.wait_for_timeout(300)
+            choose_file_item(label)
+        fc.value.set_files(path)
+        if error:
+            pg.wait_for_function('(s) => document.getElementById("status-msg").textContent.includes(s)', arg=error)
+            assert pg.evaluate('Y.state.S.datasets.length') == before, status(pg)
+        else:
+            pg.wait_for_function('(n) => Y.state.S.datasets.length > n', arg=before)
         return status(pg)
-    print('MFLI ZView menu:', read_menu(2, os.path.join(FILES, 'MFLI_Zview_txt_imps_0_sample_00000.txt')))
-    print('3 columns on the ZView file:', read_menu(0, os.path.join(FILES, 'MFLI_Zview_txt_imps_0_sample_00000.txt')))
-    print('table on Z_MFLI:', read_menu(4, os.path.join(FILES, 'Z_MFLI.txt')))
-    print('VersaStudio menu:', read_menu(3, os.path.join(FILES, 'type_VersaStudio.par')))
-    print('MFLI csv menu (generated file):', read_menu(1, '/tmp/yappari_mfli_generated.csv'))
-    print('MFLI csv menu (sample, incomplete):', read_menu(1, os.path.join(FILES, 'mfli_imps_csv.txt')))
-    pg.click('[data-menu="file"]'); pg.click('#menu-pop button >> nth=5'); pg.wait_for_timeout(200)
+
+    print('3 columns:', read_menu('3 columns: f, Zr, Zi…', fixtures['cell']))
+    print('ZView:', read_menu('ZView .z / .txt…', os.path.join(FILES, 'Zview_txt_sample_00000.txt')))
+    print('table:', read_menu('Table with column headers…', os.path.join(FILES, '3_columns_datafile.dat')))
+    print('VersaStudio:', read_menu('VersaStudio .par…', os.path.join(FILES, 'type_VersaStudio.par')))
+    print('MFLI CSV, Auto:', read_menu('Auto: detect the format…', fixtures['mfli']))
+    print('MFLI CSV, incomplete:', read_menu('Auto: detect the format…', fixtures['incomplete'], error='frequency'))
+    choose_file_item('Custom format, xml')
     with pg.expect_file_chooser() as fc:
-        pg.click('#dlg button:has-text("Load definition")')
-    fc.value.set_files(os.path.join(FILES, 'custom_hp4192a.xml')); pg.wait_for_timeout(300)
-    print('dialog after loading the XML: header=%r label=%s sep=%s' % (pg.input_value('#f_header'), pg.input_value('#f_label_length'), pg.input_value('#f_separator')))
+        pg.locator('#dlg').get_by_role('button', name='Load definition…', exact=True).click()
+    fc.value.set_files(os.path.join(DEFS, 'SP2M_HP4192a.xml'))
+    pg.wait_for_function('document.getElementById("f_header").value.includes("cycle :")')
+    print('custom definition:', pg.input_value('#f_header'))
     shot(pg, '0_custom_dialog')
+    before = pg.evaluate('Y.state.S.datasets.length')
     with pg.expect_file_chooser() as fc:
-        pg.click('#dlg button:has-text("Choose data files")')
-    fc.value.set_files(os.path.join(FILES, 'hp4192a.txt')); pg.wait_for_timeout(300)
-    print('custom hp4192a:', status(pg))
-    rdf = lambda f: open(os.path.join(FILES, f), newline='').read()
-    print('drop XML + data:', pg.evaluate('''async (t) => { await Y.cmd.readFiles([new File([t.x], 'Z_MFLI_datafile_example_template.xml'), new File([t.d], 'Z_MFLI.txt')], 'auto');
-        return document.getElementById('status-msg').textContent; }''', {'x': rdf('Z_MFLI_datafile_example_template.xml'), 'd': rdf('Z_MFLI.txt')}))
-    print('drop hp4192a alone:', pg.evaluate('''async (t) => { await Y.cmd.readFiles([new File([t], 'hp4192a.txt')], 'auto');
-        return document.getElementById('status-msg').textContent; }''', rdf('hp4192a.txt')))
-    pg.evaluate("Y.cmd.runCommand('select>>^Z_MFLI_449')"); pg.wait_for_timeout(300); shot(pg, '0_zmfli_nyq')
-    pg.evaluate("Y.cmd.runCommand('select>>^hp4192a_')"); pg.evaluate("Y.app.showTab('zr')"); pg.wait_for_timeout(300); shot(pg, '0_hp_zr')
-    pg.evaluate("Y.cmd.runCommand('select>>^MFLI_Zview')"); pg.evaluate("Y.app.showTab('nyq')"); pg.wait_for_timeout(300); shot(pg, '0_mfli_nyq')
+        pg.locator('#dlg').get_by_role('button', name='Choose data files…', exact=True).click()
+    fc.value.set_files(os.path.join(FILES, 'HP_4192a.dat'))
+    pg.wait_for_function('(n) => Y.state.S.datasets.length > n', arg=before)
+    print('custom HP 4192A:', status(pg))
+    before = pg.evaluate('Y.state.S.datasets.length')
+    print('drop XML + data:', pg.evaluate('''async (t) => {
+        await Y.cmd.readFiles([new File([t.x], 'SP2M_HP4192a.xml'), new File([t.d], 'HP_4192a.dat')], 'auto');
+        return document.getElementById('status-msg').textContent;
+    }''', {'x': Path(DEFS, 'SP2M_HP4192a.xml').read_text(), 'd': Path(FILES, 'HP_4192a.dat').read_text()}))
+    assert pg.evaluate('Y.state.S.datasets.length') > before, status(pg)
+    print('HP 4192A, Auto:', read_menu('Auto: detect the format…', os.path.join(FILES, 'HP_4192a.dat')))
+    for pattern, view, name in [('^3_columns', 'nyq', '0_table_nyq'),
+                                 ('^HP_4192a', 'zr', '0_hp_zr'),
+                                 ('^Zview', 'nyq', '0_zview_nyq')]:
+        pg.evaluate('(s) => Y.cmd.runCommand("select>>" + s)', pattern)
+        assert pg.evaluate('Y.state.S.sel.size') > 0, 'No datasets match ' + pattern
+        pg.evaluate('(s) => Y.app.showTab(s)', view)
+        pg.wait_for_timeout(200)
+        shot(pg, name)
+    # Later fit checks use only the demo data, not these unrelated import fixtures.
+    pg.evaluate('Y.state.clearAll()')
     # demo spectra through the command line
     pg.fill('#cmdline', 'demo'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(400)
     print('datasets:', pg.evaluate('Y.state.S.datasets.length'), 'circuit:', pg.evaluate('Y.state.S.model.cdc'))
@@ -189,7 +205,7 @@ with sync_playwright() as p:
     v1 = pg.evaluate('[Y.state.first().zr[3], Y.state.first().zi[3]]')
     pg.click('[data-tab="log"]'); pg.wait_for_timeout(200)
     nbtn = pg.evaluate("document.querySelectorAll('#log-list [data-restore]').length")
-    pg.click("#log-list li:has-text('Added noise') [data-restore]"); pg.wait_for_timeout(300)
+    pg.locator("#log-list li:has-text('Added noise') [data-restore]").first.click(); pg.wait_for_timeout(300)
     v2 = pg.evaluate('[Y.state.first().zr[3], Y.state.first().zi[3]]')
     pg.fill('#cmdline', 'undo'); pg.press('#cmdline', 'Enter'); pg.wait_for_timeout(200)
     v3 = pg.evaluate('[Y.state.first().zr[3], Y.state.first().zi[3]]')
@@ -335,6 +351,7 @@ with sync_playwright() as p:
     print('  global fit, once: %s\n  global fit, twice: %s\n  fits still in workers: %s' % (gonce[:60], gtwice[:120], pg.evaluate('Y.pool.usingWorkers()')))
     b.close()
 print('\n'.join(logs) if logs else 'no console errors or warnings')
+assert not any(line.startswith('PAGEERROR:') for line in logs), 'Unhandled browser errors; see log above'
 from PIL import Image
 def montage(names, out):
     ims = [Image.open(os.path.join(OUT, n + '.png')) for n in names]
@@ -345,7 +362,7 @@ def montage(names, out):
     M.save(os.path.join(OUT, out))
 montage(['1_single_nyq', '2_all_nyq', '3_zr', '3_d3'], 'montage_a.png')
 montage(['4_model', '5_params', '7_menu', '9_dark_nyq'], 'montage_b.png')
-montage(['0_custom_dialog', '0_zmfli_nyq', '0_hp_zr', '0_mfli_nyq'], 'montage_c.png')
+montage(['0_custom_dialog', '0_table_nyq', '0_hp_zr', '0_zview_nyq'], 'montage_c.png')
 montage(['a_contrib_nyq', 'a_contrib_zi', 'a_contrib_model', 'a_sigma_zr'], 'montage_d.png')
 montage(['b_drt', 'b_search', 'b_drt_dark', 'c_drt_tau'], 'montage_e.png')
 montage(['6_masked', '5_params', 'd_log', 'a_sigma_zr'], 'montage_f.png')

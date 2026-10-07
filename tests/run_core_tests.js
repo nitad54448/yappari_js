@@ -215,5 +215,6 @@ if (Y.state) require('./run_fix_tests.js')(Y, ok, close);
 if (Y.state) require('./run_review3_tests.js')(Y, ok, close);
 if (Y.state) require('./run_review4_tests.js')(Y, ok, close);
 if (Y.state) require('./run_review5_tests.js')(Y, ok, close);
+require('./run_review6_tests.js')(Y, ok, close);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

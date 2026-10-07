@@ -178,5 +178,4 @@ module.exports = function (Y, ok, close) {
        'MFLI csv, separator ' + sep + (withZ ? ', realz/imagz' : ', from absz/phasez'));
   });
   ok(counts(R.auto(mkCsv(';', true), 'imps.csv')) === '10,10,10' && counts(R.headerTable(mkCsv(';', true), 'imps.csv')) === '10,10,10', 'MFLI csv recognised automatically and by the table reader');
-  require('fs').writeFileSync(require('os').tmpdir() + '/yappari_mfli_generated.csv', mkCsv(';', true));
 };

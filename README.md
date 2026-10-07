@@ -283,6 +283,8 @@ over the N unmasked frequencies, with the weight (Fit tab or Settings):
 | 1 | 1 | Absolute errors, large impedances dominate |
 | measured σ | $1/\sigma_{r,k}^2$ and $1/\sigma_{i,k}^2$ for each part | When the file gives standard deviations (option in Settings) |
 
+With modulus weights, every unmasked point must have finite, nonzero |Z|. A zero modulus or a weight outside the numeric range stops the fit with an error instead of silently discarding that point. Mask the affected point, rescale the data when needed, or use equal or valid measured-sigma weights. Fixed models that produce non-finite residuals are also reported as failures.
+
 |Z| is the measured modulus. Measured σ come from the `realzstddev`, `imagzstddev` or `abszstddev` lines of MFLI csv
 files and from the `sigma_Zr`, `sigma_Zi` columns written by *Save data* (the older `sigma Zr` headers are read too).
 Points without a σ get the median relative error (σ/|Z|) of the others; with fewer than 3 measured points the usual
@@ -820,6 +822,26 @@ tests/                node tests/run_core_tests.js runs all Node tests (core, re
                       python tests/browser_test.py [out_dir] drives index.html in headless Chromium (Playwright)
                       and saves screenshots
 ```
+
+Run the numerical and XML suites from the project directory:
+
+```sh
+node tests/run_core_tests.js
+node tests/run_xml_tests.js
+```
+
+For browser tests, install Python Playwright, Pillow and Chromium once, then run:
+
+```sh
+python -m pip install playwright pillow
+python -m playwright install chromium
+python tests/browser_test.py
+```
+
+Screenshots default to `test-output/browser`; an optional argument selects another output directory.
+The browser suite uses the bundled samples and generates its own temporary MFLI and three-column
+fixtures. It does not require a previous Node test run or additional sample files. Menu items are
+selected by label so reordering the menus does not change which reader is tested.
 
 No library and no build step: plain JavaScript, canvas plots, one page.
 

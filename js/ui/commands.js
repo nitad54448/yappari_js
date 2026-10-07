@@ -476,6 +476,12 @@ Y.cmd = (function () {
     var st = S.settings, f = Y.dataops.logspace(st.simStart, st.simEnd, Math.min(Y.state.LIMITS.points, Math.max(2, st.simPoints | 0))), src = Y.state.first();
     var pv = src ? Y.state.vector(src) : Float64Array.from(S.model.prog.params, function (pp) { return Y.paramDefault(pp.kind, pp.pi).def; });
     var z = Y.circuit.impedance(S.model.prog, f, pv);
+    for (var k = 0; k < f.length; k++) {
+      if (!(f[k] > 0) || !Number.isFinite(f[k]) || !Number.isFinite(z.re[k]) || !Number.isFinite(z.im[k])) {
+        ui.toast('Simulation failed: non-finite impedance or invalid frequency at point ' + (k + 1) + '. Check the parameters and frequency range.', 'err');
+        return;
+      }
+    }
     snapshot('simulate');
     S.simCount++;
     Y.state.addDatasets([{ name: 'sim_' + S.simCount, f: f, zr: z.re, zi: z.im,
@@ -590,7 +596,9 @@ Y.cmd = (function () {
   function saveProject() {
     if (!need(S.datasets.length || S.model.prog, 'Nothing to save yet.')) return;
     var lines = ui.logEntries();
-    Y.writers.download('yappari_project_' + Y.writers.fileStamp() + '.json', Y.writers.projectJSON(S, lines), 'application/json');
+    try {
+      Y.writers.download('yappari_project_' + Y.writers.fileStamp() + '.json', Y.writers.projectJSON(S, lines), 'application/json');
+    } catch (e) { ui.toast('Project not saved: ' + e.message, 'err'); return; }
     ui.toast('Saved the project: circuit, settings, ' + plural(S.datasets.length, 'dataset') + ' and the Log (' + plural(lines.length, 'line') + ').', 'ok');
   }
   function report() { if (haveModel() && haveSel()) Y.report.open(sel()); }

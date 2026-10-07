@@ -95,7 +95,10 @@ Y.history = (function () {
   function apply(pt) {
     if (pt.settings) Y.state.replaceSettings(JSON.parse(JSON.stringify(pt.settings)));
     if (pt.cdc !== S.model.cdc) Y.state.setModel(pt.cdc ? Y.circuit.parse(pt.cdc) : null, { limits: pt.limits, shared: pt.shared, quiet: true });
-    else { S.model.limits = JSON.parse(JSON.stringify(pt.limits)); S.model.shared = Object.assign({}, pt.shared); }
+    else {
+      S.model.limits = JSON.parse(JSON.stringify(pt.limits)); S.model.shared = Object.assign({}, pt.shared);
+      Y.state.store('model', { cdc: S.model.cdc, limits: S.model.limits, shared: S.model.shared });
+    }
     S.datasets = pt.recs.map(function (r) { return Y.state.fromRecord(r); });
     S.simCount = pt.simCount;
     Y.bus.emit('model'); Y.bus.emit('datasets');

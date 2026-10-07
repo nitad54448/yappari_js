@@ -38,9 +38,13 @@ Y.defineCore('fit', function (Y) {
   function weights(zr, zi, mode) {
     var n = zr.length, w = new Float64Array(n);
     for (var k = 0; k < n; k++) {
-      var m2 = zr[k] * zr[k] + zi[k] * zi[k];
-      var v = mode === 'mod2' ? 1 / m2 : (mode === 'mod' ? 1 / Math.sqrt(m2) : 1);
-      w[k] = isFinite(v) ? v : 0;
+      var m = Math.hypot(zr[k], zi[k]), v = 1;
+      if (mode === 'mod' || mode === 'mod2') {
+        if (!(m > 0) || !isFinite(m)) throw new Error('modulus weighting needs finite nonzero |Z| at every point (point ' + (k + 1) + '); mask that point or use equal or valid sigma weights');
+        v = mode === 'mod2' ? (1 / m) * (1 / m) : 1 / m;
+        if (!(v > 0) || !isFinite(v)) throw new Error('modulus weight is outside the numeric range at point ' + (k + 1) + '; rescale the data or use equal or valid sigma weights');
+      }
+      w[k] = v;
     }
     return w;
   }
@@ -53,7 +57,8 @@ Y.defineCore('fit', function (Y) {
     for (k = 0; k < n; k++) this.w[k] = 2 * Math.PI * job.f[k];
     this.zr = job.zr; this.zi = job.zi;
     // sqrt of the weights of the real and imaginary parts: 1/sigma when measured standard deviations are given
-    var wt = weights(job.zr, job.zi, job.weight), sig = job.sr && job.si && job.sr.length === n && job.si.length === n;
+    var sig = job.sr && job.si && job.sr.length === n && job.si.length === n;
+    var wt = sig ? null : weights(job.zr, job.zi, job.weight);
     this.swr = new Float64Array(n); this.swi = new Float64Array(n);
     for (k = 0; k < n; k++) {
       if (sig) { this.swr[k] = 1 / job.sr[k]; this.swi[k] = 1 / job.si[k]; }
@@ -548,6 +553,7 @@ Y.defineCore('fit', function (Y) {
       if (/^converged/.test(res.msg) && !/zero gradient/.test(res.msg) && stalled(P, res.x, o.tol))
         res.msg = STALL_MSG;
       var st = finalStats(P, res.x);
+      if (!res.fail && !isFinite(st.chi2w)) throw new Error('the model or weighted residuals are non-finite; check the parameter values and data');
       return { id: job.id, ok: !res.fail, p: Float64Array.from(P.p), se: st.se, atBound: st.atBound,
                chi2w: st.chi2w, chi2red: st.chi2red, r2: st.r2, dof: st.dof, n: P.n,
                iter: res.it, nev: P.nev, msg: res.msg, ms: Date.now() - t0 };

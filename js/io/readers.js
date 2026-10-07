@@ -227,7 +227,7 @@ Y.readers = (function () {
         if (sectionLine(t) || parseHeader(L[j])) break;
       }
       if (rows.length) {
-        var groups = [], byKey = {};
+        var groups = [], byKey = Object.create(null);
         rows.forEach(function (r) {
           if (!(r[3] in byKey)) { byKey[r[3]] = groups.length; groups.push([]); }
           groups[byKey[r[3]]].push(r);
