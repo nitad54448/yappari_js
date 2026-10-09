@@ -135,6 +135,7 @@ Notepad, recognised from the start of the file).
   converted. Dropped files whose headings name a frequency but no such columns are read by position (f, Zr, Zi)
   with a warning. Files written by *Save data* are read back this way, names, normalization and masked
   points included.
+  Frequency and impedance units in headings are converted to Hz and Ω, including `kHz`, `KHz`, `KHZ`, `Kohm`, `kΩ` and spelled-out prefixes. `M` means mega and `m` milli. Missing or unrecognized units default to Hz and Ω. Sigma columns use their own heading units; polar magnitudes are converted before resolving Zr and Zi.
 * **MFLI CSV preset** (`MFLI_csv.xml`, through Custom format, xml) (Zurich Instruments LabOne sweeper export, `;` or `,`): one line per field and sweep,
   `chunk;timestamp;size;fieldname;values…`. Each chunk is a dataset (`name_0`, `name_1` …); f comes from the
   `frequency` line (or `grid`), Z from `realz` and `imagz` (or `absz` and `phasez`, the phase in radians); points
@@ -222,7 +223,7 @@ back. The green dot next to *Apply* shows that the code is valid and applied.
 2. Choose where the next element goes: **In series**, **In parallel** or **Replace**.
 3. Click an element of the palette, or pick a **template**.
 
-*Delete* removes the selection, *Undo* (Ctrl+Z) undoes the last edit, *Clear* empties the circuit, Esc deselects.
+*Delete* removes the selection, *Undo last action* (Ctrl+Z) uses the same chronological history as Data → Undo: circuit edits, parameter changes and data operations are undone in order, including their fit statistics. *Clear* empties the circuit, Esc deselects.
 *Show contributions* (or `contrib`) colours each part of the series chain in the drawing, with the colours of the
 contributions on the plots (see [What is drawn](#what-is-drawn)).
 
@@ -350,6 +351,7 @@ next to its name tells how many others are selected. With several datasets selec
 selected datasets only** and keep the selection, so the marks below stay valid while browsing. To work on one
 dataset alone, select only that one in the Datasets tab; ← → then step through the whole list. Every change made here applies to **all selected datasets**: a typed value, a mouse-wheel or
 arrow-key step, a fit tick, a shared/local padlock. One restore point covers the change for all of them.
+Changing a fit tick clears the previous fit statistics and standard errors; refit to calculate statistics for the new free-parameter set. Undo restores the earlier flags and statistics.
 
 | What you see | Meaning | A click |
 |---|---|---|

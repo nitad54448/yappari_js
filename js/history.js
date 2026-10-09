@@ -52,6 +52,7 @@ Y.history = (function () {
     for (var i = points.length - 1; i >= 0; i--) points[i].recs.forEach(function (r) { if (!latest.has(r.id)) latest.set(r.id, r); });
   }
   function info() {
+    Y.bus.emit('history');
     var el = document.getElementById('history-info');
     if (!el) return;
     el.textContent = points.length ?

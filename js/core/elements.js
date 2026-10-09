@@ -15,9 +15,9 @@ Y.defineCore('elements', function (Y) {
     return { suffix: suffix, label: label, unit: unit, def: def, min: min, max: max, scale: scale, fit: fit };
   }
 
-  // tanh(c + i c), c >= 0 : argument of the finite-length Warburg elements, B*sqrt(j w) = c(1+j)
+  // tanh(c + i c): odd in c, including negative B allowed by custom bounds / unbounded fits.
   function tanhDiag(c, out) {
-    if (c > 20) { out[0] = 1; out[1] = 0; return; }        // error < 1e-17
+    if (Math.abs(c) > 20) { out[0] = c < 0 ? -1 : 1; out[1] = 0; return; } // error < 1e-17
     var c2 = 2 * c, den = Math.cosh(c2) + Math.cos(c2);
     out[0] = Math.sinh(c2) / den;
     out[1] = Math.sin(c2) / den;

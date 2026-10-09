@@ -44,7 +44,9 @@ Y.defineCore('circuit', function (Y) {
         var m = KIND_RE.exec(s.slice(i));
         if (!m) throw err('Unknown element "' + s.slice(i, i + 4) + '" at position ' + (i + 1) +
           ' (use R C L Q W Wo Ws G HN)', i);
-        items.push({ t: 'e', k: KIND_NORM[m[1].toUpperCase()], n: m[2] ? parseInt(m[2], 10) : null });
+        var en = m[2] ? Number(m[2]) : null;
+        if (en != null && !Number.isSafeInteger(en)) throw err('Element number must be an integer from 0 to ' + Number.MAX_SAFE_INTEGER, i);
+        items.push({ t: 'e', k: KIND_NORM[m[1].toUpperCase()], n: en });
         i += m[0].length;
       }
     }
@@ -83,6 +85,7 @@ Y.defineCore('circuit', function (Y) {
     var used = {}, els = elements(tree);
     els.forEach(function (e) {
       if (e.n != null) {
+        if (!Number.isSafeInteger(e.n) || e.n < 0) throw err('Element number must be an integer from 0 to ' + Number.MAX_SAFE_INTEGER, -1);
         var key = e.k + e.n;
         if (used[key]) throw err('Element name ' + key + ' is used twice', -1);
         used[key] = true;

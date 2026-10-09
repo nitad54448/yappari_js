@@ -266,7 +266,11 @@ Y.state = (function () {
     Y.bus.emit('params', { name: name });
   }
   function setFit(name, on, list) {
-    (list || selected()).forEach(function (ds) { ds.fit[name] = !!on; });
+    (list || selected()).forEach(function (ds) {
+      // The old covariance and degrees of freedom describe a different set of fitted parameters.
+      if (!!ds.fit[name] !== !!on) ds.stats = null;
+      ds.fit[name] = !!on;
+    });
     Y.bus.emit('params', { name: name, flag: true });
   }
   function copyParams(from, list) {

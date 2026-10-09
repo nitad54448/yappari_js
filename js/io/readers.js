@@ -112,11 +112,26 @@ Y.readers = (function () {
   function isMod(s) { return /^\|z\|/.test(s) || /^(z_?)?mod(ulus)?($|[\/(\[_])/.test(s) || /^(abs\(?z|z_?abs)/.test(s); }
   function isPhase(s) { return /^-?(phase|phz|z_?ph|theta|θ|φ|phi|arg)/.test(s) && !/\(y\)|admit/.test(s); }
 
+  // Read units from the original heading: case folding would confuse M (mega) with m (milli).
+  // Missing/unrecognised units deliberately mean Hz or ohms. K/k and spelling variants are accepted.
+  function headerScale(heading, frequency) {
+    var s = String(heading || '').trim().replace(/^"|"$/g, '').replace(/[µμ]/g, 'u').replace(/[ΩΩω]/g, 'ohm');
+    var unit = frequency ? '(?:hertz|hz)' : '(?:ohms?)';
+    var rx = new RegExp('(?:^|[/\\[(\\s_])((?:tera|giga|mega|kilo|milli|micro|nano|pico|[TGMKkmunp])?)\\s*' + unit + '\\s*[\\])]?$','i');
+    var m = rx.exec(s);
+    if (!m) return 1;
+    var p = m[1], words = { tera: 1e12, giga: 1e9, mega: 1e6, kilo: 1e3, milli: 1e-3, micro: 1e-6, nano: 1e-9, pico: 1e-12 };
+    if (p.length > 1) return words[p.toLowerCase()] || 1;
+    return ({ T: 1e12, t: 1e12, G: 1e9, g: 1e9, M: 1e6, K: 1e3, k: 1e3,
+              m: 1e-3, u: 1e-6, U: 1e-6, n: 1e-9, N: 1e-9, p: 1e-12, P: 1e-12 })[p] || 1;
+  }
+
   function parseHeader(line, compact) {
     if (!/[A-Za-z]/.test(line)) return null;
     var sep = line.indexOf('\t') >= 0 ? 'tab' : line.indexOf(';') >= 0 ? 'semicolon' : line.indexOf(',') >= 0 ? 'comma' : 'space';
-    var cols = splitter(sep)(line).map(colName);
-    if (compact) cols = cols.filter(function (c) { return c !== ''; });
+    var rawCols = splitter(sep)(line);
+    if (compact) rawCols = rawCols.filter(function (c) { return colName(c) !== ''; });
+    var cols = rawCols.map(colName);
     var h = { sep: sep, n: cols.length, cf: -1, cr: -1, ci: -1, cc: -1, cm: -1, sr: -1, si: -1, neg: false, cmod: -1, cph: -1 }, calc = [];
     cols.forEach(function (s, k) {
       if (s && /calc/.test(s)) calc.push(k);
@@ -147,6 +162,10 @@ Y.readers = (function () {
       if (mr >= 0 && mi >= 0) { h.cr = mr; h.ci = mi; h.neg = cols[mi].charAt(0) === '-'; }
     }
     if (h.cf < 0 || h.cr < 0 || h.ci < 0) return null;
+    h.sf = headerScale(rawCols[h.cf], true);
+    h.sz = headerScale(rawCols[h.cr], false);
+    h.szi = h.polar ? 1 : headerScale(rawCols[h.ci], false);
+    h.ssr = headerScale(rawCols[h.sr], false); h.ssi = headerScale(rawCols[h.si], false);
     h.maxCol = Math.max(h.cf, h.cr, h.ci, h.cc);
     return h;
   }
@@ -213,14 +232,14 @@ Y.readers = (function () {
         if (!t) continue;
         var fields = split(L[j]), ok = fields.length > h.maxCol, fv, rv, iv;
         if (ok) {
-          fv = num(fields[h.cf], dc); rv = num(fields[h.cr], dc); iv = num(fields[h.ci], dc);
+          fv = num(fields[h.cf], dc) * h.sf; rv = num(fields[h.cr], dc) * h.sz; iv = num(fields[h.ci], dc) * h.szi;
           if (h.polar) { var th = (h.phNeg ? -iv : iv) * (h.phRad ? 1 : Math.PI / 180); iv = rv * Math.sin(th); rv = rv * Math.cos(th); }
           ok = fv > 0 && isFinite(fv) && isFinite(rv) && isFinite(iv);
         }
         if (!ok && /^[-+.]?\d/.test(t) && fields.length >= 3) skipped++;
         if (ok) {
           rows.push([fv, rv, h.neg ? -iv : iv, h.cc >= 0 ? String(fields[h.cc]).trim() : '',
-                     h.sr >= 0 && fields.length > h.sr ? num(fields[h.sr], dc) : NaN, h.si >= 0 && fields.length > h.si ? num(fields[h.si], dc) : NaN,
+                     h.sr >= 0 && fields.length > h.sr ? num(fields[h.sr], dc) * h.ssr : NaN, h.si >= 0 && fields.length > h.si ? num(fields[h.si], dc) * h.ssi : NaN,
                      h.cm >= 0 && fields.length > h.cm && num(fields[h.cm], dc) > 0 ? 1 : 0]);
           continue;
         }
@@ -298,12 +317,12 @@ Y.readers = (function () {
     var head = L[h].split(sep).map(function (s) { return s.trim().replace(/^"|"$/g, '').toLowerCase(); });
     var iC = head.indexOf('chunk'), iS = head.indexOf('size'), iF = head.indexOf('fieldname');
     if (iF < 0) return tableRows(text, fileName);              // one column per field: an ordinary table
-    var chunks = {}, order = [];
+    var chunks = Object.create(null), order = [];
     for (var j = h + 1; j < L.length; j++) {
       var p = L[j].split(sep);
       if (p.length <= iF + 1) continue;
       var ch = p[iC].trim(), field = p[iF].trim().replace(/^"|"$/g, '').toLowerCase();
-      if (!(ch in chunks)) { chunks[ch] = {}; order.push(ch); }
+      if (!(ch in chunks)) { chunks[ch] = Object.create(null); order.push(ch); }
       var vals = p.slice(iF + 1), size = iS >= 0 ? parseInt(p[iS], 10) : NaN;
       if (size > 0) vals = vals.slice(0, size);
       chunks[ch][field] = vals.map(function (x) { return num(x, dc); });

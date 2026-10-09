@@ -4,7 +4,7 @@
  */
 Y.modelEditor = (function () {
   'use strict';
-  var S = Y.state.S, selKey = null, mode = 's', undoStack = [];
+  var S = Y.state.S, selKey = null, mode = 's';
   var TEMPLATES = [
     ['R‖C', '(RC)'], ['Zarc, R‖Q', '(RQ)'], ['R and Q in series', 'RQ'],
     ['Randles: Rs + Q‖(Rct + W)', 'R(Q[RW])'], ['Randles with short Warburg', 'R(Q[RWs])'], ['Randles with open Warburg', 'R(Q[RWo])'],
@@ -40,7 +40,7 @@ Y.modelEditor = (function () {
   function syncButtons() {
     var busy = S.busy ? 'Not while a fit is running.' : '';
     Y.ui.able($('#node-del'), busy || (selKey != null ? '' : 'Click an element or a group in the drawing first.'));
-    Y.ui.able($('#node-undo'), busy || (undoStack.length ? '' : 'Nothing to undo in the circuit.'));
+    Y.ui.able($('#node-undo'), busy || (Y.history.count() ? '' : 'Nothing to undo.'));
     Y.ui.able($('#node-clear'), busy || (S.model.tree ? '' : 'No circuit to clear.'));
   }
   function sync() {
@@ -56,12 +56,12 @@ Y.modelEditor = (function () {
     return true;
   }
   function commit(tree, focus) {
-    undoStack.push({ cdc: S.model.cdc, limits: JSON.parse(JSON.stringify(S.model.limits)), shared: Object.assign({}, S.model.shared) });
-    if (undoStack.length > 100) undoStack.shift();
+    Y.history.take('circuit edit');
     Y.state.setModel(tree);
     var p = focus ? Y.circuit.findPath(S.model.tree, focus) : null;
     selKey = p ? p.join('.') : null;
     sync();
+    Y.ui.toast('Circuit ' + (S.model.cdc ? 'set to ' + S.model.cdc : 'cleared') + '.', 'info');
   }
   function applyCode() {
     if (!guard()) return;
@@ -97,9 +97,8 @@ Y.modelEditor = (function () {
   }
   function undo() {
     if (!guard()) return;
-    if (!undoStack.length) { Y.ui.toast('Nothing to undo.', 'info'); return; }
-    var saved = undoStack.pop();
-    Y.state.setModel(saved.cdc ? Y.circuit.parse(saved.cdc) : null, { limits: saved.limits, shared: saved.shared });
+    if (!Y.history.count()) { Y.ui.toast('Nothing to undo.', 'info'); return; }
+    Y.history.undo();
     selKey = null; sync(); msg('Undone.', '');
   }
   function clear() {
@@ -168,6 +167,7 @@ Y.modelEditor = (function () {
       }).join('') + '</tbody></table>' +
       '<p class="note">Equations as in Yappari 5.1 (help/theory.md). For large B, Wo and Ws tend to W with an Aw larger by √2, because W is written with √ω and Wo, Ws with √(jω).</p>';
     Y.bus.on('model', sync);
+    Y.bus.on('history', syncButtons);
     Y.bus.on('settings', function (k) { if (k === 'contrib' || k === '*') draw(); });
     Y.bus.on('busy', function (b) { $('#pane-model').classList.toggle('locked', !!b); syncButtons(); });
     sync();
