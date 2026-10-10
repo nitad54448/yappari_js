@@ -7,6 +7,7 @@
 #   circuit  <code>  <weight>  [comment]
 #       relative prior weight of a circuit. Any Boukamp code: element numbers, order, grouping and directly repeated
 #       R, C, L or W in series or in parallel do not matter (R(RQ), (QR)R and R1(Q1R2) are the same entry).
+#       Each circuit must appear only once.
 #       The search adds ln(weight) to the log evidence of the circuit: weight 9 against the default 0.5 is +2.9,
 #       a factor 18 in posterior probability. Weight 0 excludes a circuit.
 #   param  <element>[_<parameter>]  window  <k>
@@ -15,19 +16,32 @@
 #   param  <element>_<parameter>  normal  <mean>  <sd>
 #       normal prior of a linear parameter (Q_n, HN_a, HN_b).
 #   Parameter names: R, C, L, Q, Q_n, W, Wo_A, Wo_B, Ws_A, Ws_B, G_R, G_tau, HN_R, HN_tau, HN_a, HN_b.
+#   Wo = finite-space (reflective, coth) Warburg, Ws = finite-length (transmissive, tanh) Warburg.
 #
-# Weights below (draft, 2026-10-10): 1 + occurrences in the literature list + 2 x number of
-# reviews or benchmarks that present the circuit as a standard model.
+# Weights below (draft, updated 2026-10-10): 1 + occurrences in the literature list + 2 x number of
+# reviews, tutorials or benchmarks that present the circuit as a standard model.
+# No published statistics of how often each circuit is used were found: the ML studies that collected circuits from
+# papers (Zhu et al., arXiv:1907.01802, ~250 spectra, 5 classes; Schaeffer et al. S23) report class sets, not
+# literature frequencies. The literature list below is therefore the only occurrence count.
+# The last section (textbook circuits without a counted source) uses a fixed scale instead: 2 = standard textbook
+# model, 1 = plausible extension; raise them by the rule above once sources are added.
 #   lit  Literature list of M. Van Haeverbeke, M. Stock, B. De Baets, "Equivalent electrical circuits and their use across
 #        electrochemical impedance spectroscopy application domains", IEEE Access 10 (2022) 51363,
 #        doi:10.1109/ACCESS.2022.3174067: 120 circuits from published studies in 7 domains (animals, plants,
 #        biosensors, batteries, fuel cells, supercapacitors, materials), as shipped with EquivalentCircuits.jl (MIT licence);
 #        the DOIs are those studies. 2 entries of that list are unbalanced and were left out.
 #   ref  LP23  A. Ch. Lazanas, M. I. Prodromidis, ACS Meas. Sci. Au 3 (2023) 162, doi:10.1021/acsmeasuresciau.2c00070
-#        G     Gamry Instruments, "Common equivalent circuit models" (white paper)
+#              (tutorial: R(RC), R(RC)(RC), Randles, CPE, Ws/Wo/Gerischer Randles variants, ladder vs nested, Fig. 7-22)
+#        LPS25 A. Lazanas, B. Prieto Simon, Sensors 25 (2025) 6260, doi:10.3390/s25196260
+#              (revisions of the Randles circuit in (bio)sensing: hemispherical diffusion, dielectric coating,
+#              pseudocapacitance)
+#        G     Gamry Instruments, "Basics of Electrochemical Impedance Spectroscopy" (application note):
+#              RC, R(RC), RW, R(C[RW]), coated metal R(C[R(CR)])
+#        M24   Metrohm Autolab AN-EIS-004 (2024), "EIS Part 4 - Equivalent circuit models": RC, RCL, R(RC), R(C[RW]),
+#              two Randles in series, organic coating on metal; models 3-5 shown with C or CPE (both counted)
 #        Z24   R. Zhang et al., npj Mater. Degrad. 8 (2024) 120, doi:10.1038/s41529-024-00537-8 (corrosion, coatings)
-#        S23   J. Schaeffer, P. Gasper et al., J. Electrochem. Soc. (2023), arXiv:2302.03362 (solid-state batteries,
-#              BatteryDEV / QuantumScape benchmark classes)
+#        S23   J. Schaeffer, P. Gasper et al., J. Electrochem. Soc. 170 (2023) 060512, arXiv:2302.03362 (solid-state
+#              batteries, BatteryDEV / QuantumScape benchmark classes)
 #
 default	0.5
 #
@@ -36,36 +50,46 @@ param	Q_n	normal	0.85	0.15	CPE exponent: about 0.6-1 for double layers and films
 param	HN_a	normal	0.8	0.2
 param	HN_b	normal	0.8	0.2
 #
-circuit	R(C[RW])	10	lit 5 (Biosensors, Supercapacitors, Materials); ref LP23, G; doi:10.1021/nl080366q doi:10.1016/j.bios.2018.08.064 doi:10.1016/j.aca.2010.12.018
-circuit	R(RC)	8	lit 3 (Animals, Biosensors, Supercapacitors); ref LP23, G; doi:10.1007/s10439-010-0127-y doi:10.1016/j.bios.2020.112709 doi:10.3390/molecules24081452
-circuit	RC	7	lit 2 (Biosensors, Supercapacitors); ref LP23, G; doi:10.1016/j.snb.2014.01.098 doi:10.1016/j.surfin.2020.100524
+circuit	R(C[RW])	14	lit 5 (Biosensors, Supercapacitors, Materials); ref LP23, LPS25, G, M24; doi:10.1021/nl080366q doi:10.1016/j.bios.2018.08.064 doi:10.1016/j.aca.2010.12.018
+circuit	R(RC)	10	lit 3 (Animals, Biosensors, Supercapacitors); ref LP23, G, M24; doi:10.1007/s10439-010-0127-y doi:10.1016/j.bios.2020.112709 doi:10.3390/molecules24081452
+circuit	RC	9	lit 2 (Biosensors, Supercapacitors); ref LP23, G, M24; doi:10.1016/j.snb.2014.01.098 doi:10.1016/j.surfin.2020.100524
+circuit	R(RQ)	9	lit 2 (Plants, Biosensors); ref LP23, Z24, M24; doi:10.1007/s11694-017-9545-y doi:10.1016/j.bios.2014.09.037
+circuit	R(Q[RW])	8	lit 3 (Biosensors, Fuel cells, Supercapacitors); ref Z24, M24; doi:10.1016/j.snb.2016.07.121 doi:10.1016/j.ijhydene.2017.07.094 doi:10.1016/j.electacta.2018.03.091
+circuit	R(RC)(RC)	7	lit 2 (Batteries, Fuel cells); ref LP23, M24; doi:10.1109/TPEL.2020.2977274 doi:10.1016/j.jpowsour.2018.08.082
+circuit	R(QR)(QR)	7	lit 4 (Plants, Fuel cells, Supercapacitors, Materials); ref M24; doi:10.1093/jexbot/51.353.2095 doi:10.1016/j.jpowsour.2014.10.138 doi:10.1016/j.electacta.2019.134706
 circuit	LR(RQ)	6	lit 3 (Batteries, Supercapacitors); ref S23; doi:10.1016/j.electacta.2020.135787 doi:10.1007/s10965-020-02183-5 doi:10.3390/en14041139
-circuit	R(Q[RW])	6	lit 3 (Biosensors, Fuel cells, Supercapacitors); ref Z24; doi:10.1016/j.snb.2016.07.121 doi:10.1016/j.ijhydene.2017.07.094 doi:10.1016/j.electacta.2018.03.091
 circuit	R(Q[RW])(QR)	6	lit 5 (Biosensors, Fuel cells, Supercapacitors); doi:10.1016/j.elecom.2009.12.017 doi:10.3390/fractalfract5010021 doi:10.1016/j.ijhydene.2013.01.132
-circuit	R(RQ)	5	lit 2 (Plants, Biosensors); ref Z24; doi:10.1007/s11694-017-9545-y doi:10.1016/j.bios.2014.09.037
 circuit	QR(CR)	5	lit 4 (Animals, Biosensors); doi:10.1016/j.elecom.2020.106742 doi:10.1016/j.bios.2015.10.027 doi:10.1016/j.snb.2015.11.059
 circuit	R(Q[RQ])	5	lit 4 (Biosensors, Batteries, Supercapacitors); doi:10.1016/j.bios.2016.01.057 doi:10.3390/en12234507 doi:10.1007/s40243-015-0052-y
-circuit	R(QR)(QR)	5	lit 4 (Plants, Fuel cells, Supercapacitors, Materials); doi:10.1093/jexbot/51.353.2095 doi:10.1016/j.jpowsour.2014.10.138 doi:10.1016/j.electacta.2019.134706
-circuit	R(RC)(RC)	5	lit 2 (Batteries, Fuel cells); ref LP23; doi:10.1109/TPEL.2020.2977274 doi:10.1016/j.jpowsour.2018.08.082
 circuit	LR(RQ)(RQ)	5	lit 2 (Batteries, Fuel cells); ref S23; doi:10.1016/j.electacta.2020.135787 doi:10.1016/j.apenergy.2020.115718
 circuit	LR(RQ)(RQ)(RQ)	5	lit 2 (Batteries, Fuel cells); ref S23; doi:10.1016/j.electacta.2020.135787 doi:10.1016/j.electacta.2008.04.047
+circuit	R(C[R(CR)])	5	ref G, M24; coated metal: coating C, pore R, double layer C, charge-transfer R
+circuit	R(C[RW])(CR)	5	lit 2 (Biosensors, Batteries); ref LPS25 (dielectric coating R-inf, C-inf); doi:10.1016/j.bios.2012.10.054 doi:10.1109/ITEC-India48457.2019.ITECINDIA2019-232
 circuit	(RC)	4	lit 1 (Plants); ref LP23; doi:10.1111/j.1365-2621.2011.02636.x
+circuit	RQ	4	lit 1 (Supercapacitors); ref LP23 (blocking electrode with CPE); doi:10.1134/S1811238218020194
 circuit	R(QR)W	4	lit 3 (Supercapacitors); doi:10.1109/IFEEC47410.2019.9015091 doi:10.3390/en14133807 doi:10.3390/nano11051062
 circuit	R(Q[R(Q[RW])])	4	lit 1 (Supercapacitors); ref Z24; doi:10.1016/j.electacta.2018.02.116
+circuit	R(RC)(RC)(RC)	4	lit 1 (Fuel cells); ref LP23 (Voigt ladder, Fig. 7); doi:10.1109/TIE.2015.2393292
+circuit	R(C[RQ])	4	lit 1 (Supercapacitors); ref LPS25 (non-ideal pseudocapacitance); doi:10.1016/j.jelechem.2019.01.022
 circuit	RW	3	ref G
 circuit	RWs	3	ref S23
+circuit	RCL	3	ref M24 (supercapacitor with lead inductance)
 circuit	(RC)GG	3	ref S23
+circuit	R(C[RWs])	3	ref LP23 (transmissive finite diffusion, rotating disk electrode, Fig. 20)
+circuit	R(C[RWo])	3	ref LP23 (reflective finite diffusion, thin films, Fig. 21)
+circuit	R(C[RG])	3	ref LP23 (CE reaction, Gerischer, Fig. 22)
+circuit	R(C[R(C[R(CR)])])	3	ref LP23 (nested equivalent of the 3-RC ladder, Fig. 7)
+circuit	R(C[R(WR)])	3	ref LPS25 (hemispherical diffusion: Warburg in parallel with R_D)
+circuit	R(C[RC])	3	ref LPS25 (ideal pseudocapacitive coating)
 circuit	([CR]C)	3	lit 2 (Biosensors, Materials); doi:10.1016/j.talanta.2012.02.056 doi:10.1016/S0008-8846(02)00720-2
 circuit	([RC]R)	3	lit 2 (Plants); doi:10.1016/j.lwt.2016.03.019 doi:10.1016/j.protcy.2016.03.024
 circuit	(RQ)(RQ)	3	ref S23
 circuit	R(CR)(CW)	3	lit 2 (Batteries, Supercapacitors); doi:10.1016/0378-7753(90)85020-D doi:10.1016/j.est.2021.102328
 circuit	(RQ)(RQ)(RQ)	3	ref S23
-circuit	R(C[RW])(CR)	3	lit 2 (Biosensors, Batteries); doi:10.1016/j.bios.2012.10.054 doi:10.1109/ITEC-India48457.2019.ITECINDIA2019-232
 circuit	R(CR)(Q[RW])	3	lit 2 (Batteries, Supercapacitors); doi:10.3906/kim-1910-72 doi:10.1016/j.electacta.2018.03.091
 circuit	(R[C(R[CR])])	3	lit 2 (Plants); doi:10.1093/jxb/42.11.1465 doi:10.1016/S0925-5214(99)00056-3
 circuit	(RC)(RC)(RQ)(RQ)	3	ref S23
 circuit	(RQ)(RQ)(RQ)(RQ)	3	ref S23
-circuit	RQ	2	lit 1 (Supercapacitors); doi:10.1134/S1811238218020194
 circuit	RQW	2	lit 1 (Supercapacitors); doi:10.1109/IFEEC47410.2019.9015091
 circuit	R(QQ)	2	lit 1 (Biosensors); doi:10.1016/j.bios.2012.03.001
 circuit	Q(RC)Q	2	lit 1 (Animals); doi:10.1007/s10439-016-1559-9
@@ -77,7 +101,6 @@ circuit	LR(QR)W	2	lit 1 (Supercapacitors); doi:10.1016/j.jpowsour.2018.07.108
 circuit	(CR[RL])	2	lit 1 (Fuel cells); doi:10.1016/S0378-7753(99)00331-6
 circuit	LR(CR)QC	2	lit 1 (Batteries); doi:10.1016/j.jpowsour.2021.229454
 circuit	R([WQ]R)	2	lit 1 (Biosensors); doi:10.1016/j.snb.2012.06.004
-circuit	R(C[RQ])	2	lit 1 (Supercapacitors); doi:10.1016/j.jelechem.2019.01.022
 circuit	LR(C[QR])	2	lit 1 (Supercapacitors); doi:10.1016/j.electacta.2020.137412
 circuit	LR(Q[RW])	2	lit 1 (Batteries); doi:10.1109/TPEL.2017.2780184
 circuit	R(C[RQW])	2	lit 1 (Supercapacitors); doi:10.1016/S0013-4686(02)00091-9
@@ -109,7 +132,6 @@ circuit	LR(QR)(Q[RW])	2	lit 1 (Batteries); doi:10.1002/er.5350
 circuit	R(LR)(CR)(CR)	2	lit 1 (Batteries); doi:10.1016/j.est.2017.08.004
 circuit	R(QR)([RL]QR)	2	lit 1 (Fuel cells); doi:10.1007/s40243-015-0052-y
 circuit	R(QR)(QR)(WL)	2	lit 1 (Fuel cells); doi:10.3390/fractalfract5010021
-circuit	R(RC)(RC)(RC)	2	lit 1 (Fuel cells); doi:10.1109/TIE.2015.2393292
 circuit	R(RQ)([RW]Q)Q	2	lit 1 (Supercapacitors); doi:10.3390/en14133807
 circuit	R(RQ)(RQ)(RQ)	2	lit 1 (Supercapacitors); doi:10.1016/j.electacta.2021.137746
 circuit	LR(QR)(QR)(CR)	2	lit 1 (Supercapacitors); doi:10.3390/en14133807
@@ -127,3 +149,39 @@ circuit	R(RQ)([RW]Q)(RQ)Q	2	lit 1 (Batteries); doi:10.1016/j.ssi.2021.115680
 circuit	R(Q[R(Q[R(Q[RQ])])])	2	lit 1 (Supercapacitors); doi:10.1016/j.est.2021.103494
 circuit	R(QR)(Q[R(CR)])(CR[RL])	2	lit 1 (Fuel cells); doi:10.1016/j.electacta.2016.01.128
 circuit	([CR][([CR]R)([CR]R)])RL	2	lit 1 (Fuel cells); doi:10.1109/APEC.2004.1295834
+#
+# Textbook circuits without a counted source (2 = standard model, 1 = plausible extension).
+# Removed on 2026-10-10 as duplicates of entries above (the listed weight applies):
+#   LR(QR) = LR(RQ), LR(QR)(QR) = LR(RQ)(RQ), LR(QR)(QR)(QR) = LR(RQ)(RQ)(RQ), R(QR)(QR)(QR) = R(RQ)(RQ)(RQ),
+#   R(Q[RW])(RQ) = R(Q[RW])(QR), R(Q[RW])(RC) = R(CR)(Q[RW]), R(QR)(CR) = R(CR)(QR) = R(RQ)(RC),
+#   R(C[R(QR)]) = R(C[(QR)R]).
+# Moved to the sourced list above: R(C[RWo]), R(C[RWs]), R(C[R(CR)]).
+# Finite-length diffusion
+circuit	RWo	2	finite-space (reflective) diffusion: blocking porous electrodes, supercapacitors
+circuit	R(Q[RWo])	2	Randles with reflective finite Warburg: porous battery electrodes, intercalation
+circuit	R(Q[RWs])	2	Randles with transmissive finite Warburg: thin films, membranes, Nernst diffusion layer
+circuit	LR(Q[RWo])	1	lead inductance + reflective Randles
+circuit	LR(Q[RWs])	1	lead inductance + transmissive Randles
+circuit	R(Q[RW])(Q[RW])	1	two Randles-Warburg electrodes (anode + cathode)
+circuit	R(Q[RWo])(QR)	1	reflective Randles + second relaxation
+circuit	R(Q[RWs])(QR)	1	transmissive Randles + second relaxation
+# Gerischer (reaction-coupled diffusion)
+circuit	RG	2	series resistance + Gerischer
+circuit	R(Q[RG])	2	Gerischer with CPE double layer (SOFC electrodes, dye-sensitised solar cells)
+circuit	R(QR)G	1	ZARC + Gerischer (mixed ionic-electronic conductors)
+# Low-frequency inductive loops (corrosion, adsorbed intermediates)
+circuit	R(QR)(LR)	2	inductive loop with CPE double layer (pitting, adsorbed intermediates)
+circuit	R(CR)(LR)	2	inductive loop with ideal double layer
+circuit	R(Q[RL])	1	CPE in parallel with R + L branch (active dissolution)
+circuit	R(QR)(Q[RL])	1	charge-transfer loop + inductive corrosion loop
+# Coatings and layered films
+circuit	R(Q[R(CR)])	2	coated metal with CPE coating and ideal double layer
+circuit	R(Q[R(Q[RQ])])	1	three-level nested CPE (multilayer coatings, anodic oxides)
+circuit	R(Q[R(Q[RWo])])	1	coating over porous substrate with reflective finite diffusion
+circuit	R(Q[R(Q[RWs])])	1	coating with transmissive transport through pores
+circuit	LR(Q[RQ])	1	lead inductance + nested two-layer model
+circuit	R(Q[RC])	1	CPE in parallel with an R-C branch (blocking adsorption)
+circuit	R(Q[R(CW)])	1	CPE in parallel with R in series with (C parallel W)
+# Multi-relaxation ladders
+circuit	R(QR)(QR)(QR)(QR)	1	four ZARCs (multi-interface cells)
+circuit	R(RC)(RC)(RC)(RC)	1	four-element Voigt ladder (distributed time constants)
