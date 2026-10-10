@@ -1,0 +1,24 @@
+{
+  "elements": [
+    "R",
+    "C",
+    "L",
+    "Q",
+    "W"
+  ],
+  "max_elements": 7,
+  "deduplication": "unordered associative series/parallel topology only",
+  "exclude_direct_repeated_R_C_L_W": true,
+  "electrical_family_merging": false,
+  "counts": {
+    "1": 5,
+    "2": 22,
+    "3": 140,
+    "4": 1106,
+    "5": 9632,
+    "6": 89670,
+    "7": 873588
+  },
+  "total": 974163,
+  "elapsed_seconds": 3.03
+}

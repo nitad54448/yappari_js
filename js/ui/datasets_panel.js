@@ -46,7 +46,13 @@ Y.datasetsPanel = (function () {
     function end(save) {
       if (done) return;
       done = true;
-      if (save && inp.value.trim() && inp.value.trim() !== d.name) Y.state.rename(id, inp.value.trim()); else render();
+      var nm2 = Y.state.cleanName(inp.value);
+      if (save && nm2 && nm2 !== d.name) {
+        var was = d.name;
+        Y.history.take('rename ' + was);
+        Y.state.rename(id, nm2);
+        Y.ui.toast('Renamed ' + was + ' to ' + nm2 + '.', 'info');
+      } else render();
       list.focus();
     }
     inp.addEventListener('keydown', function (e) { e.stopPropagation(); if (e.key === 'Enter') end(true); else if (e.key === 'Escape') end(false); });

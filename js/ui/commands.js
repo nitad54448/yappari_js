@@ -801,6 +801,7 @@ Y.cmd = (function () {
     return ticked ? '' : 'Tick “fit” next to at least one parameter (Parameters tab).';
   }
   var WHY = {
+    searchModels: function () { return Y.modelSearch.why(); },
     read: function () { return S.busy ? BUSY : ''; },                           // reading files, opening a project, demo
     saveProject: function () { return S.datasets.length || S.model.prog ? '' : 'Nothing to save yet.'; },
     withModel: withModel,                                                       // save parameters, report
@@ -862,6 +863,13 @@ Y.cmd = (function () {
   function showHelp() {
     ui.modal({ title: 'Commands', wide: true, body: '<p class="intro">Type them in the command line at the bottom of the window. They act on the selected datasets.</p><table class="grid">' +
       HELP.map(function (h) { return '<tr><td><code>' + ui.esc(h[0]) + '</code></td><td>' + ui.esc(h[1]) + '</td></tr>'; }).join('') + '</table>' });
+  }
+
+  // the full help (help.html) in a window of its own; the same window is reused when it is still open
+  function openHelp() {
+    var w = window.open('help.html', 'yappari-help', 'popup=yes,width=1120,height=880');
+    if (!w) { ui.toast('The browser blocked the help window. Open help.html, next to index.html.', 'warn'); return; }
+    try { w.focus(); } catch (e) { /* */ }
   }
 
   function runCommand(line) {
@@ -940,7 +948,8 @@ Y.cmd = (function () {
                  ['Z-HIT of selected datasets', zhitSelected, 'edit'],
                  ['Kramers–Kronig test of selected datasets', function () { kkSelected(); }, 'edit'], null,
                  ['Label a frequency on the Nyquist plot…', labelDialog, 'selection'], ['Clear Nyquist labels', clearLabels, 'unlabel'], null,
-                 ['Command line help', showHelp]]
+                 ['Search models', function () { Y.modelSearch.open(); }, 'searchModels'], null,
+                 ['Help', openHelp]]
     };
     document.querySelectorAll('[data-menu]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -955,6 +964,6 @@ Y.cmd = (function () {
   return { init: init, readFiles: readFiles, fitSelected: fitSelected, globalFit: globalFit, stop: stop, cloneTo: cloneTo, undo: undo,
            labelDialog: labelDialog, clearLabels: clearLabels, addLabels: addLabels, zhitSelected: zhitSelected, kkSelected: kkSelected, drtSelected: drtSelected,
            inView: inView, unmask: unmask, deleteDatasets: deleteDatasets, simulate: simulate, demo: demo,
-           runCommand: runCommand, saveProject: saveProject, saveParams: saveParams, showHelp: showHelp,
+           runCommand: runCommand, saveProject: saveProject, saveParams: saveParams, showHelp: showHelp, openHelp: openHelp,
            why: why, syncButtons: syncButtons };
 })();

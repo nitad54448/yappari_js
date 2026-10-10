@@ -22,16 +22,18 @@
  *  of the other methods, so maxIter limits all methods alike and the iterations reported never exceed it.
  *
  *  job = { id, cdc, f, zr, zi (Float64Array, unmasked points), p (all parameters, circuit order),
- *          fit (Uint8Array 1 = free), lo, hi (limits), method, weight, maxIter, tol }
+ *          fit (Uint8Array 1 = free), lo, hi (limits), method, weight, maxIter, tol, hessian (optional: also return jtj,
+ *          the curvature JᵀJ in natural coordinates, and free, the parameters it covers) }
  */
 Y.defineCore('fit', function (Y) {
   'use strict';
   var LA = Y.linalg;
-  var progCache = {};
+  var progCache = Object.create(null), progKeys = [];
 
   function getProg(cdc) {
     var pr = progCache[cdc];
-    if (!pr) { pr = Y.circuit.compile(Y.circuit.parse(cdc)); progCache[cdc] = pr; }
+    if (!pr) { pr = Y.circuit.compile(Y.circuit.parse(cdc)); progCache[cdc] = pr; progKeys.push(cdc);
+      if (progKeys.length > 128) delete progCache[progKeys.shift()]; }
     return pr;
   }
 
@@ -486,6 +488,27 @@ Y.defineCore('fit', function (Y) {
     return { chi2w: chi2, chi2red: chi2red, r2: r2, dof: dof, se: se, atBound: atBound };
   }
 
+  // ---------------------------------------------------------------- curvature for model comparison
+  // Gauss-Newton Hessian JᵀJ of the weighted residuals at x, in natural coordinates: ln p for the parameters that span
+  // decades (scale 'log'), p for n, α, β; fitted parameters in circuit order (P.free), row-major. Central differences.
+  // Asked for with job.hessian (the model search: Laplace approximation of the evidence, Y.modelSearch).
+  function naturalJtJ(P, x) {
+    var m = 2 * P.n, nf = x.length, J = new Float64Array(m * nf), r = new Float64Array(m), d = new Float64Array(nf), q, a, i;
+    P.resid(x, r); P.jac(x, r, J, true);
+    for (q = 0; q < nf; q++) {                         // dx / d(natural): 1 for x = ln p; p / s for x = p / s with a 'log' parameter
+      var j = P.free[q];
+      d[q] = P.isLog[q] ? 1 : P.prog.params[j].scale === 'log' ? P.p[j] / P.sc[q] : 1 / P.sc[q];
+    }
+    var H = new Float64Array(nf * nf);
+    for (q = 0; q < nf; q++) for (a = 0; a <= q; a++) {
+      var t = 0, cq = q * m, ca = a * m;
+      for (i = 0; i < m; i++) t += J[cq + i] * J[ca + i];
+      H[q * nf + a] = H[a * nf + q] = t * d[q] * d[a];
+    }
+    P.resid(x, r);
+    return H;
+  }
+
   // ---------------------------------------------------------------- stagnation check
   // A solver can stop with tiny steps that are not at a minimum (heavy damping, a trust region shrunk by
   // noise ...). Before a stop is reported as convergence, one bounded Gauss-Newton step is tried from the
@@ -554,15 +577,17 @@ Y.defineCore('fit', function (Y) {
         res.msg = STALL_MSG;
       var st = finalStats(P, res.x);
       if (!res.fail && !isFinite(st.chi2w)) throw new Error('the model or weighted residuals are non-finite; check the parameter values and data');
-      return { id: job.id, ok: !res.fail, p: Float64Array.from(P.p), se: st.se, atBound: st.atBound,
+      var out = { id: job.id, ok: !res.fail, p: Float64Array.from(P.p), se: st.se, atBound: st.atBound,
                chi2w: st.chi2w, chi2red: st.chi2red, r2: st.r2, dof: st.dof, n: P.n,
                iter: res.it, nev: P.nev, msg: res.msg, ms: Date.now() - t0 };
+      if (job.hessian && !res.fail && res.x.length) { out.jtj = naturalJtJ(P, res.x); out.free = Uint16Array.from(P.free); }
+      return out;
     } catch (e) {
       return { id: job.id, ok: false, msg: String((e && e.message) || e) };
     }
   }
 
-  Y.fit = { run: run, status: status, stalled: stalled, STALL_MSG: STALL_MSG, getProg: getProg, weights: weights, Problem: Problem, normalEq: normalEq,
+  Y.fit = { run: run, naturalJtJ: naturalJtJ, status: status, stalled: stalled, STALL_MSG: STALL_MSG, getProg: getProg, weights: weights, Problem: Problem, normalEq: normalEq,
             methods: { TRDL: 'Trust-region dogleg (bounded)', LMB: 'Levenberg–Marquardt (bounded)',
                        LM: 'Levenberg–Marquardt (unbounded)', NM: 'Nelder–Mead (bounded)' },
             weightModes: { mod: '|Z|  (w = 1/|Z|)', mod2: '|Z|²  (w = 1/|Z|²)', unit: 'equal  (w = 1)' } };

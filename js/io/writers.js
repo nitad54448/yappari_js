@@ -79,13 +79,14 @@ Y.writers = (function () {
     return out.join('\n');
   }
 
-  // one line per dataset: name, R2, chi2_w, chi2_red, then value and SE% of every parameter
+  // one line per dataset: name, R^2 (coefficient of determination; not "R2", which can be a parameter), chi2_w, chi2_red,
+  // then value and SE% of every parameter
   function paramsText(list, names, info) {
     var out = ['Yappari JS - parameters saved : ' + stamp(),
                '# circuit: ' + info.cdc + '   method: ' + info.method + '   weight: ' + info.weight +
                (info.iter ? '   iterations, tolerance: ' + info.iter : '') + '   SE in % of the value'];
     var units = list.some(function (d) { return d.norm && NU[d.norm.type]; });
-    var head = ['Dataset'].concat(units ? ['Z unit'] : [], ['R2', 'chi2_w', 'chi2_red']);
+    var head = ['Dataset'].concat(units ? ['Z unit'] : [], ['R^2', 'chi2_w', 'chi2_red']);
     names.forEach(function (n) { head.push(n, 'SE%_' + n); });
     out.push(head.join('\t'));
     list.forEach(function (ds) {

@@ -125,6 +125,17 @@ with TemporaryDirectory(prefix="fixtures-", dir=OUT) as fixture_dir, sync_playwr
     pg.fill('#cdc', 'R(RQ)(RQ)'); pg.press('#cdc', 'Enter')
     pg.click('[data-tab="params"]'); pg.wait_for_timeout(200); shot(pg, '5_params')
     print('limits header:', pg.inner_text('#limits thead').replace('\t', ' | '))
+    # limit edits, shared flags and renames take a restore point: undo brings them back
+    lim0 = pg.evaluate("Y.state.S.model.limits.R2.max")
+    pg.fill('#limits tr[data-name="R2"] [data-lim="max"]', '5e5'); pg.press('#limits tr[data-name="R2"] [data-lim="max"]', 'Tab'); pg.wait_for_timeout(100)
+    lim1 = pg.evaluate("Y.state.S.model.limits.R2.max"); pg.evaluate('Y.cmd.undo()'); lim2 = pg.evaluate("Y.state.S.model.limits.R2.max")
+    pg.click('#limits tr[data-name="Q1"] [data-shared]'); sh1 = pg.evaluate("Y.state.S.model.shared.Q1"); pg.evaluate('Y.cmd.undo()'); sh2 = pg.evaluate("Y.state.S.model.shared.Q1")
+    pg.evaluate("Y.app.showSide('datasets')"); nm0 = pg.evaluate("Y.state.S.datasets[0].name")
+    pg.dblclick('#ds-list .ds:first-child .nm'); pg.fill('#ds-list input.rename', 'renamed_x'); pg.press('#ds-list input.rename', 'Enter')
+    nm1 = pg.evaluate("Y.state.S.datasets[0].name"); pg.evaluate('Y.cmd.undo()'); nm2 = pg.evaluate("Y.state.S.datasets[0].name")
+    print('undo of limit %s -> %s -> %s, shared %s -> %s, rename %s -> %s -> %s' % (lim0, lim1, lim2, sh1, sh2, nm0, nm1, nm2))
+    assert lim1 == 5e5 and lim2 == lim0 and sh1 is False and sh2 is True and nm1 == 'renamed_x' and nm2 == nm0
+    pg.click('[data-tab="params"]'); pg.wait_for_timeout(100)
     # global fit: first 6 datasets, R local, Q shared
     pg.evaluate("""() => { const S = Y.state.S; Y.state.selectIds(S.datasets.slice(0, 6).map(d => d.id));
       ['R1', 'R2', 'R3'].forEach(n => Y.state.setShared(n, false)); }""")
@@ -141,6 +152,7 @@ with TemporaryDirectory(prefix="fixtures-", dir=OUT) as fixture_dir, sync_playwr
     shot(pg, '6_masked')
     print('masked points drawn (hollow):', pg.evaluate("Y.plots._plots.nyq.series.filter(s => s.masked).map(s => s.x.length)"))
     print('params file:', pg.evaluate("Y.writers.paramsText(Y.state.selected(), Y.state.names(), {cdc: Y.state.S.model.cdc, method: 'm', weight: 'w'}).split('\\n')[2].slice(0, 120)"))
+    assert pg.evaluate("Y.writers.paramsText(Y.state.selected(), Y.state.names(), {cdc: Y.state.S.model.cdc}).split('\\n')[2].split('\\t').filter(h => h === 'R2').length") == 1
     print('report html length:', pg.evaluate('Y.report.build(Y.state.selected()).length'))
     pg.click('[data-menu="data"]'); pg.wait_for_timeout(150); shot(pg, '7_menu'); pg.keyboard.press('Escape')
     pg.evaluate("Y.cmd.runCommand('help')"); pg.wait_for_timeout(150); shot(pg, '8_help'); pg.keyboard.press('Escape')

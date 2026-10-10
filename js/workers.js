@@ -26,14 +26,19 @@ Y.pool = (function () {
 
   function size() { return Math.max(1, Math.min(12, (navigator.hardwareConcurrency || 4) - 1)); }
 
-  function init() {
-    if (url || broken) return;
+  function init(count) {
+    if (broken) return;
+    count = count || size();
     try {
+      if (!url) {
       var src = 'var Y = {}; Y.defineCore = function (n, f) { f(Y); };\n' + Y.coreSources.join('\n') +
                 '\n(' + workerMain.toString() + ')();';
       url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
-      for (var i = 0; i < size(); i++) workers.push({ w: new Worker(url), busy: false });
+      }
+      while (workers.length > count && !workers[workers.length - 1].busy) workers.pop().w.terminate();
+      for (var i = workers.length; i < count; i++) workers.push({ w: new Worker(url), busy: false });
     } catch (e) {
+      workers.forEach(function (wk) { try { wk.w.terminate(); } catch (_) { /* */ } });
       broken = true; workers = [];
       console.warn('Web Workers unavailable, fitting on the main thread:', e);
     }
@@ -63,13 +68,13 @@ Y.pool = (function () {
     })();
   }
 
-  function fitMany(jobs, onResult, onProgress) {
+  function fitMany(jobs, onResult, onProgress, options) {
     onResult = onResult || function () {};
     onProgress = onProgress || function () {};
     var state = { cancelled: false, done: 0 }, results = new Array(jobs.length), settle = null;
     var promise = new Promise(function (resolve) {
       settle = resolve;
-      init();
+      init(options && options.workerCount);
       var all = jobs.map(function (_, k) { return k; });
       if (broken || !workers.length) { mainThread(jobs, all, results, onResult, onProgress, state, function () { resolve(results); }); return; }
       var next = 0, inflight = 0, fallback = false, retry = [], tries = new Uint8Array(jobs.length);

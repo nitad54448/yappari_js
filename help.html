@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yappari JS help</title>
+<script>(function () { var t; try { t = JSON.parse(localStorage.getItem('yappari.settings') || '{}').theme; } catch (e) {} if (t !== 'dark' && t !== 'light') t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; document.documentElement.setAttribute('data-theme', t); })();</script>
+<style>
+:root { --bg: #edf1f5; --panel: #ffffff; --chrome: #e8eef5; --ink: #1f2933; --ink-2: #52606d; --ink-3: #657587; --rule: #d3d9de; --rule-2: #e7ebee;
+  --accent: #2457a6; --tint: #e9eff8; --code: #edf3fa; --warn: #b7791f;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-code: "Cascadia Mono", ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;
+  --font-kana: "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", "Noto Sans CJK JP", Meiryo, sans-serif; color-scheme: light; }
+:root[data-theme="dark"] { --bg: #14181c; --panel: #1b2025; --chrome: #172330; --ink: #e3e7ea; --ink-2: #a7b2bc; --ink-3: #96a5b4; --rule: #2f363d; --rule-2: #252b31;
+  --accent: #7ea6e6; --tint: #1f2b3d; --code: #233246; --warn: #e0a740; color-scheme: dark; }
+/* colours and fonts: the tokens of style.css, so the help looks like the program */
+* { box-sizing: border-box; }
+html { scroll-padding-top: 16px; }
+body { margin: 0; background: var(--panel); color: var(--ink); font: 15px/1.6 var(--font-ui); }
+.wrap { display: grid; grid-template-columns: 260px minmax(0, 1fr); max-width: 1240px; margin: 0 auto; }
+nav.toc { position: sticky; top: 0; align-self: start; height: 100vh; overflow: auto; padding: 24px 16px 24px 24px; border-right: 1px solid var(--rule); border-top: 3px solid var(--accent); background: var(--chrome); font-size: 14px; }
+nav.toc .brand { display: flex; align-items: baseline; gap: 8px; margin-bottom: 16px; }
+nav.toc .brand b { font-size: 18px; }
+nav.toc .brand span { font-family: var(--font-kana); color: var(--accent); font-size: 18px; letter-spacing: 0.06em; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+nav.toc li { counter-increment: s; }
+nav.toc a { display: block; padding: 3px 8px; border-radius: 6px; color: var(--ink-2); text-decoration: none; }
+nav.toc a::before { content: counter(s) ". "; color: var(--ink-2); opacity: .7; }
+nav.toc a:hover { background: var(--tint); color: var(--ink); }
+nav.toc a.on { background: var(--tint); color: var(--accent); font-weight: 600; }
+main { padding: 32px 48px 96px; min-width: 0; }
+h1 { font-size: 28px; margin: 0 0 4px; }
+h1 + p.sub { margin-top: 0; color: var(--ink-2); }
+h2 { font-size: 21px; margin: 48px 0 8px; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--accent); }
+h3 { font-size: 16px; margin: 24px 0 4px; }
+p, li { max-width: 78ch; }
+a { color: var(--accent); }
+code, kbd { font: 13px/1.4 var(--font-code); background: var(--code); padding: 1px 5px; border-radius: 4px; }
+kbd { border: 1px solid var(--rule); border-bottom-width: 2px; }
+pre { background: var(--code); padding: 12px 14px; border-radius: 6px; overflow: auto; font: 13px/1.5 var(--font-code); max-width: 100%; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; margin: 10px 0 16px; font-size: 14px; display: block; overflow-x: auto; max-width: 100%; }
+th, td { text-align: left; vertical-align: top; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--rule-2); }
+th { border-bottom-color: var(--rule); }
+th { color: var(--ink-2); font-weight: 600; white-space: nowrap; }
+td:first-child { white-space: nowrap; }
+.note { border-left: 3px solid var(--accent); background: var(--tint); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; max-width: 78ch; }
+.note.warn { border-left-color: var(--warn); }
+.eq { font-family: "Cambria Math", "STIX Two Math", Georgia, serif; font-size: 16px; padding: 6px 0 6px 16px; }
+.muted { color: var(--ink-2); }
+@media (max-width: 860px) {
+  .wrap { display: block; }
+  nav.toc { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule); padding: 16px; }
+  nav.toc ol { columns: 2; }
+  main { padding: 16px 16px 64px; }
+}
+@media print { nav.toc { display: none; } .wrap { display: block; } main { padding: 0; } h2 { break-after: avoid; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <div class="brand"><b>Yappari JS</b><span lang="ja">やっぱり</span></div>
+  <ol>
+    <li><a href="#start">Getting started</a></li>
+    <li><a href="#server">Running it</a></li>
+    <li><a href="#data">Reading data</a></li>
+    <li><a href="#datasets">Datasets</a></li>
+    <li><a href="#plots">Plots</a></li>
+    <li><a href="#circuit">Circuits</a></li>
+    <li><a href="#elements">Elements</a></li>
+    <li><a href="#params">Parameters and limits</a></li>
+    <li><a href="#fit">Fitting</a></li>
+    <li><a href="#global">Global fit</a></li>
+    <li><a href="#stats">Fit statistics</a></li>
+    <li><a href="#dataops">Data operations</a></li>
+    <li><a href="#drt">DRT</a></li>
+    <li><a href="#checks">Z-HIT and Kramers–Kronig</a></li>
+    <li><a href="#search">Model search</a></li>
+    <li><a href="#bayes">Bayesian ranking</a></li>
+    <li><a href="#priors">The prior file</a></li>
+    <li><a href="#saving">Saving and reports</a></li>
+    <li><a href="#history">Undo and Log</a></li>
+    <li><a href="#commands">Command line</a></li>
+    <li><a href="#keys">Mouse and keys</a></li>
+    <li><a href="#settings">Settings</a></li>
+    <li><a href="#cite">Citing and references</a></li>
+  </ol>
+</nav>
+<main>
+<h1>Yappari JS help</h1>
+<p class="sub">Yet Another Program for Analysis and Research in Impedance: one equivalent circuit fitted to one or to thousands of impedance spectra, in the browser.</p>
+
+<h2 id="start">Getting started</h2>
+<ol>
+  <li><b>Read data</b> with File (Auto detects the format) or drop files on the window. New datasets appear at the top of the Datasets list. To try the program, use File, <i>Load 24 demo spectra</i>.</li>
+  <li><b>Build a circuit</b> in the Model tab: click elements in the palette, insert a template, or type a circuit code such as <code>R(RQ)(RQ)</code> and press Enter.</li>
+  <li><b>Set start values</b> in the Parameters side panel: type a value, or turn the mouse wheel over a parameter. Tick <i>fit</i> for the parameters to fit.</li>
+  <li><b>Fit</b>: click Fit in the top bar or press <kbd>F9</kbd>. Several selected datasets are fitted in parallel, each on its own; switch the mode to Global (Fit side panel) for one fit with shared parameters.</li>
+  <li><b>Many spectra</b>: fit one, copy its values to all datasets (Parameters panel, <i>Copy these values to: All datasets</i>), select all with <kbd>Ctrl</kbd>+<kbd>A</kbd> in the list and fit.</li>
+  <li><b>Save</b> parameters, data, a report or the whole project from the File menu (<kbd>Ctrl</kbd>+<kbd>S</kbd> saves the project).</li>
+</ol>
+<p>Not sure which circuit to use? Analysis, <a href="#search">Search models</a> fits a catalogue of circuits to one spectrum and ranks them.</p>
+
+<h2 id="server">Running it: web server or local file</h2>
+<p>Yappari JS is a set of static files (<code>index.html</code>, <code>js/</code>, <code>catalog/</code>, <code>config/</code>). Fits run in Web Workers built inside the page, so most of the program also works when <code>index.html</code> is opened directly from disk.</p>
+<div class="note warn"><b>Model search and preset definitions need a web server.</b> Browsers do not let a page opened from disk (<code>file://</code>) read other local files, so the circuit catalogue (<code>catalog/models_*_elements.txt</code>), the prior file (<code>catalog/priors.txt</code>) and the XML presets (<code>config/definitions/</code>) cannot be loaded that way: Search models stops with “Failed to fetch”, and File, Auto and Custom format use only the built-in readers.</div>
+<p>Any static web server works. For a local copy, run in the program folder:</p>
+<pre><code>python -m http.server 8000</code></pre>
+<p>then open <code>http://localhost:8000</code>. On a public server (GitHub Pages, an institute web space) nothing else is needed.</p>
+
+<h2 id="data">Reading data</h2>
+<p>File menu entries read one or more files; dropping files on the window is the same as <i>Auto</i>. A project file (<code>.json</code> saved by Yappari JS) dropped or read with <i>Open project</i> replaces the circuit and datasets.</p>
+<table>
+  <tr><th>Entry</th><th>Reads</th></tr>
+  <tr><td>Auto: detect the format</td><td>Presets with detection rules (config/definitions, served only), then the built-in recognisers below. An XML definition dropped together with data files is used to read them.</td></tr>
+  <tr><td>3 columns: f, Zr, Zi</td><td>One dataset per file; text lines are skipped. Separator from Settings (automatic by default); decimal commas are accepted when the separator is not a comma.</td></tr>
+  <tr><td>Table with column headers</td><td>Every header line with a frequency, a real and an imaginary column starts a dataset. Headings such as <code>freq/Hz</code>, <code>Zr</code>, <code>Re(Z)/Ohm</code>, <code>-Im(Z)/Ohm</code>, <code>Z''</code>, <code>Zreal</code> are recognised; <code>-Im</code> and <code>-Z''</code> are negated. Units in headings (kHz, MHz, kΩ, mΩ …) are converted. Without real and imaginary columns, |Z| and phase columns are used. Standard-deviation columns (<code>sigma_Zr</code>, <code>stddev</code> …) and a <code>masked</code> column are read; a <code>chunk</code> column (LabOne) splits sweeps into datasets.</td></tr>
+  <tr><td>ZView .z / .txt</td><td>ZView and MFLI ZView exports: each run of numeric lines is a dataset (Z′, Z″ in columns 5 and 6).</td></tr>
+  <tr><td>BioLogic MPT</td><td>EC-Lab ASCII exports (.mpt; binary .mpr is not supported); cycles become datasets.</td></tr>
+  <tr><td>Gamry DTA</td><td>ZCURVE tables of Gamry .DTA files.</td></tr>
+  <tr><td>VersaStudio .par</td><td>Segments with Z, or with E and I (Z = E/I).</td></tr>
+  <tr><td>Custom format, xml</td><td>A dialog to choose or write an XML definition (columns, units, separators, polar or Cartesian, repeated headers, end markers …), preview it on a file, save it, and read files with it. Presets are listed in <code>config/definitions/index.json</code>; see <code>config/definitions/README.md</code> for the schema.</td></tr>
+</table>
+<p>Zi is stored as measured: negative for capacitive behaviour. Files written in UTF-16 (“Unicode text” from Excel) are decoded automatically. Rows with a missing or non-numeric value are skipped and reported.</p>
+
+<h2 id="datasets">Datasets</h2>
+<p>The Datasets side panel lists the spectra, newest first. Click to select, <kbd>Ctrl</kbd>+click to add one, <kbd>Shift</kbd>+click for a range, <kbd>Ctrl</kbd>+<kbd>A</kbd> for all; arrows move the selection. Double-click or <kbd>F2</kbd> renames, <kbd>Delete</kbd> deletes, drag a row to reorder. The dot on the right shows the fit state: green converged, amber a warning (iteration limit, stalled, singular, at limits), red failed. Commands act on the selected datasets.</p>
+<p>Each dataset keeps its own parameter values for the one circuit; limits and the shared flags of the global fit are common to all.</p>
+
+<h2 id="plots">Plots</h2>
+<p>The EIS tab shows Nyquist, Zr and Zi versus frequency (with residuals), |Z| and phase, and a 3D view of many spectra. Measured points are drawn as markers (masked points hollow), the model as lines. Drag to zoom, <kbd>Shift</kbd>-drag or right-drag to pan, wheel to zoom, double-click to autoscale. Click a legend entry to hide or show it. <i>Save PNG</i> saves the plot on screen.</p>
+<p>On the Nyquist plot: <i>Label frequency</i> marks the point nearest to a frequency (1k, 2.5M, 10m are accepted), <i>Click labels a point</i> labels by clicking, <i>Square</i> gives a square frame. <i>Show contributions</i> (Model tab) draws each part of the series chain in its own colour as dashed curves, and colours the circuit drawing the same way.</p>
+<p>Settings choose absolute or relative residuals, degrees or radians, equal Nyquist axes, and how many datasets are drawn at most (larger selections are thinned out for drawing only).</p>
+
+<h2 id="circuit">Circuits: the circuit code</h2>
+<p>A circuit is written as a Boukamp circuit description code. Elements written next to each other are in series; round brackets put their content in parallel; square brackets put their content in series inside a parallel group.</p>
+<table>
+  <tr><th>Code</th><th>Circuit</th></tr>
+  <tr><td><code>R(RQ)</code></td><td>Rs + (R ‖ Q): one depressed semicircle</td></tr>
+  <tr><td><code>R(Q[RW])</code></td><td>Randles: Rs + Q ‖ (Rct + W)</td></tr>
+  <tr><td><code>R(RQ)(RQ)</code></td><td>Rs + two R ‖ Q in series (Voigt)</td></tr>
+  <tr><td><code>R(Q[R(RQ)])</code></td><td>ladder: Rs + Q ‖ (R + R ‖ Q), e.g. a coating over a corroding metal</td></tr>
+</table>
+<p>Numbers name the elements (R1, Q2) and are added for you; they keep parameter names stable when the circuit is edited, so values of elements that remain are kept. Spaces, commas, dashes and plus signs between elements are ignored.</p>
+<p>In the Model tab, click an element of the drawing to select it, choose <i>In series</i>, <i>In parallel</i> or <i>Replace</i>, and click an element of the palette. <i>Delete</i> removes the selection, <i>Undo last action</i> goes back, <i>Clear</i> empties the circuit. The template list inserts common circuits. The circuit cannot change while a fit runs.</p>
+
+<h2 id="elements">Elements</h2>
+<p>ω = 2πf. Parameter names are the element name plus the suffix shown (Q1, Q1_n, Wo1_A, Wo1_B …). Defaults below are the built-in start values and limits; Settings, <i>Start values for new elements</i> changes them.</p>
+<table>
+  <tr><th>Element</th><th>Impedance</th><th>Parameters (default limits)</th></tr>
+  <tr><td>R resistor</td><td>Z = R</td><td>R /Ω (10⁻³ … 10¹⁰)</td></tr>
+  <tr><td>C capacitor</td><td>Z = 1/(jωC)</td><td>C /F (10⁻¹⁶ … 10³)</td></tr>
+  <tr><td>L inductor</td><td>Z = jωL</td><td>L /H (10⁻¹⁵ … 10³)</td></tr>
+  <tr><td>Q constant phase element</td><td>Z = 1/(Q (jω)<sup>n</sup>)</td><td>Q /F·s<sup>n−1</sup> (10⁻¹⁶ … 10³); _n (0 … 1.2, held fixed at 1 by default)</td></tr>
+  <tr><td>W Warburg, semi-infinite</td><td>Z = Aw/√ω − j Aw/√ω</td><td>Aw /Ω·s<sup>−½</sup> (10⁻⁶ … 10¹⁰)</td></tr>
+  <tr><td>Wo Warburg, open (reflective)</td><td>Z = Aw/√(jω) · coth(B √(jω))</td><td>_A Aw; _B B /s<sup>½</sup> (10⁻⁶ … 10⁶)</td></tr>
+  <tr><td>Ws Warburg, short (transmissive)</td><td>Z = Aw/√(jω) · tanh(B √(jω))</td><td>_A Aw; _B B</td></tr>
+  <tr><td>G Gerischer</td><td>Z = R/√(1 + jωτ)</td><td>_R R; _tau τ /s (10⁻¹² … 10⁶)</td></tr>
+  <tr><td>HN Havriliak–Negami</td><td>Z = R/(1 + (jωτ)<sup>α</sup>)<sup>β</sup></td><td>_R, _tau; _a α and _b β (0.01 … 1, held fixed at 1 by default)</td></tr>
+</table>
+
+<h2 id="params">Parameters and limits</h2>
+<p>The Parameters side panel shows the values of the first selected dataset (← → show the others of the selection); an edit applies to all selected datasets. Mouse wheel or arrow keys change a value: ×1.02 per step for parameters that span decades, ±0.005 for n, α, β; <kbd>Shift</kbd> for larger steps, <kbd>Alt</kbd> or <kbd>Ctrl</kbd> for finer ones. The tick on the right decides whether a parameter is fitted. After a fit, the standard error is shown next to the value (see <a href="#stats">statistics</a>).</p>
+<p>Limits (Settings, <i>Parameter limits for the current circuit</i>) are common to all datasets; bounded methods keep every parameter between them. The same table holds the <i>shared</i> flag of each parameter for the global fit. Limit edits, shared flags and renames can be undone like any other change.</p>
+<p><i>Copy these values to</i> copies the values and fit ticks of the first selected dataset to all datasets or to the other selected ones.</p>
+
+<h2 id="fit">Fitting</h2>
+<p>The fit minimises the weighted sum of squares of the real and imaginary residuals:</p>
+<p class="eq">χ²<sub>w</sub> = Σ<sub>k</sub> w<sub>k</sub> [(Zr<sub>calc</sub> − Zr)² + (Zi<sub>calc</sub> − Zi)²]</p>
+<table>
+  <tr><th>Weight</th><th>w<sub>k</sub></th><th>Use</th></tr>
+  <tr><td>1/|Z|</td><td>1/|Z<sub>k</sub>|</td><td>default; a compromise between equal and relative weights</td></tr>
+  <tr><td>1/|Z|²</td><td>1/|Z<sub>k</sub>|²</td><td>relative errors; matches noise proportional to |Z|</td></tr>
+  <tr><td>1</td><td>1</td><td>absolute errors; dominated by the largest |Z|</td></tr>
+  <tr><td>measured σ</td><td>1/σ² for each part</td><td>Settings, <i>Use measured standard deviations</i>, when the file has them; points without one get the median relative error of the others</td></tr>
+</table>
+<table>
+  <tr><th>Method</th><th></th></tr>
+  <tr><td>Trust-region dogleg, bounded</td><td>default; robust with limits</td></tr>
+  <tr><td>Levenberg–Marquardt, bounded</td><td>classical, with limits</td></tr>
+  <tr><td>Levenberg–Marquardt, no bounds</td><td>ignores the limits</td></tr>
+  <tr><td>Nelder–Mead, bounded</td><td>derivative-free simplex; slower, useful from poor start values</td></tr>
+</table>
+<p>Parameters that span decades (R, C, L, Q, Aw, B, τ) are fitted as ln p, which keeps them positive and handles values from 10⁻¹² to 10⁹ alike. <i>Max iterations</i> (1 to 65535) and <i>Min χ² step</i> (relative change between iterations) end the fit. A fit that ends with tiny steps is checked with one more Gauss–Newton step: if χ² can still decrease, it is reported as stalled rather than converged.</p>
+<p>Messages starting with <i>converged</i> are normal ends. <i>Iteration limit reached</i>, <i>stopped: no further progress</i>, <i>singular system</i> and <i>all fitted parameters are at their limits</i> are warnings. Stop (Fit side panel, shown while a fit runs) ends a batch at once; datasets not yet fitted keep their values.</p>
+
+<h2 id="global">Global fit</h2>
+<p>Mode Global (Fit side panel) fits all selected datasets at once. Parameters ticked <i>shared</i> get one value for all datasets; the others one value per dataset. The fit ticks and the start values of shared parameters come from the dataset shown in the Parameters panel. In Global mode a padlock next to each parameter switches shared and local. The global fit uses Levenberg–Marquardt (bounded unless the method is the unbounded one) with a Schur complement on the shared block, so hundreds of datasets with local parameters stay fast.</p>
+
+<h2 id="stats">Fit statistics</h2>
+<table>
+  <tr><th>Value</th><th>Definition</th></tr>
+  <tr><td>χ²<sub>w</sub></td><td>the minimised weighted sum of squares</td></tr>
+  <tr><td>χ²<sub>red</sub></td><td>χ²<sub>w</sub> / (2N − p): N frequencies, real and imaginary parts both counted, p fitted parameters; about 1 when σ weights are right</td></tr>
+  <tr><td>R²</td><td>1 − SS<sub>res</sub>/SS<sub>tot</sub> on the stacked, unweighted (Zr, Zi) values (written <code>R^2</code> in parameter files)</td></tr>
+  <tr><td>SE %</td><td>standard error in % of the value, from s² (JᵀJ)⁻¹ with s² = χ²<sub>red</sub> and the Jacobian J of the weighted residuals at the solution. Parameters on a limit get no SE.</td></tr>
+</table>
+<div class="note">An SE above about 30 % means the data determine the parameter poorly: the ± interval is then only indicative (for a series resistance the true spread is close to symmetric, for a capacitance closer to a factor). Consider fixing the parameter, a simpler circuit, or more frequencies.</div>
+
+<h2 id="dataops">Data operations (Data menu)</h2>
+<table>
+  <tr><th>Command</th><th>What it does</th></tr>
+  <tr><td>Mask points in the current view</td><td>zoom on points in a plot, then mask them: they are left out of fits (drawn hollow) but kept; <i>Unmask</i> brings them back</td></tr>
+  <tr><td>Delete points in the current view</td><td>removes the points in view, masked or not</td></tr>
+  <tr><td>Normalize</td><td>Z × A (Ω·cm²), Z × A/L (Ω·cm) or a correction factor; parameters are converted so the fit still matches (R in Ω·cm², C and Q per cm² …); <i>None</i> goes back to the measured values</td></tr>
+  <tr><td>Negate Zi</td><td>changes the sign of Zi</td></tr>
+  <tr><td>Add random noise</td><td>uniform noise up to ±x % of |Z| on Zr, Zi or both (or on the frequencies, for tests)</td></tr>
+  <tr><td>Spline to a log frequency grid</td><td>new datasets <code>sp_…</code>: cubic spline of Zr and Zi versus log f</td></tr>
+  <tr><td>Smooth (Savitzky–Golay)</td><td>new datasets <code>sm_…</code>; assumes log-spaced frequencies</td></tr>
+  <tr><td>Average selected datasets</td><td>point-by-point mean of datasets measured at the same frequencies</td></tr>
+  <tr><td>Simulate spectrum</td><td>new dataset from the circuit and the current values, over the range set in Settings</td></tr>
+</table>
+
+<h2 id="drt">Distribution of relaxation times (DRT tab)</h2>
+<p class="eq">Z(ω) = R<sub>∞</sub> + R<sub>pol</sub> ∫ g(τ) / (1 + jωτ) d ln τ,  ∫ g d ln τ = 1</p>
+<p>R<sub>∞</sub> is fitted with the distribution, R<sub>pol</sub> is the area of g. Methods: Tikhonov with non-negativity (regularisation λ), Fisk (iterated Tikhonov), Gold (multiplicative deconvolution; fewer iterations = smoother). The data can be Zr and Zi, Zi only or Zr only; masked points are used. <i>Search λ</i> scans the regularisation and suggests the strongest one whose misfit stays within 10 % of the best. Views: the distribution, the rebuilt spectrum, the residuals and the peaks (R, τ, f, C = τ/R and share of R<sub>pol</sub> of each peak). <i>Save DRT</i> writes distributions, spectra and peaks of all selected datasets.</p>
+
+<h2 id="checks">Z-HIT and Kramers–Kronig test (Analysis menu)</h2>
+<p><b>Z-HIT</b> rebuilds ln|Z| from the phase (integral plus derivative corrections); the measured |Z| should match it. Deviations point to drift or artefacts, but can also reflect noise, the ends of the range or sharp resonances. New datasets <code>zh_…</code> hold the rebuilt values. A range needs at least 10 points and two decades; gaps split the data into ranges checked separately.</p>
+<p><b>Kramers–Kronig test</b> (Lin-KK, Boukamp; Schönleber et al.) fits a chain of RC elements with log-spaced time constants, which obeys the Kramers–Kronig relations, and reports the residuals in % of |Z|. The number of RC elements is chosen where more stop improving the fit (or given with the command <code>kk&gt;&gt;M</code>). Residuals above the noise, or with a trend, point to drift, non-linearity or artefacts. New datasets <code>kk_…</code> hold the fit.</p>
+
+<h2 id="search">Model search</h2>
+<p>Analysis, <i>Search models</i> fits every circuit of a catalogue to the selected dataset (one dataset, Individual fit mode) and ranks them. It needs a <a href="#server">web server</a>.</p>
+<h3>Catalogue</h3>
+<p><code>catalog/models_N_elements.txt</code> list all series/parallel topologies with N elements, without duplicates by order or grouping and without directly repeated R, C, L or W (which reduce to one). They are written by <code>script/generate_models.py</code>; the default files use R, C, L, Q, W, and the script can include Wo, Ws, G and HN. The counts grow fast (R, C, L, Q, W: 1106 circuits with 4 elements, 9632 with 5, 89 670 with 6, 873 588 with 7), so restrict the elements and the size: the time is roughly the number of circuits × starts.</p>
+<h3>Options</h3>
+<table>
+  <tr><th>Option</th><th></th></tr>
+  <tr><td>Maximum elements, allowed elements</td><td>which circuits of the catalogue are fitted</td></tr>
+  <tr><td>Ranking</td><td>Bayesian (default, <a href="#bayes">below</a>) or BIC with an extra penalty λ per element</td></tr>
+  <tr><td>Random starts per circuit</td><td>4 to 32 (default 8). Start values are drawn so that every element is visible in the measured window: a random frequency inside the data range and a random |Z| around the measured ones (n of Q between 0.6 and 1). Starts run in rounds of 4; a circuit stops early once two starts reach the same minimum.</td></tr>
+  <tr><td>Seed</td><td>the same seed gives the same starts, whatever the number of workers</td></tr>
+  <tr><td>Discard circuits with …</td><td>off by default: converged fits are kept, and parameters at a limit or with a large standard error are only listed in Notes</td></tr>
+</table>
+<p>Your fit settings (method, weights, iterations, tolerance, measured σ) are used. Each circuit gets one refinement fit from its best start. Stop keeps the results so far.</p>
+<h3>The results table</h3>
+<table>
+  <tr><th>Column</th><th></th></tr>
+  <tr><td>Circuit</td><td>the representative of a class of equivalent circuits</td></tr>
+  <tr><td>Equivalent</td><td>the other circuits of the class: same elements, and model curves that differ on these data by less than 10 % of the residuals (Voigt and ladder forms, which give the same spectra). Choose one in the list to apply it instead. A class is ranked as one model: the highest prior among its forms, and the mean evidence of the forms.</td></tr>
+  <tr><td>P %</td><td>posterior probability of the class among all classes searched</td></tr>
+  <tr><td>Δ ln P</td><td>log posterior against the best class (−2.3 = ten times less probable); the tooltip gives ln evidence and ln prior</td></tr>
+  <tr><td>Prior</td><td>weight of the circuit in the prior file (tooltip: the literature note)</td></tr>
+  <tr><td>RMS %</td><td>rms residual relative to |Z|</td></tr>
+  <tr><td>Same minimum</td><td>starts that reached the best fit, of those run: 1 / 8 means the best fit was found once, so a better one may exist</td></tr>
+  <tr><td>Notes</td><td>parameters at a limit, without a standard error, or with one above the chosen % (poorly determined)</td></tr>
+  <tr><td>Residuals</td><td>Zr (blue) and Zi (red) residuals in % of |Z| versus log f</td></tr>
+</table>
+<p>Select a row and <i>Apply circuit</i>: the circuit becomes the current one (limits of parameter names that already existed are kept; a warning lists values outside them), the dataset gets the fitted values, and the step can be undone.</p>
+
+<h2 id="bayes">Bayesian ranking</h2>
+<p>Circuits are ranked by their posterior probability given the spectrum D:</p>
+<p class="eq">P(M | D) ∝ P(D | M) · P(M)</p>
+<p><b>P(M)</b>, the prior of the circuit, is its weight in <a href="#priors"><code>catalog/priors.txt</code></a>: circuits used in the literature get more weight than the many unlisted topologies.</p>
+<p><b>P(D | M)</b>, the evidence, integrates the fit over the prior of the parameters. It is computed with the Laplace approximation at the fitted optimum θ* (coordinates ln p for R, C, L, Q, Aw, B, τ; p for n, α, β):</p>
+<p class="eq">ln P(D | M) ≈ ln L(θ*) + ln π(θ*) + (k/2) ln 2π − ½ ln det(JᵀJ / s² + Σ<sub>π</sub><sup>−1</sup>)</p>
+<p>With measured σ, ln L = −χ²/2. Otherwise the common noise scale is integrated out: ln L = −N ln χ²<sub>w</sub> (N frequencies, 2N values), with s² = χ²<sub>w</sub>/2N. The parameter priors π are scaled to the data: a resistance between |Z|<sub>min</sub>/30 and 10 |Z|<sub>max</sub>, a capacitance whose impedance falls in that range inside the measured frequencies, and so on, as a log-normal spanning ± 2 standard deviations over that range; n of a CPE has a normal prior around 0.85.</p>
+<p>The result works as an Occam factor: a parameter sharply determined by the data costs the ratio of its prior width to its posterior width, a parameter the data do not determine costs little but gains nothing, and an element that does not improve the fit lowers the evidence. Unlike BIC, the penalty depends on how well each parameter is determined, not only on how many there are.</p>
+<div class="note">Read P % as a ranking among the circuits searched, not as an absolute probability: it depends on the catalogue (another catalogue changes the normalisation), on the priors, and on the Laplace approximation, which is rough for parameters sitting on a limit or very poorly determined. A circuit that cannot be told apart from another on the data is merged with it; choose between them on physical grounds.</div>
+
+<h2 id="priors">The prior file: catalog/priors.txt</h2>
+<p>A text file next to the catalogue, read when a search starts; edit it with any text editor (fields separated by a TAB or two or more spaces; <code>#</code> starts a comment). Without it, every circuit gets the same prior.</p>
+<pre><code>default  0.5
+circuit  R(C[RW])  10   Randles (literature and reviews)
+circuit  R(RQ)     5
+circuit  LR(RQ)    0    weight 0 excludes a circuit
+param    *         window  2
+param    Q_n       normal  0.85  0.15</code></pre>
+<table>
+  <tr><th>Line</th><th>Meaning</th></tr>
+  <tr><td><code>default w</code></td><td>prior weight of every circuit not listed</td></tr>
+  <tr><td><code>circuit code w [comment]</code></td><td>relative weight of a circuit. Element numbers, order, grouping and directly repeated R, C, L, W do not matter: <code>R(RQ)</code>, <code>(QR)R</code> and <code>R1(Q1R2)</code> are the same entry. ln w is added to the log evidence: weight 10 against the default 0.5 is a factor 20.</td></tr>
+  <tr><td><code>param name window k</code></td><td>log-normal prior of a decade-spanning parameter, centred on the range the data can show, which spans ± k standard deviations (<code>*</code> = all of them)</td></tr>
+  <tr><td><code>param name normal mean sd</code></td><td>normal prior of n, α or β</td></tr>
+</table>
+<p>Parameter names: R, C, L, Q, Q_n, W, Wo_A, Wo_B, Ws_A, Ws_B, G_R, G_tau, HN_R, HN_tau, HN_a, HN_b. Lines that cannot be read are reported in the status line of the search and skipped.</p>
+<p>The shipped draft weights each circuit as 1 + its occurrences in the literature list of Van Haeverbeke et al. (circuits from published studies in seven domains, with their DOIs in the comments) + 2 × the reviews and benchmarks that present it as a standard model (Lazanas &amp; Prodromidis; Gamry; Zhang et al.; Schaeffer, Gasper et al.). Adapt it to your field: raise the circuits your community uses, set 0 for those that make no physical sense for your system.</p>
+
+<h2 id="saving">Saving and reports (File menu)</h2>
+<table>
+  <tr><th>Entry</th><th>Writes</th></tr>
+  <tr><td>Save project</td><td>a <code>.json</code> file with the circuit, limits, settings, all datasets (data, masks, σ, labels, values, fit statistics, normalisation) and the Log; File, Open project or a drop reads it back</td></tr>
+  <tr><td>Save parameters of selected</td><td>a tab-separated table: one line per dataset with R^2, χ²<sub>w</sub>, χ²<sub>red</sub>, then each parameter and its SE % (<i>at limit</i>, <i>fixed</i> or NaN when none)</td></tr>
+  <tr><td>Save data of selected</td><td>one block per dataset: measured and/or model Zr, Zi, σ, the mask, and optionally the contribution of each part of the series chain; Auto or <i>Table with column headers</i> reads it back</td></tr>
+  <tr><td>Report of selected datasets</td><td>an HTML report with the circuit drawing, settings, statistics, parameters with standard errors and six plots per dataset (opened in a new tab up to 30 datasets, saved as a file above)</td></tr>
+</table>
+<p>Settings, <i>Save settings</i> / <i>Load settings</i> keep the fit, data and plot settings and the start values of new elements in a file.</p>
+
+<h2 id="history">Undo and Log</h2>
+<p>Before every action that changes datasets, the circuit, limits or shared flags, a restore point is kept (up to 256 MB; unchanged data are stored once). Data, <i>Undo the last command</i> (or the command <code>undo</code>, or <kbd>Ctrl</kbd>+<kbd>Z</kbd> in the circuit drawing) goes back one step; repeat to go further. The Log tab lists every message, with a <i>Restore before</i> button on each action still kept: it brings back the datasets, the selection and the circuit as they were just before, and can itself be undone.</p>
+
+<h2 id="commands">Command line</h2>
+<p>Type commands in the field at the bottom of the window (↑ ↓ recall earlier ones). They act on the selected datasets. The <b>?</b> button next to it, or the command <code>help</code>, lists them.</p>
+<table>
+  <tr><th>Command</th><th></th></tr>
+  <tr><td><code>rndz&gt;&gt;x</code></td><td>noise up to ±x % of |Z| on Zr and Zi; <code>rndzr&gt;&gt;x</code>, <code>rndzi&gt;&gt;x</code> on one part; <code>rndf&gt;&gt;x</code> on the frequencies</td></tr>
+  <tr><td><code>negate_zi</code></td><td>change the sign of Zi</td></tr>
+  <tr><td><code>spline&gt;&gt;n</code></td><td>new datasets on n log-spaced frequencies</td></tr>
+  <tr><td><code>smooth&gt;&gt;s&amp;d</code></td><td>Savitzky–Golay, s points on each side, degree d</td></tr>
+  <tr><td><code>average</code></td><td>mean of the selected datasets</td></tr>
+  <tr><td><code>fit</code>, <code>globalfit</code></td><td>fit the selected datasets one by one, or together</td></tr>
+  <tr><td><code>clone_all</code>, <code>clone_active</code></td><td>copy the parameters of the first selected dataset to all, or to the selected ones</td></tr>
+  <tr><td><code>mask</code>, <code>unmask</code></td><td>mask the points inside the current plot view, or show them all again</td></tr>
+  <tr><td><code>simulate</code></td><td>new dataset from the circuit and the current parameters</td></tr>
+  <tr><td><code>select&gt;&gt;text</code></td><td>select the datasets whose name contains text (regular expressions work)</td></tr>
+  <tr><td><code>demo</code></td><td>add 24 simulated spectra</td></tr>
+  <tr><td><code>undo</code></td><td>go back one step</td></tr>
+  <tr><td><code>label&gt;&gt;f</code>, <code>unlabel</code></td><td>label the point nearest to f on the Nyquist plot, or remove the labels</td></tr>
+  <tr><td><code>contrib</code></td><td>show or hide the contributions of the parts in series</td></tr>
+  <tr><td><code>drt</code>, <code>drt_save</code>, <code>drt_search</code></td><td>show, save, or search the regularisation of the DRT</td></tr>
+  <tr><td><code>zhit</code></td><td>Z-HIT check</td></tr>
+  <tr><td><code>kk</code>, <code>kk&gt;&gt;M</code></td><td>Kramers–Kronig test, with M RC elements (chosen automatically when omitted)</td></tr>
+  <tr><td><code>help</code></td><td>the list of commands</td></tr>
+</table>
+
+<h2 id="keys">Mouse and keys</h2>
+<table>
+  <tr><th>Where</th><th></th></tr>
+  <tr><td>Plots</td><td>drag to zoom, <kbd>Shift</kbd>-drag or right-drag to pan, wheel to zoom, double-click to autoscale</td></tr>
+  <tr><td>Parameter</td><td>mouse wheel or arrow keys change the value; <kbd>Shift</kbd> larger steps, <kbd>Alt</kbd> smaller ones</td></tr>
+  <tr><td>Parameters panel</td><td>← → next to the dataset name show the previous or next dataset</td></tr>
+  <tr><td>Dataset list</td><td><kbd>Ctrl</kbd>+<kbd>A</kbd> all, <kbd>Shift</kbd>+click range, <kbd>Ctrl</kbd>+click one more, <kbd>Delete</kbd>, <kbd>F2</kbd> or double-click to rename, drag to reorder</td></tr>
+  <tr><td>Circuit drawing</td><td>click to select, <kbd>Delete</kbd> to remove, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo, <kbd>Esc</kbd> to deselect</td></tr>
+  <tr><td>Anywhere</td><td><kbd>F9</kbd> fit the selected datasets, <kbd>Ctrl</kbd>+<kbd>S</kbd> save the project</td></tr>
+  <tr><td>Side panel</td><td>drag its left edge to resize, double-click to reset</td></tr>
+</table>
+
+<h2 id="settings">Settings</h2>
+<p>The Settings button (top right) opens fit settings (method, weights, iterations, tolerance), data settings (column separator, measured standard deviations), simulation range and points, plot settings, the parameter limits and shared flags of the current circuit, and the start values and limits used for new elements. Settings are stored in this browser; <i>Save settings</i> writes them to a file. The switch next to it chooses a light or dark theme.</p>
+
+<h2 id="cite">Citing and references</h2>
+<p>N. Dragoe, Materials Lab 2024, 3, 230031, <a href="https://doi.org/10.54227/mlab.20230031">doi:10.54227/mlab.20230031</a>. Browser version of Yappari 5.1 (LabVIEW), Université Paris-Saclay, ICMMO.</p>
+<p class="muted">Model search priors and background:</p>
+<ul class="muted">
+  <li>M. Van Haeverbeke, M. Stock, B. De Baets, Equivalent electrical circuits and their use across electrochemical impedance spectroscopy application domains, IEEE Access 10 (2022) 51363, <a href="https://doi.org/10.1109/ACCESS.2022.3174067">doi:10.1109/ACCESS.2022.3174067</a> (literature circuit list, as shipped with EquivalentCircuits.jl).</li>
+  <li>A. Ch. Lazanas, M. I. Prodromidis, Electrochemical impedance spectroscopy — a tutorial, ACS Meas. Sci. Au 3 (2023) 162, <a href="https://doi.org/10.1021/acsmeasuresciau.2c00070">doi:10.1021/acsmeasuresciau.2c00070</a>.</li>
+  <li>R. Zhang et al., Bayesian assessment of commonly used equivalent circuit models for corrosion analysis in electrochemical impedance spectroscopy, npj Mater. Degrad. 8 (2024) 120, <a href="https://doi.org/10.1038/s41529-024-00537-8">doi:10.1038/s41529-024-00537-8</a>.</li>
+  <li>J. Schaeffer, P. Gasper et al., Machine learning benchmarks for the classification of equivalent circuit models from solid-state electrochemical impedance spectra, J. Electrochem. Soc. (2023), <a href="https://arxiv.org/abs/2302.03362">arXiv:2302.03362</a>.</li>
+  <li>M. Sadeghi et al., AutoEIS: automated Bayesian model selection and analysis for electrochemical impedance spectroscopy, <a href="https://arxiv.org/abs/2305.04841">arXiv:2305.04841</a>.</li>
+  <li>B. A. Boukamp, J. Electrochem. Soc. 142 (1995) 1885 (Kramers–Kronig test); M. Schönleber, D. Klotz, E. Ivers-Tiffée, Electrochim. Acta 131 (2014) 20 (Lin-KK).</li>
+</ul>
+</main>
+</div>
+<script>
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a')), secs = links.map(function (a) { return document.querySelector(a.getAttribute('href')); });
+  function mark() {
+    var y = window.scrollY + 80, on = 0;
+    secs.forEach(function (s, i) { if (s && s.offsetTop <= y) on = i; });
+    links.forEach(function (a, i) { a.classList.toggle('on', i === on); });
+  }
+  window.addEventListener('scroll', mark, { passive: true }); mark();
+})();
+</script>
+</body>
+</html>

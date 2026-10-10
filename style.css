@@ -550,3 +550,43 @@ dialog.custom-format-dialog { width: min(860px, 94vw); }
 .custom-format-dialog .btns { flex-wrap: wrap; }
 
 #cdc::placeholder { color: var(--ink-3); opacity: .55; font-style: italic; }
+
+/* ---------- model search (Analysis, Search models) ---------- */
+.search-setup .search-kinds { display: flex; gap: 6px 16px; flex-wrap: wrap; margin: 0 0 10px; }
+.search-setup label { display: inline-flex; align-items: center; gap: 6px; margin-right: 10px; }
+.search-setup p { margin: 0 0 10px; }
+.search-setup .search-seed { width: 11ch; font-variant-numeric: tabular-nums; }
+.search-setup .search-maxse { width: 5ch; text-align: right; }
+.search-setup input[type=range]:disabled + output { color: var(--ink-3); }
+.search-error { color: var(--err); min-height: 1.2em; }
+dialog.search-dialog { width: min(1480px, 98vw); }
+.search-dialog .body > p { color: var(--ink-2); font-size: 12px; }
+.search-dialog .search-status { color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; }
+.search-dialog .search-count { font-variant-numeric: tabular-nums; }
+.search-progress { width: 100%; height: 8px; accent-color: var(--blue); }
+.search-scroll { max-height: 60vh; overflow: auto; border: 1px solid var(--rule); border-radius: 4px; }
+.search-results { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.search-results th { position: sticky; top: 0; z-index: 1; background: var(--chrome); border-bottom: 1px solid var(--rule); padding: 0; text-align: left; vertical-align: bottom; }
+.search-results th button {
+  display: block; width: 100%; border: 0; border-radius: 0; background: none; padding: 6px 8px;
+  font: inherit; font-weight: 600; color: var(--ink-2); text-align: inherit; white-space: nowrap; cursor: pointer;
+}
+.search-results th button:enabled:hover { background: var(--blue-tint); color: var(--ink); }
+.search-results th[aria-sort="ascending"] button, .search-results th[aria-sort="descending"] button { color: var(--blue); }
+.search-results td { padding: 4px 8px; border-bottom: 1px solid var(--rule-2); vertical-align: middle; text-align: left; }
+.search-results .c-num { text-align: right; white-space: nowrap; }
+.search-results th.c-num { text-align: right; }
+.search-results td.c-code { font-family: var(--font-code); white-space: nowrap; color: var(--ink); }
+.search-results td.c-prob { font-weight: 600; color: var(--ink); }
+.search-results td.c-eq { color: var(--ink-3); }
+.search-results td.c-eq select { max-width: 230px; font-family: var(--font-code); font-size: 11.5px; padding: 2px 4px; }
+.search-results td.c-status { min-width: 150px; color: var(--ink-2); }
+.search-results td.c-notes { min-width: 160px; color: var(--warn); }
+.search-results td.c-res { padding: 2px 6px; }
+.search-results tr { cursor: pointer; }
+.search-results tbody tr:hover td { background: var(--blue-tint); }
+.search-results tr.selected td { background: var(--selection); color: var(--selection-ink); }
+.search-results tr.selected td.c-notes { color: var(--selection-ink); }
+.search-results tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
+.search-results tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.search-results canvas { width: 260px; height: 84px; display: block; }

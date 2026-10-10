@@ -85,7 +85,11 @@ Y.paramsPanel = (function () {
       }
       var se = row.querySelector('.ps'), st = ds && ds.stats;
       if (st && st.bound && st.bound[n]) { se.textContent = 'limit'; se.title = 'At its limit, no standard error'; se.className = 'ps lim'; }
-      else if (st && st.se && Number.isFinite(st.se[n])) { se.textContent = st.se[n] >= 100 ? '>100%' : '±' + fmtPct(st.se[n]); se.title = 'Standard error, % of the value'; se.className = 'ps'; }
+      else if (st && st.se && Number.isFinite(st.se[n])) {
+        se.textContent = st.se[n] >= 100 ? '>100%' : '±' + fmtPct(st.se[n]);
+        se.title = 'Standard error, % of the value' + (st.se[n] > 30 ? '. Above about 30 % the parameter is poorly determined by the data and ± is only indicative' : '');
+        se.className = 'ps';
+      }
       else { se.textContent = ''; se.title = ''; se.className = 'ps'; }
     });
     renderStats();
@@ -184,6 +188,7 @@ Y.paramsPanel = (function () {
       var pl = e.target.closest('.pl');
       if (!pl || S.busy) return;
       var n = pl.closest('.prow').getAttribute('data-name'), sh = !S.model.shared[n];
+      Y.history.take('shared flag ' + n);
       Y.state.setShared(n, sh);
       Y.ui.toast(n + (sh ? ' shared: one value for all datasets in the global fit.' : ' local: one value per dataset in the global fit.'), 'info');
     });
@@ -291,13 +296,20 @@ Y.paramsPanel = (function () {
     var tr = e.target.closest('tr');
     if (!tr) return;
     var n = tr.getAttribute('data-name');
-    if (e.target.hasAttribute('data-shared')) { Y.state.setShared(n, e.target.checked); return; }
+    if (e.target.hasAttribute('data-shared')) {
+      Y.history.take('shared flag ' + n);
+      Y.state.setShared(n, e.target.checked);
+      Y.ui.toast(n + (e.target.checked ? ' shared in the global fit.' : ' local in the global fit.'), 'info');
+      return;
+    }
     var which = e.target.getAttribute('data-lim');
     if (!which) return;
     var v = Y.ui.parseNum(e.target.value), L = S.model.limits[n];
     var bad = !isFinite(v) || (which === 'min' ? v >= L.max : v <= L.min);
     e.target.classList.toggle('invalid', bad);
     if (bad) { Y.ui.toast('Limits of ' + n + ': min must be below max.', 'warn'); return; }
+    if (v === L[which]) return;
+    Y.history.take('limits of ' + n);
     Y.state.setLimit(n, which, v);
     Y.ui.toast('Limits of ' + n + ': ' + fmtVal(L.min) + ' to ' + fmtVal(L.max) + '.', 'info');
   }
