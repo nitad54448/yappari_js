@@ -465,18 +465,19 @@ Y.modelSearch = (function () {
       if (action === 'apply' && selected) {
         var chosen = selected.members.find(function (m) { return m.cdc === (selected.pick || selected.rep.cdc); }) || selected.rep;
         if (chosen && Y.state.S.datasets.indexOf(ds) >= 0) {
-          var tree = Y.circuit.parse(chosen.cdc), prog = Y.circuit.compile(tree);
+          var tree = Y.circuit.parse(chosen.cdc), prog = Y.circuit.compile(tree), lims = {};
+          if (chosen.lo && chosen.hi) prog.names.forEach(function (name, j) { lims[name] = { min: chosen.lo[j], max: chosen.hi[j] }; });
           Y.history.take('apply searched circuit');
-          // limits kept by parameter name, as when the circuit is edited; new names get the element limits the search used
-          Y.state.setModel(tree);
+          Y.state.setModel(tree, { limits: lims });
           prog.names.forEach(function (name) { ds.fit[name] = true; });
           var meta = Object.assign({}, settings);
           if (data.sr) { meta.weight = 'sigma'; meta.sigma = data.sigma; }
           Y.state.applyResult(ds, chosen.result, meta);
           Y.bus.emit('params', {});
           var L = (Y.state.S.model && Y.state.S.model.limits) || {}, outside = prog.names.filter(function (name, j) { var v = chosen.result.p[j]; return L[name] && (v < L[name].min || v > L[name].max); });
-          if (outside.length) Y.ui.toast('Applied ' + chosen.cdc + '. Outside the limits kept from the previous circuit: ' + outside.join(', ') +
+          if (outside.length) Y.ui.toast('Applied ' + chosen.cdc + '. Outside the parameter limits: ' + outside.join(', ') +
             ' (Settings); a bounded fit would move them back inside.', 'warn');
+          else Y.ui.toast('Applied ' + chosen.cdc + '.', 'ok');
         }
       }
     } finally { Y.state.setBusy(false); }

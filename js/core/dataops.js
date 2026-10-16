@@ -90,9 +90,9 @@ Y.dataops = (function () {
     var zr = new Float64Array(n), zi = new Float64Array(n), nc = deg + 1;
     for (var i = 0; i < n; i++) {
       var s0 = Math.min(Math.max(0, i - side), n - w), A = new Float64Array(nc * nc), br = new Float64Array(nc), bi = new Float64Array(nc);
-      for (var j = s0; j < s0 + w; j++) {
-        var x = j - i, pw = [];
-        for (var a = 0, v = 1; a < nc; a++, v *= x) pw.push(v);
+        for (var j = s0; j < s0 + w; j++) {
+        var x = (j - i) / side, pw = [];
+        for (a = 0, v = 1; a < nc; a++, v *= x) pw.push(v);
         for (a = 0; a < nc; a++) {
           br[a] += pw[a] * c.zr[j]; bi[a] += pw[a] * c.zi[j];
           for (var b = 0; b < nc; b++) A[a * nc + b] += pw[a] * pw[b];

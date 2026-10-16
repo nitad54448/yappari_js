@@ -161,6 +161,7 @@ Y.ui = (function () {
     var list = $('#log-list');
     entries = (saved || []).map(function (e) { return { t: e.t, kind: e.kind, msg: e.msg }; });
     if (!list || !entries.length) return;
+    list.innerHTML = '';
     entries.forEach(function (e) {
       var li = h('li', { class: e.kind + ' saved' });
       li.innerHTML = '<time>' + esc(Y.writers.stamp(new Date(e.t)).slice(0, 16)) + '</time><span>' + esc(e.msg) + '</span>';

@@ -88,6 +88,12 @@ Y.defineCore('elements', function (Y) {
           im[k] = -A / (w[k] * B) - ab * x * (1 / 45 - x2 / 4725);
           continue;
         }
+        if (!useCoth && Math.abs(x) < 0.01) {
+          var x2s = x * x, abs = A * B;
+          re[k] = abs * (1 - 2 * x2s / 15 + 62 * x2s * x2s / 2835);
+          im[k] = -abs * x * (1 / 3 - 17 * x2s / 315);
+          continue;
+        }
         var sw = Math.sqrt(w[k] / 2);            // sqrt(j w) = sw (1 + j)
         var pr = A / (2 * sw), pi = -pr;         // A / sqrt(j w) = A (1 - j) / (2 sw)
         tanhDiag(B * sw, t);

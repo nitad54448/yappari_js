@@ -95,7 +95,7 @@ Y.Plot3D = (function () {
     c.font = fs + font;
     if (!this.data || !this.data.x.length) {
       c.fillStyle = ink2; c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText('Select datasets to see them in 3D', this.W / 2, this.H / 2);
+      c.fillText((this.data && this.data.empty) || 'Select datasets to see them in 3D', this.W / 2, this.H / 2);
       return;
     }
     var plotW = this.W - 90;
@@ -157,21 +157,28 @@ Y.Plot3D = (function () {
 
   P._bind = function () {
     var self = this, cv = this.canvas, last = null;
-    cv.addEventListener('mousedown', function (e) { last = [e.clientX, e.clientY]; self.dragging = true; e.preventDefault(); });
-    window.addEventListener('mousemove', function (e) {
+    cv.addEventListener('mousedown', function (e) { if (!self.data || !self.data.x.length) return; last = [e.clientX, e.clientY]; self.dragging = true; e.preventDefault(); });
+    window.addEventListener('mousemove', self._winMove = function (e) {
       if (!last) return;
       self.az += (e.clientX - last[0]) * 0.01;
       self.el = Math.max(-1.5, Math.min(1.5, self.el + (e.clientY - last[1]) * 0.01));
       last = [e.clientX, e.clientY];
       if (!self._raf) self._raf = requestAnimationFrame(function () { self._raf = 0; self.draw(); });
     });
-    window.addEventListener('mouseup', function () { if (last) { last = null; self.dragging = false; self.draw(); } });
+    window.addEventListener('mouseup', self._winUp = function () { if (last) { last = null; self.dragging = false; self.draw(); } });
     cv.addEventListener('wheel', function (e) {
+      if (!self.data || !self.data.x.length) return;
       e.preventDefault();
       self.zoom = Math.max(0.3, Math.min(5, self.zoom * Math.exp(-e.deltaY * 0.001)));
       self.draw();
     }, { passive: false });
     cv.addEventListener('dblclick', function () { self.reset(); self.draw(); });
+  };
+
+  P.destroy = function () {
+    if (this._winMove) window.removeEventListener('mousemove', this._winMove);
+    if (this._winUp) window.removeEventListener('mouseup', this._winUp);
+    if (this.ro) this.ro.disconnect();
   };
 
   P.toDataURL = function () { return this.canvas.toDataURL('image/png'); };

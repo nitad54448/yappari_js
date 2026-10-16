@@ -306,7 +306,8 @@ Y.plots = (function () {
     });
     var u = Y.state.zUnitOf(list), uz = u ? ' /' + u : ' (mixed units)';
     var zl = { nyq: '−Zi' + uz, nyqcalc: '−Zi calc' + uz, zr: 'Zr' + uz, zi: 'Zi' + uz, zrdiff: 'Zr − calc' + uz, zidiff: 'Zi − calc' + uz }[mode];
-    return { x: xs, y: ys, z: zs, xlog: fBased, labels: { x: fBased ? 'f /Hz' : 'Zr' + uz, y: 'dataset', z: zl } };
+    var empty = !list.length ? 'Select datasets to see them in 3D' : (needCalc && !S.model.prog ? 'Build a circuit in the Model tab for this 3D view' : '');
+    return { x: xs, y: ys, z: zs, xlog: fBased, empty: empty, labels: { x: fBased ? 'f /Hz' : 'Zr' + uz, y: 'dataset', z: zl } };
   }
 
   function show(tab) {

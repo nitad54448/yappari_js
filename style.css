@@ -219,7 +219,7 @@ body.busy .plot-canvas { cursor: progress; }
 .form-grid .check-hint input { flex: none; }
 .form-grid .check-hint small { margin-top: 0; }
 .form-grid input:not([type=checkbox]), .form-grid select, .form-grid textarea { width: 100%; }
-.form-grid textarea { resize: vertical; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; }
+.form-grid textarea { resize: vertical; font-family: var(--font-code, ui-monospace, monospace); font-size: 12px; }
 table.grid { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 table.grid th { text-align: left; font-weight: 600; color: var(--ink-2); padding: 5px 8px; border-bottom: 1px solid var(--rule); }
 table.grid td { padding: 3px 8px; border-bottom: 1px solid var(--rule-2); vertical-align: middle; }

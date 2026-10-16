@@ -370,10 +370,9 @@ Y.cmd = (function () {
     var job = { cdc: S.model.cdc, fit: fit, shared: shared, lo: b.lo, hi: b.hi, weight: S.settings.weight,
                 method: S.settings.method === 'LM' ? 'LM' : 'LMB', maxIter: S.settings.maxIter, tol: S.settings.tol,
                 sets: list.map(function (ds) { return Object.assign({ id: ds.id, p: Y.state.vector(ds) }, Y.state.unmasked(ds)); }) };
-    snapshot('global fit');
     Y.state.setBusy(true);
     ui.progress(0, -1);
-    ui.toast('Global fit of ' + plural(list.length, 'dataset') + ' running…', 'info');
+    ui.toast('Global fit of ' + plural(list.length, 'dataset') + (S.settings.method !== job.method ? ' (with ' + job.method + ')' : '') + ' running…', 'info');
     var res;
     try {
       running = Y.pool.globalFit(job);
@@ -386,6 +385,7 @@ Y.cmd = (function () {
     }
     if (res.cancelled) { ui.toast('Global fit stopped; the parameters are unchanged.', 'info'); return; }
     if (!res.ok) { ui.toast('Global fit failed: ' + res.msg, 'err'); return; }
+    snapshot('global fit');
     res.sets.forEach(function (r) {
       var ds = Y.state.byId(r.id);
       if (!ds) return;
@@ -577,21 +577,24 @@ Y.cmd = (function () {
   }
   async function saveData() {
     if (!haveSel()) return;
+    var hasDrt = sel().some(function (d) { return !!d.drt; });
     var v = await ui.prompt('Save data', [
       { key: 'exp', label: 'Measured Zr, Zi', type: 'checkbox', value: true },
       { key: 'calc', label: 'Model Zr, Zi', type: 'checkbox', value: !!S.model.prog },
       { key: 'contrib', label: 'Contributions', type: 'checkbox', value: false,
         hint: 'f, Zr, Zi of each part in series of the circuit (partK_ columns); negligible values written as 0.' },
+      { key: 'drt', label: 'DRT', type: 'checkbox', value: hasDrt,
+        hint: 'Appends the computed DRT distribution and spectrum (#drt block) for datasets that have one.' },
       { key: 'sep', label: 'Separator', type: 'select', value: S.settings.sep === 'auto' ? 'tab' : S.settings.sep,
         options: [['tab', 'TAB'], ['semicolon', 'Semicolon'], ['comma', 'Comma'], ['space', 'Space']] }
     ], 'Save', 'One block per dataset; File, Auto (or Table with column headers) reads the file back.');
     if (!v) return;
     if (!v.exp && !(v.calc && S.model.prog)) { ui.toast('Nothing to save: tick the measured or the model values (a model needs a circuit).', 'warn'); return; }
     if (v.contrib && !S.model.prog) { ui.toast('Contributions need a circuit; saved without them.', 'warn'); v.contrib = false; }
-    var txt = Y.writers.dataText(sel(), { sep: v.sep, exp: v.exp, calc: v.calc && !!S.model.prog, contrib: v.contrib },
+    var txt = Y.writers.dataText(sel(), { sep: v.sep, exp: v.exp, calc: v.calc && !!S.model.prog, contrib: v.contrib, drt: v.drt },
       function (ds) { return Y.state.calcFor(ds); }, function (ds) { return Y.state.partsFor(ds); });
     Y.writers.download('yappari_data_' + Y.writers.fileStamp() + '.txt', txt);
-    ui.toast('Saved the data of ' + plural(S.sel.size, 'dataset') + (v.contrib ? ', with contributions' : '') + '.', 'ok');
+    ui.toast('Saved the data of ' + plural(S.sel.size, 'dataset') + (v.contrib ? ', with contributions' : '') + (v.drt && hasDrt ? ', with DRT' : '') + '.', 'ok');
   }
   function saveProject() {
     if (!need(S.datasets.length || S.model.prog, 'Nothing to save yet.')) return;
