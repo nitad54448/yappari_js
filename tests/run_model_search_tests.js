@@ -100,7 +100,7 @@ async function lifecycle(action){
  Object.defineProperty(global,'navigator',{value:{hardwareConcurrency:16},configurable:true});
  global.fetch=async url=>({ok:true,status:200,text:async()=>/priors/.test(url)?'default\t1\ncircuit\tR\t4\n':'R\nR2\nC\n'});
  global.document={createElement:tag=>new Node(tag)};
- Y.ui={toast:msg=>{throw Error(msg)},modal:async opts=>{
+ Y.ui={toast:(msg,kind)=>{if(kind==='err')throw Error(msg)},modal:async opts=>{
   const b=opts.body;
   if(opts.title==='Search models'){
    assert(opts.body.innerHTML.includes('type="range"'));assert(opts.body.innerHTML.includes('value="1"'));
@@ -148,7 +148,7 @@ async function lifecycle(action){
  assert(cancelledAction?cancelled>=1:cancelled===0);
  if(['cancel','reject','noSeed'].includes(action)){assert.equal(applied,0);assert.equal(history,0);assert.deepEqual(ds.p,{});}
  else{assert.equal(applied,1);assert.equal(history,1);assert.equal(ds.p.R1,100);assert.equal(ds.fit.R1,true);
-  assert.equal(modelOpts,undefined,'limits of the current circuit kept by name');assert.equal(meta.weight,action==='applySigma'?'sigma':'mod2');if(action==='applySigma')assert.equal(meta.sigma,'measured');}
+  assert(modelOpts&&modelOpts.limits&&modelOpts.limits.R1,'limits passed to setModel');assert.equal(meta.weight,action==='applySigma'?'sigma':'mod2');if(action==='applySigma')assert.equal(meta.sigma,'measured');}
  assert.equal(calls,['cancel','stopApply'].includes(action)?1:2);
  console.log('PASS lifecycle '+action);
 }

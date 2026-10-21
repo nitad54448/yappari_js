@@ -64,9 +64,9 @@ Y.writers = (function () {
       }
       out.push('');
       if (opts.drt && ds.drt) {
-        var r = ds.drt;
+        var r = ds.drt, u = zu(ds.norm);
         out.push('#drt ' + ds.name + ': ' + r.method + (r.method === 'gold' ? ', ' + r.iterations + ' iterations' : ', lambda ' + e(r.lambda)) +
-                 ', data ' + r.source + ', Rinf ' + e(r.rinf) + ' Ohm, Rpol ' + e(r.rpol) + ' Ohm');
+                 ', data ' + r.source + ', Rinf ' + e(r.rinf) + ' ' + u + ', Rpol ' + e(r.rpol) + ' ' + u);
         out.push(['tau/s', 'f_tau/Hz', 'g(tau)', 'freq/Hz', 'drt_Zr', 'drt_Zi'].join(s));
         var nt = r.tau.length, nf = r.f.length;
         for (var j = 0; j < Math.max(nt, nf); j++) {

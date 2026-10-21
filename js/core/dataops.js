@@ -87,10 +87,10 @@ Y.dataops = (function () {
     if (n < 3) throw new Error('smoothing needs at least 3 points');
     if (w > n) { side = (n - 1) >> 1; w = 2 * side + 1; }
     deg = Math.max(0, Math.min(deg, w - 1));
-    var zr = new Float64Array(n), zi = new Float64Array(n), nc = deg + 1;
+    var zr = new Float64Array(n), zi = new Float64Array(n), nc = deg + 1, a, v;
     for (var i = 0; i < n; i++) {
       var s0 = Math.min(Math.max(0, i - side), n - w), A = new Float64Array(nc * nc), br = new Float64Array(nc), bi = new Float64Array(nc);
-        for (var j = s0; j < s0 + w; j++) {
+      for (var j = s0; j < s0 + w; j++) {
         var x = (j - i) / side, pw = [];
         for (a = 0, v = 1; a < nc; a++, v *= x) pw.push(v);
         for (a = 0; a < nc; a++) {

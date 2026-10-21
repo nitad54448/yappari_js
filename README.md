@@ -54,7 +54,7 @@ Open the [program](https://nitad54448.github.io/yappari_js/index.html) in Chrome
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
-│ EIS  Model  DRT  Log  About                       File▾ Data▾ Analysis▾ │ ⚙ Settings  Dark │
+│ Plots  Model  DRT  Log  About                     File▾ Data▾ Analysis▾ │ ⚙ Settings  Dark │
 ├───────────────────────────────────────────────────────────────┬──────────────────────────┤
 │ plot toolbar (views, Autoscale, Save PNG, Show …)             ┃ Datasets │Parameters│ Fit │
 │                                                               ┃                          │
@@ -70,7 +70,7 @@ Open the [program](https://nitad54448.github.io/yappari_js/index.html) in Chrome
 
 | Tab | Content |
 |---|---|
-| **EIS** | The plots of the selected datasets. The plot type is chosen in the toolbar: Nyquist, Zr, Zi, \|Z\| and θ (Bode), 3D. |
+| **Plots** | The plots of the selected datasets. The plot type is chosen in the toolbar: Nyquist, Zr, Zi, \|Z\| and θ (Bode), 3D. |
 | **Model** | Circuit code, element palette, templates, circuit drawing, table of element equations. |
 | **DRT** | Distribution of relaxation times, rebuilt spectrum, residuals and peak table, one view at a time. |
 | **Log** | Every action and message, with *Restore before* buttons (see [History](#14-history-undo-and-the-log)). |
@@ -420,7 +420,7 @@ are not affected.
 
 ## 8. Plots
 
-### Views (EIS tab)
+### Views (Plots tab)
 
 | View | x | y | Below |
 |---|---|---|---|
@@ -869,16 +869,17 @@ Documentation and the LabVIEW version: https://nitad54448.github.io/yappari-5-1/
 
 In Individual mode, select exactly one dataset and open **Analysis → Search models**. Choose a maximum of 1–7 elements (default **5**) and allowed types (all nine are checked). Put `models_1_elements.txt` through `models_7_elements.txt` in `catalog/` next to `index.html`; extensionless names also work. Files up to the chosen maximum load automatically. Each nonempty line is a Boukamp circuit; lines beginning with `#` are ignored. The file number must match the circuit's element count. Serve the application over HTTP/HTTPS so its catalogue can be fetched.
 
-The search filters and counts eligible models before fitting, then shows a progress bar with completed/remaining models and completed fits. Each eligible circuit gets eight independent random starts by default (selectable by the user) within element default bounds, followed by one final fit starting from the best finite random result. All five use the current solver, weighting, sigma, tolerance and iteration settings. If none of the four random fits produces a finite successful result, the refinement is skipped and reported. Every parameter is free, including Q's exponent and HN's shape parameters. Models with at least as many parameters as real plus imaginary observations are skipped.
+The search filters and counts eligible models before fitting, then shows a progress bar with completed/remaining models and completed fits. Each eligible circuit gets eight independent random starts by default (selectable from 4 to 32) with start values scaled to the measured frequency and impedance window, followed by one final refinement fit starting from the best finite random result. Starts run in rounds of four and stop early once two starts reach the same minimum. All fits use the current solver, weighting, sigma, tolerance and iteration settings. If none of the random fits produces a finite successful result, the refinement is skipped and reported. Every parameter is free, including Q's exponent and HN's shape parameters. Models with at least as many parameters as real plus imaginary observations are skipped.
 
 The search uses `Math.max(1, Math.min(12, (navigator.hardwareConcurrency || 4) - 1))` workers. Small batches let workers fit multiple circuits concurrently when there are more than four workers. The browser reports logical cores, not necessarily physical cores. If workers are unavailable, the existing main-thread fallback runs; Stop then waits for the current individual fit to finish.
 
-The live table retains the best 100 circuits, one row per numbered circuit. **Higher FOM is better**. Ranking follows the same weights as fitting, including real/imaginary sigma weights when supplied. Let `m=2*unmasked_points`, `k=number_of_fitted_parameters`, `e=number_of_elements`, and `SSEw=sum(weighted_residual²)` over real plus imaginary components.
+Circuits with the same elements whose fitted curves differ on the dataset by less than 10% of the residuals (such as Voigt and ladder forms) are grouped into one equivalence class, retaining up to 100 classes in the live table. Two ranking modes are available:
 
-With sigma weights, FOM is `-SSEw - (k + λ*e)*ln(m)`, treating the supplied sigma values as known noise scales. Otherwise FOM is `-m*ln(max(SSEw/weighted_data_energy,1e-24)) - (k + λ*e)*ln(m)`. Weighted data energy uses the same weights and is constant across candidate models; it makes the displayed score invariant to an impedance-unit rescaling. The logarithmic form estimates a common weighted noise scale. These BIC-style scores assume independent real/imaginary errors; they are ranking heuristics for nonlinear circuits with bounds and possible nonidentifiability, not calibrated probabilities.
+- **Bayesian (default)**: ranks classes by posterior probability `P(M | D) ∝ P(D | M) · P(M)`, combining Laplace-approximated model evidence (`ln P(D | M)`) with literature prior weights from `catalog/priors.txt`. Columns show posterior probability `P %`, `Δ ln P` relative to the best class, and `Prior` weight.
+- **BIC with element penalty**: ranks by `FOM` (**higher FOM is better**), with an **Element penalty λ slider** from 0 to 10 (step 0.25, default 1). Let `m=2*unmasked_points`, `k=number_of_fitted_parameters`, `e=number_of_elements`, and `SSEw=sum(weighted_residual²)` over real plus imaginary components. With sigma weights, FOM is `-SSEw - (k + λ*e)*ln(m)`; otherwise `-m*ln(max(SSEw/weighted_data_energy,1e-24)) - (k + λ*e)*ln(m)`.
 
-The setup dialog has an **Element penalty λ slider** from 0 to 10 in steps of 0.25, default 1, with its current value displayed. Parameter count is always penalized; λ=0 disables the additional element preference. λ=1 retains the previous element preference. Masked points contribute to neither fitting nor scoring. RMS and mini-plots remain relative residual diagnostics, independent of the ranking weights. Unreliable fits are excluded: a result must report convergence, have no parameter at a bound, and have finite relative standard errors at most **50% for every fitted parameter**. Unavailable covariance/uncertainty diagnostics also cause rejection. These local uncertainty estimates and the 50% cutoff are practical filters, not proof that a circuit is physically correct. Rejected models are counted in the progress status. The final fit cannot overwrite a better reliable random fit with a failed, unreliable or worse result. The table updates when refinements complete; Stop retains reliable completed starts even when the refinement has not finished. There is no near-best FOM tolerance band: ranking uses FOM directly, with exact ties broken by fewer fitted parameters, then fewer elements.
+By default, converged fits are kept and parameters at a limit, without a standard error, or with SE above the chosen threshold (default 50%) are listed in the **Notes** column; optional checkboxes in the setup dialog can discard such fits instead.
 
-Click any column title to sort ascending/descending. Sorting only changes display order; retention always uses FOM. Rank remains the FOM rank. Residual plots show blue Zr and orange Zi with labeled percentage ticks, a zero line and logarithmic frequency ticks in Hz; each plot scales to its own residual range. The Residuals column sorts by RMS.
+Click any column title to sort ascending/descending. Sorting only changes display order; retention always uses the ranking score (`ln P` or `FOM`). Residual mini-plots show blue Zr and red Zi with labeled percentage ticks, a zero line and logarithmic frequency ticks in Hz; each plot scales to its own residual range. The Residuals column sorts by RMS.
 
-**Stop** retains completed fits, including completed starts of partially fitted circuits. Click a row and **Apply circuit** to stop and install its circuit, best fitted values, bounds, all fit flags and statistics. Applying is undoable. **Cancel** or Escape stops the search and leaves the current model and parameters unchanged. The selected dataset stays protected while the results dialog is open. Worker circuit caches are bounded.
+**Stop** retains completed fits, including completed starts of partially fitted circuits. Click a row (optionally choosing an equivalent form from its dropdown) and **Apply circuit** to stop and install its circuit, best fitted values, parameter limits from the search, all fit flags and statistics. Applying is undoable. **Cancel** or Escape stops the search and leaves the current model and parameters unchanged. The selected dataset stays protected while the results dialog is open. Worker circuit caches are bounded.

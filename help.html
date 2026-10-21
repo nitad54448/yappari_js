@@ -129,7 +129,7 @@ td:first-child { white-space: nowrap; }
 <p>Each dataset keeps its own parameter values for the one circuit; limits and the shared flags of the global fit are common to all.</p>
 
 <h2 id="plots">Plots</h2>
-<p>The EIS tab shows Nyquist, Zr and Zi versus frequency (with residuals), |Z| and phase, and a 3D view of many spectra. Measured points are drawn as markers (masked points hollow), the model as lines. Drag to zoom, <kbd>Shift</kbd>-drag or right-drag to pan, wheel to zoom, double-click to autoscale. Click a legend entry to hide or show it. <i>Save PNG</i> saves the plot on screen.</p>
+<p>The Plots tab shows Nyquist, Zr and Zi versus frequency (with residuals), |Z| and phase, and a 3D view of many spectra. Measured points are drawn as markers (masked points hollow), the model as lines. Drag to zoom, <kbd>Shift</kbd>-drag or right-drag to pan, wheel to zoom, double-click to autoscale. Click a legend entry to hide or show it. <i>Save PNG</i> saves the plot on screen.</p>
 <p>On the Nyquist plot: <i>Label frequency</i> marks the point nearest to a frequency (1k, 2.5M, 10m are accepted), <i>Click labels a point</i> labels by clicking, <i>Square</i> gives a square frame. <i>Show contributions</i> (Model tab) draws each part of the series chain in its own colour as dashed curves, and colours the circuit drawing the same way.</p>
 <p>Settings choose absolute or relative residuals, degrees or radians, equal Nyquist axes, and how many datasets are drawn at most (larger selections are thinned out for drawing only).</p>
 
@@ -247,7 +247,7 @@ td:first-child { white-space: nowrap; }
   <tr><td>Notes</td><td>parameters at a limit, without a standard error, or with one above the chosen % (poorly determined)</td></tr>
   <tr><td>Residuals</td><td>Zr (blue) and Zi (red) residuals in % of |Z| versus log f</td></tr>
 </table>
-<p>Select a row and <i>Apply circuit</i>: the circuit becomes the current one (limits of parameter names that already existed are kept; a warning lists values outside them), the dataset gets the fitted values, and the step can be undone.</p>
+<p>Select a row and <i>Apply circuit</i>: the circuit becomes the current one (with the parameter limits used by the search; a warning lists values outside them), the dataset gets the fitted values, and the step can be undone.</p>
 
 <h2 id="bayes">Bayesian ranking</h2>
 <p>Circuits are ranked by their posterior probability given the spectrum D:</p>
