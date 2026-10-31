@@ -25,6 +25,8 @@
     $('#view-seg').hidden = !VIEWS[tab];
     $('#ptools .tool-sep').hidden = !VIEWS[tab];
     $('#v3d-wrap').hidden = tab !== 'd3';
+    $('#plot-scale-controls').hidden = tab === 'd3';
+    $('#plot-reset3d').hidden = tab !== 'd3';
     $('#pt-nyq').hidden = tab !== 'nyq';
     $('#phint').textContent = tab === 'd3' ? 'Drag to rotate, wheel to zoom, double-click to reset.' :
       tab === 'drt' ? 'Distributions of the selected datasets; spectra, residuals and peaks of the first one. Drag to zoom, double-click to reset.' :

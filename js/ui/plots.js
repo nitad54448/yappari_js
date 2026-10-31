@@ -5,7 +5,7 @@
 Y.plots = (function () {
   'use strict';
   var S = Y.state.S, P = {}, current = 'nyq', dirty = { nyq: true, zr: true, zi: true, bode: true, d3: true }, raf = 0, bodeLast = 'mod';
-  var needAuto = { nyq: true, zr: true, zi: true, bode: true, d3: true };
+  var resetLegend = { nyq: true, zr: true, zi: true, bode: true, d3: true };
 
   function $(s) { return document.querySelector(s); }
   // dataset colours, in turn, from --series-1, --series-2 ... of style.css; colorVar gives the CSS form for HTML
@@ -76,7 +76,7 @@ Y.plots = (function () {
         ey = Float64Array.from(idx, function (kk) { return kind === 'zr' ? ds.sr[kk] : ds.si[kk]; });
         if (kind === 'nyq') ex = Float64Array.from(idx, function (kk) { return ds.sr[kk]; });
       }
-      main.push({ name: ds.name, group: ds.id, x: X, y: Yv, color: col, mode: 'markers', hover: true,
+      main.push({ name: ds.name, group: ds.id, x: X, y: Yv, color: col, mode: 'markers', scaleRole: 'data', hover: true,
                   legend: n < lmax, ds: ds, idx: idx, size: opts.size, ex: ex, ey: ey });
       var midx = [];                                         // masked points stay visible, hollow and pale
       for (k = 0; k < ds.f.length; k++) if (ds.mask[k]) midx.push(k);
@@ -88,10 +88,10 @@ Y.plots = (function () {
       }
       var cv = Y.state.curveFor(ds);
       if (cv) {
-        var xy = curveXY(cv, kind), line = { name: 'Fit', group: 'fit', x: xy[0], y: xy[1], color: col, mode: 'lines', legend: true, width: opts.width };
+        var xy = curveXY(cv, kind), line = { name: 'Fit', group: 'fit', x: xy[0], y: xy[1], color: col, mode: 'lines', scaleRole: 'model', legend: true, width: opts.width };
         main.push(line);
         if (n === 0 && S.settings.contrib && !opts.noContrib && (kind === 'nyq' || kind === 'zr' || kind === 'zi'))
-          Array.prototype.push.apply(main, contribSeries(ds, kind, cv, kind === 'nyq' ? line : null));
+          Array.prototype.push.apply(main, contribSeries(ds, kind, cv, kind === 'nyq' ? line : null).map(function (part) { part.scaleRole = 'model'; return part; }));
       }
       if (cv && (kind === 'zr' || kind === 'zi')) {
         var calc = Y.state.calcFor(ds), rx = new Float64Array(idx.length), ry = new Float64Array(idx.length);
@@ -189,9 +189,18 @@ Y.plots = (function () {
     Y.ui.toast((at >= 0 ? 'Removed' : 'Added') + ' the label at ' + fmtF(fk) + ' in ' + ds.name + '.', 'info');
   }
 
+  function viewChanged(p) {
+    if (S.settings.plotAuto !== p.auto) Y.state.setSetting('plotAuto', p.auto);
+  }
+
   function linkX(a, b) {
-    a.o.onView = function (v) { b.setXView(v.x0, v.x1); };
-    b.o.onView = function (v) { a.setXView(v.x0, v.x1); };
+    function link(from, to, v) {
+      viewChanged(from);
+      to.setXView(v.x0, v.x1, !S.settings.plotAuto);
+      to.auto = S.settings.plotAuto;
+    }
+    a.o.onView = function (v) { link(a, b, v); };
+    b.o.onView = function (v) { link(b, a, v); };
   }
 
   function init() {
@@ -206,6 +215,10 @@ Y.plots = (function () {
                                            onInteract: function () { bodeLast = 'mod'; } });
     P.ph = new Y.Plot2D($('#ph-host'), { xlog: true, xlabel: 'f /Hz', ylabel: phaseLabel(), legend: false, tooltip: tooltip,
                                          onInteract: function () { bodeLast = 'phase'; } });
+    Object.keys(P).forEach(function (k) {
+      P[k].o.onView = function () { viewChanged(P[k]); };
+      P[k].o.onManualView = function () { viewChanged(P[k]); };
+    });
     linkX(P.zr, P.zrRes); linkX(P.zi, P.ziRes); linkX(P.mod, P.ph);
     P.d3 = new Y.Plot3D($('#d3-host'));
     var sel3 = $('#view3d');
@@ -213,7 +226,17 @@ Y.plots = (function () {
 
     ['selection', 'datasets', 'model', 'data'].forEach(function (ev) { Y.bus.on(ev, function () { refresh(true); }); });
     ['params', 'stats', 'theme'].forEach(function (ev) { Y.bus.on(ev, function () { refresh(false); }); });
+    var scale = $('#plot-scale'), auto = $('#plot-auto');
+    scale.addEventListener('change', function () { Y.state.setSetting('plotScale', scale.value); });
+    auto.addEventListener('change', function () { Y.state.setSetting('plotAuto', auto.checked); });
+    function syncScale() {
+      scale.value = S.settings.plotScale; auto.checked = S.settings.plotAuto;
+      Object.keys(P).forEach(function (k) { if (k !== 'd3') P[k].auto = S.settings.plotAuto; });
+      [P.nyq, P.zr, P.zi, P.mod, P.ph].forEach(function (p) { p.o.scaleTo = S.settings.plotScale; });
+    }
+    syncScale();
     Y.bus.on('settings', function (key) {
+      syncScale();
       P.nyq.setOptions({ equal: S.settings.nyqEqual, square: !!S.settings.nyqSquare, legendMax: S.settings.legendMax });
       P.zrRes.o.ylabel = residLabel('Zr'); P.ziRes.o.ylabel = residLabel('Zi'); P.ph.o.ylabel = phaseLabel();
       refresh(key === 'maxPlots' || key === 'nyqEqual' || key === 'nyqSquare' || key === 'phase' || key === 'resid' || key === '*' || key === 'view3d');
@@ -231,17 +254,24 @@ Y.plots = (function () {
 
   function residLabel(part, uz) { return S.settings.resid === 'rel' ? part + ' − calc /%|Z|' : part + ' − calc' + (uz || ' /Ω'); }
 
-  function refresh(auto) {
-    if (auto) Object.keys(needAuto).forEach(function (k) { needAuto[k] = true; });
+  function refresh(reset) {
+    if (reset) Object.keys(resetLegend).forEach(function (k) { resetLegend[k] = true; });
     Object.keys(dirty).forEach(function (k) { dirty[k] = true; });
     if (raf) return;
     raf = requestAnimationFrame(function () { raf = 0; render(current); });
   }
 
-  function setAuto(tab, list) {
-    if (!needAuto[tab]) return;
-    needAuto[tab] = false;
-    list.forEach(function (p) { p.auto = true; p.hidden.clear(); });
+  function resetHidden(tab, list) {
+    if (!resetLegend[tab]) return;
+    resetLegend[tab] = false;
+    list.forEach(function (p) { p.hidden.clear(); });
+  }
+
+  function setSeries(p, series) {
+    // The first nonempty view needs limits even when automatic updates are disabled.
+    p.auto = S.settings.plotAuto || !p.series.length;
+    p.setSeries(series, true);
+    p.auto = S.settings.plotAuto;
   }
 
   function render(tab) {
@@ -260,23 +290,23 @@ Y.plots = (function () {
     }
     switch (tab) {
       case 'nyq':
-        setAuto('nyq', [P.nyq]);
+        resetHidden('nyq', [P.nyq]);
         P.nyq.notes = notesFor(list);
-        P.nyq.setSeries(build('nyq', list).main, true);
+        setSeries(P.nyq, build('nyq', list).main);
         break;
       case 'zr':
-        setAuto('zr', [P.zr, P.zrRes]); s = build('zr', list);
-        P.zr.setSeries(s.main, true); P.zrRes.setSeries(s.res, true);
-        if (!P.zr.auto && P.zr.view) P.zrRes.setXView(P.zr.view.x0, P.zr.view.x1);
+        resetHidden('zr', [P.zr, P.zrRes]); s = build('zr', list);
+        setSeries(P.zr, s.main); setSeries(P.zrRes, s.res);
+        if (!P.zr.auto && P.zr.view) P.zrRes.setXView(P.zr.view.x0, P.zr.view.x1, true);
         break;
       case 'zi':
-        setAuto('zi', [P.zi, P.ziRes]); s = build('zi', list);
-        P.zi.setSeries(s.main, true); P.ziRes.setSeries(s.res, true);
-        if (!P.zi.auto && P.zi.view) P.ziRes.setXView(P.zi.view.x0, P.zi.view.x1);
+        resetHidden('zi', [P.zi, P.ziRes]); s = build('zi', list);
+        setSeries(P.zi, s.main); setSeries(P.ziRes, s.res);
+        if (!P.zi.auto && P.zi.view) P.ziRes.setXView(P.zi.view.x0, P.zi.view.x1, true);
         break;
       case 'bode':
-        setAuto('bode', [P.mod, P.ph]);
-        P.mod.setSeries(build('mod', list).main, true); P.ph.setSeries(build('phase', list).main, true);
+        resetHidden('bode', [P.mod, P.ph]);
+        setSeries(P.mod, build('mod', list).main); setSeries(P.ph, build('phase', list).main);
         break;
       case 'd3':
         P.d3.setData(data3d(list));
@@ -359,7 +389,7 @@ Y.plots = (function () {
   function imagesFor(ds, w, h) {
     var uz = ' /' + Y.state.zUnit(ds), L = Y.theme.get('light');
     var one = [ds], out = {}, nq = build('nyq', one, { size: 4, width: 1.6, noContrib: true, report: true }), zr = build('zr', one, { size: 4, noContrib: true, report: true }), zi = build('zi', one, { size: 4, noContrib: true, report: true });
-    function img(series, o, hh) { return Y.Plot2D.image(series, Object.assign({ legend: false, theme: 'light' }, o), w, hh || h); }
+    function img(series, o, hh) { return Y.Plot2D.image(series, Object.assign({ legend: false, theme: 'light', scaleTo: S.settings.plotScale }, o), w, hh || h); }
     out.nyq = img(nq.main, { xlabel: 'Zr' + uz, ylabel: '−Zi' + uz, equal: S.settings.nyqEqual, square: !!S.settings.nyqSquare });
     out.zr = img(zr.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zr' + uz });
     out.zi = img(zi.main, { xlog: true, xlabel: 'f /Hz', ylabel: 'Zi' + uz });

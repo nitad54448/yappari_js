@@ -224,6 +224,8 @@ Y.paramsPanel = (function () {
       { key: 'simEnd', label: 'End frequency /Hz', type: 'num', positive: true },
       { key: 'simPoints', label: 'Points, log spaced', type: 'int', min: 2, max: Y.state.LIMITS.points }] },
     { legend: 'Plots', fields: [
+      { key: 'plotScale', label: 'Scale axes to', type: 'select', options: [['data', 'Scale to data'], ['model', 'Scale to model'], ['both', 'Scale to both']], hint: 'Uses the other source if the chosen one has no visible, usable points. Also in the plot toolbar.' },
+      { key: 'plotAuto', label: 'Autoscale', type: 'check', hint: 'Update axis limits automatically. Zoom or pan to turn off; double-click a plot to turn on.' },
       { key: 'maxPlots', label: 'Datasets drawn at most', type: 'int', min: 1, hint: 'Larger selections are thinned out evenly for drawing; fits use all of them.' },
       { key: 'nyqEqual', label: 'Same scale on both Nyquist axes', type: 'check' },
       { key: 'nyqSquare', label: 'Square Nyquist plot', type: 'check', hint: 'Square frame and saved image, also in the Nyquist toolbar. With the same scale on both axes, both axes span the same range.' },

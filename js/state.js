@@ -28,7 +28,7 @@ Y.state = (function () {
   function defaults() {
     return { sep: 'auto', method: 'TRDL', weight: 'mod', maxIter: 2500, tol: 1e-12,
              simStart: 1e-3, simEnd: 1e6, simPoints: 128, maxPlots: 60, legendMax: 24,
-             nyqEqual: true, nyqSquare: false, resid: 'abs', phase: 'deg', view3d: 'nyq', useSigma: false, theme: 'system', contrib: false,
+             nyqEqual: true, nyqSquare: false, plotScale: 'data', plotAuto: true, resid: 'abs', phase: 'deg', view3d: 'nyq', useSigma: false, theme: 'system', contrib: false,
              drtMethod: 'tikhonov', drtSource: 'both', drtLambda: -3, drtIter: Math.log10(5e4), drtX: 'f' };   // Gold: 50 000 iterations
   }
 
@@ -45,6 +45,7 @@ Y.state = (function () {
   function restore() {
     var st = load('settings');
     if (st) S.settings = cleanSettings(st);
+    S.settings.plotScale = 'data'; // Always frame newly loaded measurements on startup.
     var ov = load('elements');
     if (ov) Y.elementOverrides = cleanElementOverrides(ov);
     var m = load('model');
@@ -70,6 +71,7 @@ Y.state = (function () {
     weight: function (v) { return own(Y.fit.weightModes, v); },
     maxIter: validMaxIter, tol: positive, simStart: positive, simEnd: positive,
     simPoints: intIn(2, LIMITS.points), maxPlots: intIn(1, Infinity), legendMax: intIn(0, Infinity),
+    plotScale: oneOf('data', 'model', 'both'),
     resid: oneOf('abs', 'rel'), phase: oneOf('deg', 'rad'), theme: oneOf('system', 'light', 'dark'),
     view3d: oneOf('nyq', 'nyqcalc', 'zr', 'zi', 'zrdiff', 'zidiff'),
     drtMethod: oneOf('tikhonov', 'fisk', 'gold'), drtSource: oneOf('both', 're', 'im'), drtX: oneOf('f', 'tau'),

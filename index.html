@@ -33,8 +33,13 @@
         <button type="button" role="tab" data-view="nyq">Nyquist</button><button type="button" role="tab" data-view="zr">Zr</button><button type="button" role="tab" data-view="zi">Zi</button><button type="button" role="tab" data-view="bode">|Z|, θ</button><button type="button" role="tab" data-view="d3">3D</button>
       </div>
       <span class="tool-sep" aria-hidden="true"></span>
-      <button type="button" data-plot-action="auto">Autoscale</button>
-      <button type="button" data-plot-action="png">Save PNG</button>
+      <span class="pt-group" id="plot-scale-controls">
+        <select id="plot-scale" aria-label="Scale axes to" title="Choose which curves determine the axis limits">
+          <option value="data">Scale to data</option><option value="model">Scale to model</option><option value="both">Scale to both</option>
+        </select>
+        <label class="chk" title="Update axis limits automatically. Zooming or panning turns this off; double-clicking the plot turns it on."><input type="checkbox" id="plot-auto" checked> Autoscale</label>
+      </span>
+      <button type="button" id="plot-reset3d" data-plot-action="auto" hidden>Reset view</button>
       <label class="v3d" id="v3d-wrap" hidden>View
         <select id="view3d">
           <option value="nyq">Nyquist, measured</option><option value="nyqcalc">Nyquist, model</option>
@@ -43,11 +48,12 @@
         </select>
       </label>
       <span class="pt-group" id="pt-nyq">
-        <button type="button" data-plot-action="label">Label frequency…</button>
-        <button type="button" data-plot-action="unlabel">Clear labels</button>
         <label class="chk"><input type="checkbox" id="label-click"> Click labels a point</label>
         <label class="chk" title="Square frame and saved image. With the same scale on both axes (Settings), both axes span the same range."><input type="checkbox" id="nyq-square"> Square</label>
+        <button type="button" data-plot-action="label">Label frequency…</button>
+        <button type="button" data-plot-action="unlabel">Clear labels</button>
       </span>
+      <button type="button" data-plot-action="png">Save PNG</button>
       <span class="phint" id="phint"></span>
       <span class="note" id="plot-note"></span>
     </div>

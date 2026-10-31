@@ -435,6 +435,16 @@ uses the same scale on both axes unless unticked in Settings. *Square* (Nyquist 
 and the saved image square, so that with the same scale both axes span the same range. Large selections are thinned out evenly for drawing
 (*Datasets drawn at most*, Settings); fits always use all datasets.
 
+The 2D plot toolbar offers **Scale to data** (default), **Scale to model**, and **Scale to both**.
+Only the chosen source determines the axis limits; all visible curves are still drawn, clipped at the axes.
+Model contributions follow the model setting, masked points do not affect scaling, and residual panels
+scale to their residual values. If the chosen source has no visible, usable points, the available source is used.
+The **Autoscale** checkbox is on by default: limits follow changes to data, selection, circuit and parameters.
+Turn it off to hold the current limits. Changing the scale source while it is off takes effect when Autoscale
+is enabled again. Zooming or panning turns Autoscale off; double-clicking turns it back on.
+These choices are shared by the 2D spectrum views and saved with settings. On startup, the scale source always
+resets to **Scale to data**; Autoscale keeps its saved setting. The 3D view has a separate **Reset view** button.
+
 ### What is drawn
 
 Click a legend entry to hide or show it; double-click the plot to show everything again:
@@ -734,6 +744,8 @@ more), and are lost when the page is closed: *Save project* keeps a state for go
 | | Use measured standard deviations as weights | off | w = 1/σ² when the file has σ. |
 | Simulation | Start, end frequency, points | 10⁻³ Hz, 10⁶ Hz, 128 | Log-spaced grid for *Simulate spectrum*; positive frequencies, 2 to 100 000 points. |
 | Plots | Datasets drawn at most | 60 | Larger selections are thinned out for drawing. |
+| | Scale axes to | Scale to data | Or Scale to model / Scale to both; also in the 2D plot toolbar. |
+| | Autoscale | on | Update limits automatically; zoom or pan turns it off, double-click turns it on. |
 | | Same scale on both Nyquist axes | on | |
 | | Square Nyquist plot | off | Square frame and saved image, also in the Nyquist toolbar. |
 | | Residuals | Absolute | Or relative, % of \|Z\|. |
@@ -830,6 +842,7 @@ Run the numerical and XML suites from the project directory:
 ```sh
 node tests/run_core_tests.js
 node tests/run_xml_tests.js
+node tests/run_plot_tests.js
 ```
 
 For browser tests, install Python Playwright, Pillow and Chromium once, then run:

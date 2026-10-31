@@ -2,11 +2,13 @@
  *  new Y.Plot2D(hostElement | null, opts)   (null host = offscreen, give opts.width / opts.height)
  *  opts: xlog, ylog, equal (same scale on both axes), square (square canvas and frame, centred in the host),
  *        xlabel, ylabel, legend, tooltip(series, i) -> html,
- *        onView(view) called after the user changes the view, onInteract(), theme ('light': the light theme whatever
+ *        onView(view) called after the user changes the view, onManualView() when zoom/pan disables autoscaling,
+ *        onInteract(), theme ('light': the light theme whatever
  *        the page shows, for reports). Colours, fonts and sizes come from style.css (Y.theme); the size and width of a
  *        series are given for 3.2 px markers and 1.5 px lines and scale with --plot-marker-size and --plot-line-width.
  *  series: { name, group, x, y (arrays, data units), color, mode 'markers'|'lines', size, width,
- *            legend (show entry), hover (tooltip on its points) }
+ *            legend (show entry), hover (tooltip on its points), scaleRole ('data'|'model'), noAuto }
+ *  opts.scaleTo: 'data', 'model' or 'both' (default); falls back to available series if the chosen source has no usable points.
  *  The view is stored in axis units (log10 for log axes).
  *  Mouse: drag = zoom box (thin box = one axis), shift-drag or right-drag = pan, wheel = zoom,
  *         double-click = autoscale, click on a legend entry = hide/show that group (data, Fit, a contribution).
@@ -65,7 +67,7 @@ Y.Plot2D = (function () {
 
   function Plot2D(host, opts) {
     this.o = Object.assign({ xlog: false, ylog: false, equal: false, square: false, xlabel: '', ylabel: '', legend: true, legendMax: 24,
-                             tooltip: null, onView: null, onInteract: null, empty: '' }, opts || {});
+                             tooltip: null, onView: null, onInteract: null, empty: '', scaleTo: 'both' }, opts || {});
     this.host = host; this.series = []; this.view = null; this.auto = true; this.hidden = new Set();
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d');
@@ -120,10 +122,22 @@ Y.Plot2D = (function () {
   // a series with a parent (contributions of a dataset) is hidden with it
   P.visibleSeries = function () { var h = this.hidden; return this.series.filter(function (s) { return !h.has(s.group) && !(s.parent != null && h.has(s.parent)); }); };
 
+  P.scaleSeries = function () {
+    var self = this, series = this.visibleSeries().filter(function (s) { return !s.noAuto; });
+    if (this.o.scaleTo === 'data' || this.o.scaleTo === 'model') {
+      var chosen = series.filter(function (s) { return s.scaleRole === self.o.scaleTo; });
+      var usable = chosen.some(function (s) {
+        for (var i = 0; i < s.x.length; i++) if (isFinite(self.tx(s.x[i])) && isFinite(self.ty(s.y[i]))) return true;
+        return false;
+      });
+      if (usable) return chosen;
+    }
+    return series;
+  };
+
   P.autoscale = function (silent) {
     var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, self = this;
-    this.visibleSeries().forEach(function (s) {
-      if (s.noAuto) return;
+    this.scaleSeries().forEach(function (s) {
       for (var i = 0; i < s.x.length; i++) {
         var a = self.tx(s.x[i]), b = self.ty(s.y[i]);
         if (!isFinite(a) || !isFinite(b)) continue;
@@ -158,12 +172,12 @@ Y.Plot2D = (function () {
     } else this.view = { x0: v.x0, x1: v.x0 + w, y0: v.y0, y1: v.y0 + h };
   };
 
-  P.setXView = function (x0, x1) {
+  P.setXView = function (x0, x1, keepY) {
     if (!this.view) return;
     this.view.x0 = x0; this.view.x1 = x1; this.auto = false;
+    if (keepY) { this.draw(); return; }
     var self = this, y0 = Infinity, y1 = -Infinity;
-    this.visibleSeries().forEach(function (s) {            // fit y to the visible x range
-      if (s.noAuto) return;
+    this.scaleSeries().forEach(function (s) {              // fit y to the visible x range
       for (var i = 0; i < s.x.length; i++) {
         var a = self.tx(s.x[i]), bb = self.ty(s.y[i]);
         if (a >= x0 && a <= x1 && isFinite(bb)) { if (bb < y0) y0 = bb; if (bb > y1) y1 = bb; }
@@ -307,6 +321,7 @@ Y.Plot2D = (function () {
         var b = self.box, v = d.v, dx = (p[0] - d.x) / (b.x1 - b.x0) * (v.x1 - v.x0), dy = (p[1] - d.y) / (b.y1 - b.y0) * (v.y1 - v.y0);
         self.view = { x0: v.x0 - dx, x1: v.x1 - dx, y0: v.y0 + dy, y1: v.y1 + dy };
         self.auto = false;
+        if (self.o.onManualView) self.o.onManualView();
       }
       self.draw();
     });
@@ -321,6 +336,7 @@ Y.Plot2D = (function () {
         else if (w >= 5) self.view = { x0: X0, x1: X1, y0: v.y0, y1: v.y1 };
         else if (h >= 5) self.view = { x0: v.x0, x1: v.x1, y0: Y0, y1: Y1 };
         self.auto = false;
+        if (self.o.onManualView) self.o.onManualView();
         if (self.o.equal) self._equalize('center');
         self.draw();
         if (self.o.onView) self.o.onView(self.view);
@@ -328,7 +344,7 @@ Y.Plot2D = (function () {
         if (self.o.onView) self.o.onView(self.view);
       } else {
         var hit = self.legendHits.filter(function (h2) { return d.x >= h2.x0 && d.x <= h2.x1 && d.y >= h2.y0 && d.y <= h2.y1; })[0];
-        if (hit) { if (self.hidden.has(hit.group)) self.hidden.delete(hit.group); else self.hidden.add(hit.group); self.draw(); }
+        if (hit) { if (self.hidden.has(hit.group)) self.hidden.delete(hit.group); else self.hidden.add(hit.group); if (self.auto) self.autoscale(true); else self.draw(); }
         else if (self.o.onPointClick && (!self.o.pointClickActive || self.o.pointClickActive())) {
           var nb = self._nearest([d.x, d.y], 144);
           if (nb) self.o.onPointClick(nb.s, nb.i);
@@ -345,6 +361,7 @@ Y.Plot2D = (function () {
       var k = Math.exp(Math.max(-1, Math.min(1, e.deltaY * 0.0015))), ax = self.ix(p[0]), ay = self.iy(p[1]), v = self.view;
       self.view = { x0: ax + (v.x0 - ax) * k, x1: ax + (v.x1 - ax) * k, y0: ay + (v.y0 - ay) * k, y1: ay + (v.y1 - ay) * k };
       self.auto = false;
+      if (self.o.onManualView) self.o.onManualView();
       if (self.o.equal) self._equalize('center');
       self.draw();
       clearTimeout(self._wt);
