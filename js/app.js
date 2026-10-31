@@ -38,15 +38,22 @@
   Y.app = { showTab: showTab, tab: function () { return curTab; }, fitMode: fitMode };
 
   // Fit mode; the controls in the Fit panel share the Settings form binding.
-  function fitMode() { return Y.state.load('fitmode') === 'global' ? 'global' : 'single'; }
+  function fitMode() {
+    if (S.datasets && S.datasets.length <= 1) return 'single';
+    return Y.state.load('fitmode') === 'global' ? 'global' : 'single';
+  }
   function syncFitbar() {
-    var g = fitMode() === 'global';
+    var multi = S.datasets.length > 1;
+    var row = $('#fit-mode-row'), hint = $('#fit-mode-hint');
+    if (row) row.hidden = !multi;
+    if (hint) hint.hidden = !multi;
+    var g = multi && fitMode() === 'global';
     document.querySelectorAll('[data-fitmode]').forEach(function (b) { b.setAttribute('aria-pressed', String((b.getAttribute('data-fitmode') === 'global') === g)); });
     var button = $('#btn-fit');
     button.dataset.tip = g ? 'Global fit of selected datasets (F9)' : 'Fit selected datasets (F9)';
     Y.ui.able(button, Y.cmd.why('fit'));
-    $('#fit-mode-hint').textContent = g ? 'One fit of all selected datasets. Parameters ticked “shared” in Settings get one value for all, the others one value per dataset.'
-                                        : 'Each selected dataset is fitted on its own, in parallel.';
+    if (hint) hint.textContent = g ? 'One fit of all selected datasets. Parameters ticked “shared” in Settings get one value for all, the others one value per dataset.'
+                                   : 'Each selected dataset is fitted on its own, in parallel.';
   }
   function syncTarget() {
     var n = S.sel.size, f = Y.state.first(), why = n && S.model.prog && !S.busy ? Y.cmd.why('fit') : '';   // reasons not shown otherwise
@@ -143,7 +150,7 @@
     document.querySelectorAll('[data-fitmode]').forEach(function (b) {
       b.addEventListener('click', function () { Y.state.store('fitmode', b.getAttribute('data-fitmode')); syncFitbar(); syncTarget(); Y.cmd.syncButtons(); Y.bus.emit('fitmode'); });
     });
-    Y.bus.on('selection', syncTarget); Y.bus.on('datasets', syncTarget); Y.bus.on('model', syncTarget);
+    Y.bus.on('selection', syncTarget); Y.bus.on('datasets', syncTarget); Y.bus.on('datasets', syncFitbar); Y.bus.on('model', syncTarget);
     Y.bus.on('params', syncTarget); Y.bus.on('busy', syncTarget);
     var sideTabs = Array.prototype.slice.call(document.querySelectorAll('[data-side]'));
     sideTabs.forEach(function (b) { b.addEventListener('click', function () { showSide(b.getAttribute('data-side')); }); });
