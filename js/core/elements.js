@@ -45,7 +45,7 @@ Y.defineCore('elements', function (Y) {
 
   E.L = {
     kind: 'L', title: 'Inductor', formula: 'Z = jωL',
-    params: [P('', 'L', 'H', 1e-6, 1e-15, 1e3, 'log', true)],
+    params: [P('', 'L', 'H', 100, 1e-15, 50000, 'log', true)],
     z: function (w, p, o, re, im) {
       var L = p[o];
       for (var k = 0; k < w.length; k++) { re[k] = 0; im[k] = w[k] * L; }

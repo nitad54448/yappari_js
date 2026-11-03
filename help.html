@@ -98,7 +98,7 @@ td:first-child { white-space: nowrap; }
   <li><b>Set start values</b> in the Parameters side panel: type a value, or turn the mouse wheel over a parameter. Tick <i>fit</i> for the parameters to fit.</li>
   <li><b>Fit</b>: click Fit in the top bar or press <kbd>F9</kbd>. Several selected datasets are fitted in parallel, each on its own; switch the mode to Global (Fit side panel) for one fit with shared parameters.</li>
   <li><b>Many spectra</b>: fit one, copy its values to all datasets (Parameters panel, <i>Copy these values to: All datasets</i>), select all with <kbd>Ctrl</kbd>+<kbd>A</kbd> in the list and fit.</li>
-  <li><b>Save</b> parameters, data, a report or the whole project from the File menu (<kbd>Ctrl</kbd>+<kbd>S</kbd> saves the project).</li>
+  <li><b>Save</b> the project from File (<kbd>Ctrl</kbd>+<kbd>S</kbd>), parameters and data from Data, or an HTML report from Analysis.</li>
 </ol>
 <p>Not sure which circuit to use? Analysis, <a href="#search">Search models</a> fits a catalogue of circuits to one spectrum and ranks them.</p>
 
@@ -278,7 +278,7 @@ param    Q_n       normal  0.85  0.15</code></pre>
 <p>Parameter names: R, C, L, Q, Q_n, W, Wo_A, Wo_B, Ws_A, Ws_B, G_R, G_tau, HN_R, HN_tau, HN_a, HN_b. Lines that cannot be read are reported in the status line of the search and skipped.</p>
 <p>The shipped draft weights each circuit as 1 + its occurrences in the literature list of Van Haeverbeke et al. (circuits from published studies in seven domains, with their DOIs in the comments) + 2 × the reviews and benchmarks that present it as a standard model (Lazanas &amp; Prodromidis; Gamry; Zhang et al.; Schaeffer, Gasper et al.). Adapt it to your field: raise the circuits your community uses, set 0 for those that make no physical sense for your system.</p>
 
-<h2 id="saving">Saving and reports (File menu)</h2>
+<h2 id="saving">Saving and reports</h2>
 <table>
   <tr><th>Entry</th><th>Writes</th></tr>
   <tr><td>Save project</td><td>a <code>.json</code> file with the circuit, limits, settings, all datasets (data, masks, σ, labels, values, fit statistics, normalisation) and the Log; File, Open project or a drop reads it back</td></tr>

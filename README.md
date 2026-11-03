@@ -45,8 +45,7 @@ Open the [program](https://nitad54448.github.io/yappari_js/index.html) in Chrome
 6. **Many spectra**: once one dataset fits well, *Parameters → Copy these values to: All datasets*, select all
    datasets (Ctrl+A in the list) and press *Fit*: they are fitted in parallel, each from its own start
    values. Switch the mode to **Global** to fit them together with shared parameters.
-7. **Save**: *File → Save parameters of selected*, *Save data of selected…*, *Report of selected datasets* or
-   *Save project* (Ctrl+S).
+7. **Save**: *Save project* (File menu, Ctrl+S), *Save parameters of selected*, *Save data of selected…* (Data menu), or *Report of selected datasets* (Analysis menu).
 
 ---
 
@@ -88,9 +87,9 @@ the plots must be plain values (#hex, rgb(), rgba()).
 
 | Menu | Items |
 |---|---|
-| **File** | Read: Auto (detect the format) · **separator** · 3 columns · Table with column headers · ZView · **separator** · BioLogic MPT · Gamry DTA · VersaStudio .par · Custom format, xml. Open project · Save project. Save parameters of selected · Save data of selected · Report of selected datasets. Load 24 demo spectra. |
-| **Data** | Undo the last command. Mask points in the current view · Unmask selected datasets · Delete points in the current view · Delete selected datasets. Normalize · Negate Zi. Add random noise · Spline to a log frequency grid · Smooth (Savitzky–Golay) · Average selected datasets. Simulate spectrum. |
-| **Analysis** | Show / Save the DRT of selected datasets · DRT λ search. Z-HIT of selected datasets · Kramers–Kronig test of selected datasets. Label a frequency on the Nyquist plot · Clear Nyquist labels. Command line help. |
+| **File** | Read: Auto (detect the format) · **separator** · 3 columns · Table with column headers · ZView · **separator** · BioLogic MPT · Gamry DTA · VersaStudio .par · Custom format, xml. Open project · Save project · **separator** · Load 24 demo spectra. |
+| **Data** | Undo the last command. Mask points in the current view · Unmask selected datasets · Delete points in the current view · Delete selected datasets. Normalize · Negate Zi. Add random noise · Spline to a log frequency grid · Smooth (Savitzky–Golay) · Average selected datasets. Save parameters of selected · Save data of selected · **separator** · Simulate spectrum. |
+| **Analysis** | Report of selected datasets · **separator** · Show / Save the DRT of selected datasets · DRT λ search. Z-HIT of selected datasets · Kramers–Kronig test of selected datasets. Label a frequency on the Nyquist plot · Clear Nyquist labels. Command line help. |
 
 Items that cannot run in the current situation are greyed out, and their tooltip says why: no data loaded, no dataset
 selected, no circuit, no masked points to unmask, no labels to clear, nothing to undo, a fit running, and so on. The
