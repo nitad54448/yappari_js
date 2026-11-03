@@ -36,7 +36,7 @@ Y.defineCore('elements', function (Y) {
 
   E.C = {
     kind: 'C', title: 'Capacitor', formula: 'Z = 1/(jωC)',
-    params: [P('', 'C', 'F', 1e-9, 1e-16, 1e3, 'log', true)],
+    params: [P('', 'C', 'F', 1e-9, 1e-14, 1e5, 'log', true)],
     z: function (w, p, o, re, im) {
       var C = p[o];
       for (var k = 0; k < w.length; k++) { re[k] = 0; im[k] = -1 / (w[k] * C); }
@@ -45,7 +45,7 @@ Y.defineCore('elements', function (Y) {
 
   E.L = {
     kind: 'L', title: 'Inductor', formula: 'Z = jωL',
-    params: [P('', 'L', 'H', 100, 1e-15, 50000, 'log', true)],
+    params: [P('', 'L', 'H', 100, 1e-10, 1e5, 'log', true)],
     z: function (w, p, o, re, im) {
       var L = p[o];
       for (var k = 0; k < w.length; k++) { re[k] = 0; im[k] = w[k] * L; }
@@ -54,7 +54,7 @@ Y.defineCore('elements', function (Y) {
 
   E.Q = {
     kind: 'Q', title: 'Constant phase element (CPE)', formula: 'Z = 1/(Q·(jω)^n)',
-    params: [P('', 'Q', 'F·s^(n−1)', 1e-9, 1e-16, 1e3, 'log', true),
+    params: [P('', 'Q', 'F·s^(n−1)', 1e-9, 1e-14, 1e5, 'log', true),
              P('_n', 'n', '', 1, 0, 1.2, 'lin', false)],
     z: function (w, p, o, re, im) {
       var Q = p[o], n = p[o + 1], c = Math.cos(n * HALF_PI), s = Math.sin(n * HALF_PI);
@@ -108,21 +108,21 @@ Y.defineCore('elements', function (Y) {
   E.Wo = {
     kind: 'Wo', title: 'Warburg open (finite length, reflective boundary)', formula: 'Z = Aw/√(jω) · coth(B·√(jω))',
     params: [P('_A', 'Aw', 'Ω·s^−½', 100, 1e-6, 1e10, 'log', true),
-             P('_B', 'B', 's^½', 1, 1e-6, 1e6, 'log', true)],
+             P('_B', 'B', 's^½', 1, 1e-4, 1e3, 'log', true)],
     z: finiteWarburg(true)
   };
 
   E.Ws = {
     kind: 'Ws', title: 'Warburg short (finite length, transmissive boundary)', formula: 'Z = Aw/√(jω) · tanh(B·√(jω))',
     params: [P('_A', 'Aw', 'Ω·s^−½', 100, 1e-6, 1e10, 'log', true),
-             P('_B', 'B', 's^½', 1, 1e-6, 1e6, 'log', true)],
+             P('_B', 'B', 's^½', 1, 1e-4, 1e3, 'log', true)],
     z: finiteWarburg(false)
   };
 
   E.G = {
     kind: 'G', title: 'Gerischer', formula: 'Z = R/√(1 + jωτ)',
     params: [P('_R', 'R', 'Ω', 100, 1e-3, 1e10, 'log', true),
-             P('_tau', 'τ', 's', 1e-3, 1e-12, 1e6, 'log', true)],
+             P('_tau', 'τ', 's', 1e-3, 1e-9, 1e4, 'log', true)],
     z: function (w, p, o, re, im) {
       var R = p[o], tau = p[o + 1];
       for (var k = 0; k < w.length; k++) {
@@ -136,7 +136,7 @@ Y.defineCore('elements', function (Y) {
   E.HN = {
     kind: 'HN', title: 'Havriliak–Negami', formula: 'Z = R/(1 + (jωτ)^α)^β',
     params: [P('_R', 'R', 'Ω', 100, 1e-3, 1e10, 'log', true),
-             P('_tau', 'τ', 's', 1e-3, 1e-12, 1e6, 'log', true),
+             P('_tau', 'τ', 's', 1e-3, 1e-9, 1e4, 'log', true),
              P('_a', 'α', '', 1, 0.01, 1, 'lin', false),
              P('_b', 'β', '', 1, 0.01, 1, 'lin', false)],
     z: function (w, p, o, re, im) {
