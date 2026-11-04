@@ -548,6 +548,10 @@ $\int g\,d\ln\tau$, the misfit, and the grid size.
 Computes every selected dataset with the current settings and saves a text file: a summary line per dataset
 ($R_\infty$, $R_\text{pol}$, misfit, and f, R, C of each peak), then each distribution, rebuilt spectrum and peak list.
 
+### Inductive data and DRT
+
+The DRT in Yappari calculates a real, non-negative distribution $g(\tau) \ge 0$ using a series resistive-capacitive ($RC$) Voigt kernel. If the measured spectrum contains inductive features (such as high-frequency lead/cable inductance or low-frequency inductive loops from intermediate adsorption, pitting or dissolution), mask these points before computing the DRT to avoid distortion of $R_\infty$ and capacitive relaxation peaks. For full-spectrum validation of data that include inductive behavior, use the **Kramers–Kronig test** (Lin-KK, *Analysis menu*), which explicitly supports inductive branches ($j\omega L$).
+
 ---
 
 ## 10. Z-HIT
@@ -876,6 +880,12 @@ No library and no build step: plain JavaScript, canvas plots, one page.
 N. Dragoe, *Materials Lab* **2024**, 3, 230031, https://doi.org/10.54227/mlab.20230031
 
 Documentation and the LabVIEW version: https://nitad54448.github.io/yappari-5-1/
+
+### DRT and Kramers–Kronig references
+
+* B. A. Boukamp, *J. Electrochem. Soc.* **1995**, 142, 1885 (Kramers–Kronig test); M. Schönleber, D. Klotz, E. Ivers-Tiffée, *Electrochim. Acta* **2014**, 131, 20 (Lin-KK).
+* B. A. Boukamp, Distribution (function) of relaxation times, successor to complex nonlinear least squares analysis of electrochemical impedance spectroscopy?, *J. Phys. Energy* **2020**, 2, 042001, https://doi.org/10.1088/2515-7655/aba9e0.
+* K. T. Malkow, Reply to 'A comment on "On the futility of the Fuoss–Kirkwood relation" by Gradišar & Boškoski (*Electrochem. Commun.* 182 (2026) 108100)', *SSRN* **2026**, https://ssrn.com/abstract=6952403; Ž. Gradišar, P. Boškoski, *Electrochem. Commun.* **2026**, 182, 108100, https://doi.org/10.1016/j.elecom.2025.108100.
 
 ## Catalogue model search
 

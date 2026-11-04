@@ -216,6 +216,7 @@ td:first-child { white-space: nowrap; }
 <h2 id="drt">Distribution of relaxation times (DRT tab)</h2>
 <p class="eq">Z(ω) = R<sub>∞</sub> + R<sub>pol</sub> ∫ g(τ) / (1 + jωτ) d ln τ,  ∫ g d ln τ = 1</p>
 <p>R<sub>∞</sub> is fitted with the distribution, R<sub>pol</sub> is the area of g. Methods: Tikhonov with non-negativity (regularisation λ), Fisk (iterated Tikhonov), Gold (multiplicative deconvolution; fewer iterations = smoother). The data can be Zr and Zi, Zi only or Zr only; masked points are used. <i>Search λ</i> scans the regularisation and suggests the strongest one whose misfit stays within 10 % of the best. Views: the distribution, the rebuilt spectrum, the residuals and the peaks (R, τ, f, C = τ/R and share of R<sub>pol</sub> of each peak). <i>Save DRT</i> writes distributions, spectra and peaks of all selected datasets.</p>
+<div class="note"><b>Capacitive vs. inductive behavior:</b> Yappari calculates a real, non-negative distribution <i>g(τ) ≥ 0</i> using a series resistive-capacitive (RC) Voigt kernel. If the measured spectrum contains inductive contributions (such as high-frequency lead inductance or low-frequency inductive loops from intermediate adsorption or corrosion), mask these points before computing the DRT to prevent distortion of R<sub>∞</sub> and the capacitive peaks. For causality testing of spectra with inductive features, use the <i>Kramers–Kronig test</i> (Analysis menu), which explicitly supports inductive branches (<i>jωL</i>).</div>
 
 <h2 id="checks">Z-HIT and Kramers–Kronig test (Analysis menu)</h2>
 <p><b>Z-HIT</b> rebuilds ln|Z| from the phase (integral plus derivative corrections); the measured |Z| should match it. Deviations point to drift or artefacts, but can also reflect noise, the ends of the range or sharp resonances. New datasets <code>zh_…</code> hold the rebuilt values. A range needs at least 10 points and two decades; gaps split the data into ranges checked separately.</p>
@@ -332,6 +333,12 @@ param    Q_n       normal  0.85  0.15</code></pre>
 
 <h2 id="cite">Citing and references</h2>
 <p>N. Dragoe, Materials Lab 2024, 3, 230031, <a href="https://doi.org/10.54227/mlab.20230031">doi:10.54227/mlab.20230031</a>. Browser version of Yappari 5.1 (LabVIEW), Université Paris-Saclay, ICMMO.<br>This Help file and major parts of the Web version are written by an AI. </p>
+<p class="muted">DRT and Kramers–Kronig references:</p>
+<ul class="muted">
+  <li>B. A. Boukamp, J. Electrochem. Soc. 142 (1995) 1885 (Kramers–Kronig test); M. Schönleber, D. Klotz, E. Ivers-Tiffée, Electrochim. Acta 131 (2014) 20 (Lin-KK).</li>
+  <li>B. A. Boukamp, Distribution (function) of relaxation times, successor to complex nonlinear least squares analysis of electrochemical impedance spectroscopy?, J. Phys. Energy 2 (2020) 042001, <a href="https://doi.org/10.1088/2515-7655/aba9e0">doi:10.1088/2515-7655/aba9e0</a>.</li>
+  <li>K. T. Malkow, Reply to 'A comment on "On the futility of the Fuoss–Kirkwood relation" by Gradišar &amp; Boškoski (Electrochem. Commun. 182 (2026) 108100)', SSRN (2026), <a href="https://ssrn.com/abstract=6952403">ssrn.com/abstract=6952403</a>; Ž. Gradišar, P. Boškoski, Electrochem. Commun. 182 (2026) 108100, <a href="https://doi.org/10.1016/j.elecom.2025.108100">doi:10.1016/j.elecom.2025.108100</a>.</li>
+</ul>
 <p class="muted">Model search priors and background:</p>
 <ul class="muted">
   <li>M. Van Haeverbeke, M. Stock, B. De Baets, Equivalent electrical circuits and their use across electrochemical impedance spectroscopy application domains, IEEE Access 10 (2022) 51363, <a href="https://doi.org/10.1109/ACCESS.2022.3174067">doi:10.1109/ACCESS.2022.3174067</a> (literature circuit list, as shipped with EquivalentCircuits.jl).</li>
