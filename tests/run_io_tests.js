@@ -179,3 +179,5 @@ module.exports = function (Y, ok, close) {
   });
   ok(counts(R.auto(mkCsv(';', true), 'imps.csv')) === '10,10,10' && counts(R.headerTable(mkCsv(';', true), 'imps.csv')) === '10,10,10', 'MFLI csv recognised automatically and by the table reader');
 };
+
+if (require.main === module) console.log('Nothing runs on its own here: this module is called from tests/run_core_tests.js.');

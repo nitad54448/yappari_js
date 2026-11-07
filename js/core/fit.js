@@ -34,6 +34,8 @@ Y.defineCore('fit', function (Y) {
     var pr = progCache[cdc];
     if (!pr) { pr = Y.circuit.compile(Y.circuit.parse(cdc)); progCache[cdc] = pr; progKeys.push(cdc);
       if (progKeys.length > 128) delete progCache[progKeys.shift()]; }
+    else { var at = progKeys.indexOf(cdc);       // LRU touch: a cache hit becomes the newest key, so the circuit in use is never evicted
+      if (at >= 0 && at < progKeys.length - 1) { progKeys.splice(at, 1); progKeys.push(cdc); } }
     return pr;
   }
 

@@ -291,3 +291,5 @@ module.exports = function (Y, ok, close) {
        'stepwise Gold scan gives the misfit of a DRT with that many iterations');
   }
 };
+
+if (require.main === module) console.log('Nothing runs on its own here: this module is called from tests/run_core_tests.js.');

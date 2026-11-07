@@ -40,6 +40,7 @@ Y.pool = (function () {
     } catch (e) {
       workers.forEach(function (wk) { try { wk.w.terminate(); } catch (_) { /* */ } });
       broken = true; workers = [];
+      if (url) { URL.revokeObjectURL(url); url = null; }      // no worker can ever be made from it
       console.warn('Web Workers unavailable, fitting on the main thread:', e);
     }
   }

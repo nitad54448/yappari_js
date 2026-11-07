@@ -28,7 +28,6 @@ test('top 100 classes replace the worst and keep the best fit of a circuit',()=>
  for(let i=0;i<120;i++)R.addEntry(rows,e('R'+i,i-120));assert.equal(rows.length,100);assert.equal(rows[0].lw,-1);assert.equal(rows[99].lw,-100);
  assert(!R.addEntry(rows,e('R119',-500)));R.addEntry(rows,e('R119',1));assert.equal(rows[0].lw,1);assert.equal(rows.length,100);});
 test('availability individual exactly one dataset and idle',()=>{Y.state={S:{busy:false},selected:()=>[{}]};Y.app={fitMode:()=> 'single'};assert.equal(M.why(),'');Y.app.fitMode=()=> 'global';assert(M.why());Y.app.fitMode=()=> 'single';Y.state.selected=()=>[{},{}];assert(M.why());Y.state.selected=()=>[{}];Y.state.S.busy=true;assert(M.why());});
-console.log(checks+' model search tests passed');
 test('display sorting toggles without changing top-100 retention',()=>{
  const a={cdc:'Q1',score:10,lw:5,elements:1,parameters:2,rms:3,hits:1,starts:8,weight:2,notes:['at limit: Q1_n'],result:{msg:'converged'}},b={cdc:'R1',score:5,lw:2.5,elements:1,parameters:1,rms:1,hits:4,starts:4,weight:0.5,notes:[],result:{msg:'iteration limit'}};
  const rows=[{rep:a,members:[a],lw:5},{rep:b,members:[b,b],lw:2.5}];
@@ -153,3 +152,4 @@ async function lifecycle(action){
  console.log('PASS lifecycle '+action);
 }
 (async()=>{for(const action of ['cancel','apply','stopApply','completeApply','applySigma','reject','failedFinal','noSeed'])await lifecycle(action);})().catch(e=>{console.error(e);process.exitCode=1});
+console.log(checks+' model search tests passed');

@@ -62,7 +62,7 @@
       (S.model.cdc ? '<br>Circuit <code>' + esc(S.model.cdc) + '</code>' : '<br>No circuit yet, build one in Model.') +
       (why ? '<br><span class="why-not">' + esc(why) + '</span>' : '');
   }
-  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   // side panel tabs: Datasets, Parameters, Fit
   function showSide(name) {

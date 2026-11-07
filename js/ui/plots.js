@@ -11,7 +11,7 @@ Y.plots = (function () {
   // dataset colours, in turn, from --series-1, --series-2 ... of style.css; colorVar gives the CSS form for HTML
   function color(ds, theme) { var p = Y.theme.get(theme).series; return p[(ds.id - 1) % p.length]; }
   function colorVar(ds) { return Y.theme.seriesVar(ds.id - 1); }
-  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   function fmtF(f, digits) {
     var u = [[1e6, 'MHz'], [1e3, 'kHz'], [1, 'Hz'], [1e-3, 'mHz'], [1e-6, 'µHz']];
