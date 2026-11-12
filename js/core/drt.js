@@ -4,7 +4,6 @@
  *    Z(w) = Rinf + Rpol * integral g(tau) / (1 + j w tau) dln(tau),   integral g dln(tau) = 1
  *    Rinf is fitted with the distribution: one more unknown (>= 0, not regularised) of the same least squares, and
  *    Rpol is the area of the fitted distribution. With Zi alone (source 'im') Rinf is the mean of what remains of Zr.
- *    (Yappari 5.1 took Rinf = Zr at the highest frequency, too high when the high-frequency arc is not complete.)
  *    tau grid: log-spaced over 1/w_max .. 1/w_min with the density of the data, at least 10 per decade (so gaps
  *    in the frequencies leave no holes in the distribution) and at most 20 (the cost grows as the cube of it).
  *    Masked points are used (masks apply to fits only). The system is divided by the span of Zr (Zr at the lowest

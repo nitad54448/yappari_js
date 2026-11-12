@@ -121,7 +121,7 @@ Y.state = (function () {
   }
   // settings from a file or from the browser: known keys with the type of their default and a valid value (see
   // VALID) replace those of base (the defaults when omitted); the others are ignored. A value of base that is not valid
-  // (an older version, an edited file) falls back to the default.
+  // falls back to the default.
   function cleanSettings(src, base) {
     var st = Object.assign(defaults(), base || {}), d0 = defaults();
     if (src && typeof src === 'object' && !Array.isArray(src)) Object.keys(src).forEach(function (k) {
@@ -543,6 +543,7 @@ Y.state = (function () {
     if (!(r > 0) || !isFinite(r)) throw new Error('the factor must be positive');
     if (r !== 1) {
       Y.dataops.scaleZ(ds, r);
+      ds.drt = null;                    // computed from the earlier values (Save data would write it in the new unit)
       function scaled(n, v) { var u = baseUnit(n); return /Ω|^H/.test(u) ? v * r : /^F/.test(u) ? v / r : v; }
       Object.keys(ds.p).forEach(function (n) { ds.p[n] = scaled(n, ds.p[n]); });
       if (ds.mem) {                     // remembered entries are [value, fit flag]; new pairs, so undo records stay intact

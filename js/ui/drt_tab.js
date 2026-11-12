@@ -255,6 +255,5 @@ Y.drtTab = (function () {
   }
 
   return { init: init, show: show, plots: function () { return P.res ? [P.res, P.g, P.z] : []; },
-           saveSelected: saveSelected, searchDialog: searchDialog,
-           _widen: widen };   // for tests/run_review5_tests.js only
+           saveSelected: saveSelected, searchDialog: searchDialog };
 })();

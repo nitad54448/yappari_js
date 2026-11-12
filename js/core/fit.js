@@ -365,9 +365,8 @@ Y.defineCore('fit', function (Y) {
       if (gmax <= 1e-14 * f) { msg = 'converged: zero gradient'; break; }
       // The dogleg of the free variables; when a free variable sits on a limit that the Gauss-Newton step pushes out
       // of the box, also the dogleg of the others with that variable held there (gnStep), and the step with the larger
-      // predicted decrease is taken. The usual step stops at such a limit after a tiny move, and the fit crawled for
-      // thousands of iterations (n of a CPE at 1.2, for example); the step taken is never predicted to lower χ² less
-      // than the usual one, so the method keeps its convergence.
+      // predicted decrease is taken (the usual step alone stops at such a limit after a tiny move). The step taken is
+      // never predicted to lower χ² less than the usual one, so the method keeps its convergence.
       var gn = gnStep(P, x, A, g, F, nf, maxd), dl = dogleg(P, x, A, g, F, gn.plain, Delta, nf), pred = predicted(A, g, dl.s, nf);
       if (gn.F !== F) {
         var dh = dogleg(P, x, A, g, gn.F, gn.pg, Delta, nf), ph = predicted(A, g, dh.s, nf);

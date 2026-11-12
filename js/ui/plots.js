@@ -179,6 +179,7 @@ Y.plots = (function () {
   }
   function toggleNote(s, i) {
     if (!s.ds || !s.idx) return;
+    if (S.busy) { Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }
     var ds = s.ds, fk = ds.f[s.idx[i]];
     Y.history.take('frequency label');
     ds.notes = ds.notes || [];

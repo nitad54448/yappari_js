@@ -151,13 +151,13 @@ td:first-child { white-space: nowrap; }
 <table>
   <tr><th>Element</th><th>Impedance</th><th>Parameters (default limits)</th></tr>
   <tr><td>R resistor</td><td>Z = R</td><td>R /Ω (10⁻³ … 10¹⁰)</td></tr>
-  <tr><td>C capacitor</td><td>Z = 1/(jωC)</td><td>C /F (10⁻¹⁶ … 10³)</td></tr>
-  <tr><td>L inductor</td><td>Z = jωL</td><td>L /H (10⁻¹⁵ … 10³)</td></tr>
-  <tr><td>Q constant phase element</td><td>Z = 1/(Q (jω)<sup>n</sup>)</td><td>Q /F·s<sup>n−1</sup> (10⁻¹⁶ … 10³); _n (0 … 1.2, held fixed at 1 by default)</td></tr>
+  <tr><td>C capacitor</td><td>Z = 1/(jωC)</td><td>C /F (10⁻¹⁴ … 10⁵)</td></tr>
+  <tr><td>L inductor</td><td>Z = jωL</td><td>L /H (10⁻¹⁰ … 10⁵)</td></tr>
+  <tr><td>Q constant phase element</td><td>Z = 1/(Q (jω)<sup>n</sup>)</td><td>Q /F·s<sup>n−1</sup> (10⁻¹⁴ … 10⁵); _n (0 … 1.2, held fixed at 1 by default)</td></tr>
   <tr><td>W Warburg, semi-infinite</td><td>Z = Aw/√ω − j Aw/√ω</td><td>Aw /Ω·s<sup>−½</sup> (10⁻⁶ … 10¹⁰)</td></tr>
-  <tr><td>Wo Warburg, open (reflective)</td><td>Z = Aw/√(jω) · coth(B √(jω))</td><td>_A Aw; _B B /s<sup>½</sup> (10⁻⁶ … 10⁶)</td></tr>
+  <tr><td>Wo Warburg, open (reflective)</td><td>Z = Aw/√(jω) · coth(B √(jω))</td><td>_A Aw; _B B /s<sup>½</sup> (10⁻⁴ … 10³)</td></tr>
   <tr><td>Ws Warburg, short (transmissive)</td><td>Z = Aw/√(jω) · tanh(B √(jω))</td><td>_A Aw; _B B</td></tr>
-  <tr><td>G Gerischer</td><td>Z = R/√(1 + jωτ)</td><td>_R R; _tau τ /s (10⁻¹² … 10⁶)</td></tr>
+  <tr><td>G Gerischer</td><td>Z = R/√(1 + jωτ)</td><td>_R R; _tau τ /s (10⁻⁹ … 10⁴)</td></tr>
   <tr><td>HN Havriliak–Negami</td><td>Z = R/(1 + (jωτ)<sup>α</sup>)<sup>β</sup></td><td>_R, _tau; _a α and _b β (0.01 … 1, held fixed at 1 by default)</td></tr>
 </table>
 

@@ -14,7 +14,9 @@ Y.cmd = (function () {
   function haveSel(n) { n = n || 1; return need(S.sel.size >= n, n > 1 ? 'Select at least ' + n + ' datasets.' : 'Select one or more datasets first.'); }
   function idle() { return need(!S.busy, 'A fit is running. Wait for it to finish or press Stop.'); }
   function sel() { return Y.state.selected(); }
-  function changed(list) { list.forEach(function (ds) { ds.stats = null; Y.state.invalidate(ds); }); Y.bus.emit('data'); }
+  // keepDrt: the points themselves did not change (mask, unmask; the DRT uses masked points too). Otherwise the DRT kept
+  // with the dataset is dropped, so Save data cannot write a distribution computed from the earlier values.
+  function changed(list, keepDrt) { list.forEach(function (ds) { ds.stats = null; if (!keepDrt) ds.drt = null; Y.state.invalidate(ds); }); Y.bus.emit('data'); }
 
   // ---------------------------------------------------------------- reading files
   var READ = {
@@ -194,7 +196,7 @@ Y.cmd = (function () {
     if (!idle()) return;
     var def, chosen = null, request = 0, busy = false;
     try { def = Y.readers.normalizeModern(Y.state.load('customdef')); }
-    catch (e) { def = Object.assign({}, Y.readers.modernDefaults, { mode: 'single' }); }      // none stored, or an old format
+    catch (e) { def = Object.assign({}, Y.readers.modernDefaults, { mode: 'single' }); }      // none stored, or not usable
     def = Object.assign({}, def, detectFields(def));
     var body = document.createElement('div');
     body.innerHTML = '<p class="intro">XML definitions (versions 1 to 3). Presets are listed in config/definitions/index.json. Select a preset, load an XML file, or edit the settings below.</p>' +
@@ -367,9 +369,14 @@ Y.cmd = (function () {
     if (mixed.length && !(await ui.confirm('The fit ticks differ between the selected datasets for ' + mixed.join(', ') + '. The global fit uses the ticks of ' +
         first.name + ' for all of them: ' + mixed.map(function (n) { return n + (first.fit[n] ? ' fitted' : ' held fixed'); }).join(', ') + '.',
         'Continue', false, 'Global fit'))) return;
+    var sets = list.map(function (ds) { return Object.assign({ id: ds.id, p: Y.state.vector(ds) }, Y.state.unmasked(ds)); });
+    // One χ² for all datasets: measured σ are used only when every dataset has them. With some datasets weighted by
+    // 1/σ² and the others by the weight of Settings, terms in different units would be summed.
+    var nSig = sets.filter(function (s) { return s.sr; }).length, mixedSigma = nSig > 0 && nSig < sets.length;
+    if (mixedSigma) sets.forEach(function (s) { delete s.sr; delete s.si; delete s.sigma; });
     var job = { cdc: S.model.cdc, fit: fit, shared: shared, lo: b.lo, hi: b.hi, weight: S.settings.weight,
                 method: S.settings.method === 'LM' ? 'LM' : 'LMB', maxIter: S.settings.maxIter, tol: S.settings.tol,
-                sets: list.map(function (ds) { return Object.assign({ id: ds.id, p: Y.state.vector(ds) }, Y.state.unmasked(ds)); }) };
+                sets: sets };
     Y.state.setBusy(true);
     ui.progress(0, -1);
     ui.toast('Global fit of ' + plural(list.length, 'dataset') + (S.settings.method !== job.method ? ' (with ' + job.method + ')' : '') + ' running…', 'info');
@@ -397,7 +404,9 @@ Y.cmd = (function () {
     });
     Y.bus.emit('stats'); Y.bus.emit('params', {});
     ui.toast('Global fit of ' + plural(list.length, 'dataset') + ': ' + res.nShared + ' shared and ' + res.nLocal + ' local parameters, χ²red ' +
-      fmt(res.chi2red) + ', ' + res.iter + ' iterations, ' + res.msg + '. Fit flags of ' + first.name + ' used for all.', Y.fit.status(res.msg));
+      fmt(res.chi2red) + ', ' + res.iter + ' iterations, ' + res.msg + '. Fit flags of ' + first.name + ' used for all.' +
+      (mixedSigma ? ' Measured σ were not used: only ' + nSig + ' of the ' + sets.length + ' datasets have them, so the weight of Settings applied to all.' : ''),
+      mixedSigma ? 'warn' : Y.fit.status(res.msg));
   }
 
   function cloneTo(all) {
@@ -425,7 +434,7 @@ Y.cmd = (function () {
       snapshot('delete points');
       list.forEach(function (ds, i) { Y.dataops.removePoints(ds, flags[i]); });
     } else { snapshot('mask'); list.forEach(function (ds, i) { for (var k = 0; k < ds.mask.length; k++) if (flags[i][k]) ds.mask[k] = 1; }); }
-    changed(list);
+    changed(list, !remove);
     ui.toast((remove ? 'Deleted ' : 'Masked ') + plural(total, 'point') + ' in ' + plural(list.length, 'dataset') + '.', 'ok');
   }
 
@@ -434,7 +443,7 @@ Y.cmd = (function () {
     var list = sel(), n = 0;
     snapshot('unmask');
     list.forEach(function (ds) { for (var k = 0; k < ds.mask.length; k++) { n += ds.mask[k]; ds.mask[k] = 0; } });
-    changed(list);
+    changed(list, true);
     ui.toast(n ? 'Unmasked ' + plural(n, 'point') + '.' : 'No masked points in the selected datasets.', 'info');
   }
 
@@ -637,7 +646,7 @@ Y.cmd = (function () {
     return Number(m[1]) * ({ k: 1e3, K: 1e3, M: 1e6, m: 1e-3, u: 1e-6, 'µ': 1e-6 }[m[2]] || 1);
   }
   function addLabels(fv) {
-    if (!haveSel()) return;
+    if (!idle() || !haveSel()) return;
     if (!(fv > 0)) { ui.toast('Not a frequency. Examples: 1000, 1k, 2.5M, 10m.', 'warn'); return; }
     snapshot('labels');
     var n = 0;
@@ -652,13 +661,13 @@ Y.cmd = (function () {
     ui.toast('Labelled the point nearest to ' + Y.plots.fmtF(fv, 4) + ' in ' + plural(n, 'dataset') + '.', 'ok');
   }
   async function labelDialog() {
-    if (!haveSel()) return;
+    if (!idle() || !haveSel()) return;
     var v = await ui.prompt('Label a frequency on the Nyquist plot', [{ key: 'f', label: 'Frequency /Hz', type: 'text', value: '1k',
       hint: 'The nearest measured point of each selected dataset gets a label. 1k = 1000, 2.5M = 2.5e6, 10m = 0.01.' }], 'Add labels');
     if (v) addLabels(parseFreq(v.f));
   }
   function clearLabels() {
-    if (!haveSel()) return;
+    if (!idle() || !haveSel()) return;
     snapshot('clear labels');
     sel().forEach(function (ds) { ds.notes = []; });
     Y.plots.refresh(false);
@@ -808,15 +817,15 @@ Y.cmd = (function () {
     read: function () { return S.busy ? BUSY : ''; },                           // reading files, opening a project, demo
     saveProject: function () { return S.datasets.length || S.model.prog ? '' : 'Nothing to save yet.'; },
     withModel: withModel,                                                       // save parameters, report
-    selection: noSel,                                                           // save data, DRT view and search, labels, PNG
-    edit: idleSel,                                                              // commands that change the selected datasets
+    selection: noSel,                                                           // save data, DRT view and search, PNG
+    edit: idleSel,                                                              // commands that change the selected datasets, labels
     undo: function () { return S.busy ? BUSY : Y.history.count() ? '' : 'Nothing to undo.'; },
     inView: function () { return inViewWhy(false); },                         // mask: unmasked points in view
     deleteInView: function () { return inViewWhy(true); },                    // delete: any point in view
     unmask: function () { return idleSel() || (anyMasked(sel()) ? '' : 'No masked points in the selected datasets.'); },
     average: function () { return S.busy ? BUSY : !S.datasets.length ? NO_DATA : S.sel.size < 2 ? 'Select at least two datasets.' : ''; },
     simulate: function () { return S.busy ? BUSY : S.model.prog ? '' : NO_MODEL; },
-    unlabel: function () { return noSel() || (anyLabels(sel()) ? '' : 'No frequency labels on the selected datasets.'); },
+    unlabel: function () { return idleSel() || (anyLabels(sel()) ? '' : 'No frequency labels on the selected datasets.'); },
     fit: fitWhy,
     cloneAll: function () { return S.busy ? BUSY : withModel() || (S.datasets.length > 1 ? '' : 'There is only one dataset.'); },
     cloneSel: function () { return S.busy ? BUSY : withModel() || (S.sel.size > 1 ? '' : 'Select the datasets to copy to as well.'); },
@@ -826,7 +835,7 @@ Y.cmd = (function () {
 
   // buttons that run the same commands as menu items, kept in step with the state
   var BUTTONS = [['#btn-fit', 'fit'], ['#btn-stop', 'stop'], ['#clone-all', 'cloneAll'], ['#clone-sel', 'cloneSel'],
-                 ['[data-plot-action="label"]', 'selection'], ['[data-plot-action="unlabel"]', 'unlabel'],
+                 ['[data-plot-action="label"]', 'edit'], ['[data-plot-action="unlabel"]', 'unlabel'],
                  ['[data-plot-action="png"]', 'selection'], ['#drt-search', 'selection'], ['#drt-all', 'edit']];
   var syncRaf = 0;
   function syncButtons() {
@@ -950,7 +959,7 @@ Y.cmd = (function () {
                  ['DRT λ search…', function () { Y.drtTab.searchDialog(); }, 'selection'], null,
                  ['Z-HIT of selected datasets', zhitSelected, 'edit'],
                  ['Kramers–Kronig test of selected datasets', function () { kkSelected(); }, 'edit'], null,
-                 ['Label a frequency on the Nyquist plot…', labelDialog, 'selection'], ['Clear Nyquist labels', clearLabels, 'unlabel'], null,
+                 ['Label a frequency on the Nyquist plot…', labelDialog, 'edit'], ['Clear Nyquist labels', clearLabels, 'unlabel'], null,
                  ['Search models', function () { Y.modelSearch.open(); }, 'searchModels'], null,
                  ['Help', openHelp]]
     };

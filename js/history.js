@@ -138,6 +138,5 @@ Y.history = (function () {
   }
 
   return { init: init, take: take, takePending: takePending, restore: restore, undo: undo, count: function () { return points.length; },
-           bytes: function () { return bytes; },
-           _testLimit: function (b) { var old = MAX_BYTES; MAX_BYTES = b; return old; } };   // for tests/run_review3_tests.js only
+           bytes: function () { return bytes; } };
 })();

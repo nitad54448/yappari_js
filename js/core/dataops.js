@@ -146,11 +146,14 @@ Y.dataops = (function () {
     return out;
   }
 
-  // remove flagged points (returns number removed)
+  // remove flagged points (returns number removed); a frequency label (ds.notes) goes with its point
   function removePoints(ds, flags) {
     var keep = [];
     for (var k = 0; k < ds.f.length; k++) if (!flags[k]) keep.push(k);
     var removed = ds.f.length - keep.length;
+    if (ds.notes && ds.notes.length) ds.notes = ds.notes.filter(function (fv) {
+      return keep.some(function (k) { return Math.abs(fv / ds.f[k] - 1) < 1e-9; });
+    });
     ['f', 'zr', 'zi', 'sr', 'si'].forEach(function (key) { if (ds[key]) ds[key] = Float64Array.from(keep, function (k) { return ds[key][k]; }); });
     ds.mask = Uint8Array.from(keep, function (k) { return ds.mask[k]; });
     return removed;

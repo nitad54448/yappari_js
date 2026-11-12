@@ -200,7 +200,9 @@
     });
 
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'F9') { e.preventDefault(); runFit(); }
+      // not under an open dialog: a fit started there would run while the dialog's action (normalize, delete points,
+      // open project ...) changes the datasets being fitted
+      if (e.key === 'F9') { e.preventDefault(); if (!$('#dlg').open) runFit(); }
       else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); Y.cmd.saveProject(); }
     });
     window.addEventListener('beforeunload', function (e) { if (S.datasets.length) { e.preventDefault(); e.returnValue = ''; } });

@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
   var Y = root.Y || (root.Y = {});
-  Y.version = '1.13, 7 nov 2026';
+  Y.version = '1.14, 12 nov 2026';
   Y.coreSources = Y.coreSources || [];
   Y.defineCore = function (name, factory) {
     Y.coreSources.push('/* ' + name + ' */\n(' + factory.toString() + ')(Y);');

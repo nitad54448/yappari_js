@@ -40,6 +40,7 @@ Y.datasetsPanel = (function () {
   function rename(id) {
     var row = rowOf(id), d = Y.state.byId(id);
     if (!row || !d) return;
+    if (S.busy) { Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }   // datasets are not edited during a fit
     var nm = row.querySelector('.nm'), inp = document.createElement('input'), done = false;
     inp.className = 'rename'; inp.value = d.name; inp.setAttribute('aria-label', 'New name');
     nm.replaceWith(inp); inp.focus(); inp.select();
@@ -95,6 +96,7 @@ Y.datasetsPanel = (function () {
     list.addEventListener('dragstart', function (e) {
       var row = e.target.closest('.ds');
       if (!row) return;
+      if (S.busy) { e.preventDefault(); return; }
       dragId = +row.getAttribute('data-id');
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('application/x-yappari-dataset', String(dragId));

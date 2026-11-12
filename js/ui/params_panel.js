@@ -43,6 +43,7 @@ Y.paramsPanel = (function () {
     $('#param-more').textContent = ds && more ? 'and ' + more + ' more' : '';
     head.title = !ds ? '' : more ? ds.name + ' (' + (Y.state.selected().indexOf(ds) + 1) + ' of ' + S.sel.size + ' selected; ← → show the others). Changes apply to all ' + S.sel.size + ' selected datasets.' : ds.name;
     syncStep();
+    editing = null;                                        // the value fields are rebuilt: a field removed while focused sends no focusout
     if (!prog) { host.innerHTML = '<p class="hint">No circuit yet. Build one in the Model tab.</p>'; renderStats(); return; }
     host.innerHTML = prog.params.map(function (pp) {
       var E = Y.elements[pp.kind], dis = ds && !S.busy ? '' : ' disabled';
@@ -298,6 +299,7 @@ Y.paramsPanel = (function () {
     var tr = e.target.closest('tr');
     if (!tr) return;
     var n = tr.getAttribute('data-name');
+    if (S.busy) { renderLimits(); Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }   // the running fit has its limits
     if (e.target.hasAttribute('data-shared')) {
       Y.history.take('shared flag ' + n);
       Y.state.setShared(n, e.target.checked);
