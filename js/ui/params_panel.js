@@ -333,6 +333,7 @@ Y.paramsPanel = (function () {
   function onElem(e) {
     var tr = e.target.closest('tr'), f = e.target.getAttribute('data-ef');
     if (!tr || !f) return;
+    if (S.busy) { renderElementDefaults(); Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }
     var k = tr.getAttribute('data-kind'), i = +tr.getAttribute('data-i');
     var next = Object.assign({}, (Y.elementOverrides[k] || [])[i] || {});
     if (f === 'fit') next.fit = e.target.checked;
@@ -358,11 +359,14 @@ Y.paramsPanel = (function () {
       Y.writers.download('yappari_settings.json', JSON.stringify({ format: 'yappari-js-settings', version: 1, settings: S.settings, elements: Y.elementOverrides }, null, 2), 'application/json');
     });
     $('#set-load').addEventListener('click', function () {
+      if (S.busy) { Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }
       Y.ui.pickFiles({ accept: '.json' }).then(function (fs) {
-        if (!fs.length) return;
+        if (!fs.length || S.busy) return;
         return Y.ui.readText(fs[0]).then(function (t) {
+          if (S.busy) return;
           var doc = JSON.parse(t);
           if (!doc || doc.format !== 'yappari-js-settings') throw new Error('this is not a Yappari JS settings file');
+          Y.history.take('load settings', { settings: true });
           var st = Y.state.cleanSettings(doc.settings, S.settings);             // values of the wrong type are ignored
           Object.keys(st).forEach(function (k) { S.settings[k] = st[k]; });
           Y.state.store('settings', S.settings);
@@ -375,11 +379,13 @@ Y.paramsPanel = (function () {
       }).catch(function (e) { Y.ui.toast('Settings not loaded: ' + e.message, 'err'); });
     });
     $('#set-reset').addEventListener('click', function () {
+      if (S.busy) { Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }
       Y.ui.confirm('Reset fit, data, simulation and plot settings to their original values?', 'Reset settings').then(function (ok) {
-        if (ok) { Y.state.resetSettings(); Y.ui.toast('Settings reset.', 'info'); }
+        if (ok && !S.busy) { Y.history.take('reset settings', { settings: true }); Y.state.resetSettings(); Y.ui.toast('Settings reset.', 'info'); }
       });
     });
     $('#elem-reset').addEventListener('click', function () {
+      if (S.busy) { Y.ui.toast('A fit is running. Wait for it to finish or press Stop.', 'warn'); return; }
       Y.elementOverrides = {};
       Y.state.saveElementOverrides();
       renderElementDefaults();

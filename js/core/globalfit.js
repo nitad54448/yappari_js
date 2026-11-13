@@ -99,12 +99,12 @@ Y.defineCore('globalfit', function (Y) {
       }
 
       var A = new Float64Array(nS * nS), gS = new Float64Array(nS);
-      var B = [], D = [], gL = [];
-      for (i = 0; i < nd; i++) { B.push(new Float64Array(nS * nL)); D.push(new Float64Array(nL * nL)); gL.push(new Float64Array(nL)); }
+      var B = [], D = [], gL = [], Js = [];
+      for (i = 0; i < nd; i++) { B.push(new Float64Array(nS * nL)); D.push(new Float64Array(nL * nL)); gL.push(new Float64Array(nL)); Js.push(new Float64Array(2 * probs[i].n * nV)); }
       function blocks(central) {
         A.fill(0); gS.fill(0);
         for (var ii = 0; ii < nd; ii++) {
-          var P = probs[ii], m = 2 * P.n, J = new Float64Array(m * nV);
+          var P = probs[ii], m = 2 * P.n, J = Js[ii];
           P.jac(xOf(ii, X), R[ii], J, central);
           for (var aa = 0; aa < nS; aa++) {
             gS[aa] += dotColVec(J, m, aa, R[ii]);
@@ -115,7 +115,6 @@ Y.defineCore('globalfit', function (Y) {
             for (aa = 0; aa < nS; aa++) B[ii][aa * nL + bb] = dotCols(J, m, aa, nS + bb);
             for (cc = 0; cc <= bb; cc++) { var t2 = dotCols(J, m, nS + bb, nS + cc); D[ii][bb * nL + cc] = t2; D[ii][cc * nL + bb] = t2; }
           }
-          P.resid(xOf(ii, X), R[ii]);
         }
       }
 
@@ -236,16 +235,17 @@ Y.defineCore('globalfit', function (Y) {
           if (snorm <= 1e-12 * (xnorm + 1e-12)) { msg = 'converged: steps below numerical resolution'; it++; break; }
         } else {
           mu *= nu; nu *= 2;
-          if (mu > 1e25) { msg = 'converged: no step lowers χ² further'; break; }
+          if (mu > 1e25 || snorm <= 1e-15 * (xnorm + 1e-12)) { msg = 'converged: no step lowers χ² further'; break; }
         }
       }
       f = total(X, R);
+      var centralReady = false;
       // a stop that looks like convergence is checked with one nearly undamped step (see Y.fit.stalled)
       if (/^converged/.test(msg) && !/zero gradient/.test(msg) && f > 0) {
         var scale = 0;
         probs.forEach(function (P) { for (var k = 0; k < P.n; k++) { var u = P.swr[k] * P.zr[k], w2 = P.swi[k] * P.zi[k]; scale += u * u + w2 * w2; } });
         if (f > 1e-16 * scale) {
-          blocks(true);
+          blocks(true); centralReady = true;
           if (step(1e-9, held()) && total(Xn, Rn) < f * (1 - Math.max(1e-6, 100 * tol))) msg = Y.fit.STALL_MSG;
           f = total(X, R);
         }
@@ -261,7 +261,7 @@ Y.defineCore('globalfit', function (Y) {
       var dof = nPts - nX, chi2red = dof > 0 ? f / dof : NaN;
       var seS = new Float64Array(nS).fill(NaN), seL = probs.map(function () { return new Float64Array(nL).fill(NaN); });
       if (dof > 0) {
-        blocks(true);
+        if (!centralReady) blocks(true);
         var offS = new Uint8Array(nS), offL = [], undL = [];
         for (a = 0; a < nS; a++) if (onBound(a)) {             // shared parameter on a limit: row and column removed
           offS[a] = 1;

@@ -430,7 +430,7 @@ Y.cmd = (function () {
     if (!total) { ui.toast('No points of the selected datasets are inside the current view.', 'warn'); return; }
     if (total === visible && !(await ui.confirm('All ' + total + (remove ? ' points' : ' unmasked points') + ' are inside the view. Zoom on the points to ' + (remove ? 'delete' : 'mask') + ' first, or continue to ' + (remove ? 'delete' : 'mask') + ' them all.', 'Continue', true, 'Every point is in view'))) return;
     if (remove) {
-      if (!(await ui.confirm('Delete ' + plural(total, 'point') + (nMasked ? ' (' + nMasked + ' of them masked)' : '') + ' from ' + plural(list.length, 'dataset') + '? Deleted points cannot be restored; masked points can.', 'Delete points', true, 'Delete points'))) return;
+      if (!(await ui.confirm('Delete ' + plural(total, 'point') + (nMasked ? ' (' + nMasked + ' of them masked)' : '') + ' from ' + plural(list.length, 'dataset') + '? Unlike masked points, deleted points are removed from the dataset (Undo brings them back).', 'Delete points', true, 'Delete points'))) return;
       snapshot('delete points');
       list.forEach(function (ds, i) { Y.dataops.removePoints(ds, flags[i]); });
     } else { snapshot('mask'); list.forEach(function (ds, i) { for (var k = 0; k < ds.mask.length; k++) if (flags[i][k]) ds.mask[k] = 1; }); }
@@ -450,7 +450,7 @@ Y.cmd = (function () {
   async function deleteDatasets() {
     if (!idle() || !haveSel()) return;
     var n = S.sel.size;
-    if (!(await ui.confirm('Delete ' + plural(n, 'selected dataset') + '? This cannot be undone.', 'Delete', true, 'Delete datasets'))) return;
+    if (!(await ui.confirm('Delete ' + plural(n, 'selected dataset') + '? (Undo brings them back.)', 'Delete', true, 'Delete datasets'))) return;
     snapshot('delete datasets');
     Y.state.removeDatasets(Array.from(S.sel));
     ui.toast('Deleted ' + plural(n, 'dataset') + '.', 'info');
@@ -593,17 +593,23 @@ Y.cmd = (function () {
       { key: 'contrib', label: 'Contributions', type: 'checkbox', value: false,
         hint: 'f, Zr, Zi of each part in series of the circuit (partK_ columns); negligible values written as 0.' },
       { key: 'drt', label: 'DRT', type: 'checkbox', value: hasDrt,
-        hint: 'Appends the computed DRT distribution and spectrum (#drt block) for datasets that have one.' },
+        hint: 'Appends the DRT distribution and spectrum (#drt block) with the current DRT settings.' },
       { key: 'sep', label: 'Separator', type: 'select', value: S.settings.sep === 'auto' ? 'tab' : S.settings.sep,
         options: [['tab', 'TAB'], ['semicolon', 'Semicolon'], ['comma', 'Comma'], ['space', 'Space']] }
     ], 'Save', 'One block per dataset; File, Auto (or Table with column headers) reads the file back.');
     if (!v) return;
     if (!v.exp && !(v.calc && S.model.prog)) { ui.toast('Nothing to save: tick the measured or the model values (a model needs a circuit).', 'warn'); return; }
     if (v.contrib && !S.model.prog) { ui.toast('Contributions need a circuit; saved without them.', 'warn'); v.contrib = false; }
-    var txt = Y.writers.dataText(sel(), { sep: v.sep, exp: v.exp, calc: v.calc && !!S.model.prog, contrib: v.contrib, drt: v.drt },
+    var list = sel(), drtCount = 0, drtBad = 0;
+    if (v.drt) list.forEach(function (d) {
+      try { if (Y.drtTab && Y.drtTab.ensure) Y.drtTab.ensure(d); if (d.drt) drtCount++; }
+      catch (e) { d.drt = null; drtBad++; ui.log(d.name + ' (DRT): ' + e.message, 'warn'); }
+    });
+    var txt = Y.writers.dataText(list, { sep: v.sep, exp: v.exp, calc: v.calc && !!S.model.prog, contrib: v.contrib, drt: v.drt },
       function (ds) { return Y.state.calcFor(ds); }, function (ds) { return Y.state.partsFor(ds); });
     Y.writers.download('yappari_data_' + Y.writers.fileStamp() + '.txt', txt);
-    ui.toast('Saved the data of ' + plural(S.sel.size, 'dataset') + (v.contrib ? ', with contributions' : '') + (v.drt && hasDrt ? ', with DRT' : '') + '.', 'ok');
+    ui.toast('Saved the data of ' + plural(list.length, 'dataset') + (v.contrib ? ', with contributions' : '') +
+      (drtCount ? ', with DRT' + (drtBad ? ' (' + drtBad + ' skipped, see Log)' : '') : (v.drt && drtBad ? ' (DRT failed, see Log)' : '')) + '.', drtBad ? 'warn' : 'ok');
   }
   function saveProject() {
     if (!need(S.datasets.length || S.model.prog, 'Nothing to save yet.')) return;
@@ -892,6 +898,7 @@ Y.cmd = (function () {
     if (lm) { addLabels(parseFreq(lm[1])); return; }
     var m = /^select>>(.+)$/i.exec(s);
     if (m) {
+      if (!idle()) return;
       var rx;
       try { rx = new RegExp(m[1].trim(), 'i'); } catch (e) { ui.toast('Not a valid pattern: ' + e.message, 'err'); return; }
       var ids = S.datasets.filter(function (d) { return rx.test(d.name); }).map(function (d) { return d.id; });

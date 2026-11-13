@@ -254,6 +254,16 @@ Y.drtTab = (function () {
     });
   }
 
+  function matches(r, o) {
+    return !!r && r.method === o.method && r.source === o.source &&
+      (o.method === 'gold' ? r.iterations === o.iterations : Math.abs(r.lambda - o.lambda) <= 1e-12 * o.lambda);
+  }
+  function ensure(ds) {
+    var o = opts();
+    if (!matches(ds.drt, o)) ds.drt = Y.drt.compute(ds, o);
+    return ds.drt;
+  }
+
   return { init: init, show: show, plots: function () { return P.res ? [P.res, P.g, P.z] : []; },
-           saveSelected: saveSelected, searchDialog: searchDialog };
+           ensure: ensure, saveSelected: saveSelected, searchDialog: searchDialog };
 })();

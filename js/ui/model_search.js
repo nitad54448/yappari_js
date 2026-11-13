@@ -84,10 +84,11 @@ Y.modelSearch = (function () {
   // count fit jobs of a circuit (random: a generator, or Math.random; ranges: dataRanges(data))
   function jobs(c, data, settings, random, count, ranges) {
     random = random || Math.random; count = count || ROUND; ranges = ranges || dataRanges(data);
+    var wantH = !settings || settings.hessian !== false;
     return Array.from({ length: count }, function (_, start) {
       var s = startValues(c, random, ranges);
       return Object.assign({}, data, settings, { id: start, cdc: c.prog.cdc, p: Float64Array.from(s.p),
-        lo: Float64Array.from(s.lo), hi: Float64Array.from(s.hi), fit: new Uint8Array(s.p.length).fill(1), hessian: true });
+        lo: Float64Array.from(s.lo), hi: Float64Array.from(s.hi), fit: new Uint8Array(s.p.length).fill(1), hessian: wantH });
     });
   }
 
@@ -168,7 +169,7 @@ Y.modelSearch = (function () {
     var e = { cdc: c.prog.cdc, elements: c.elements, parameters: c.prog.names.length, score: score, lw: score / 2,
       rms: 100 * Math.sqrt(mse), samples: samples, result: result, chi2: weighted, curve: curve, key: c.key || '', canon: c.canon || '' };
     if (metric.mode === 'bayes') {
-      var ev = Y.modelRank.evidence({ prog: c.prog, p: result.p, jtj: result.jtj, chi2: weighted, m: m, sigma: metric.sigma, energy: metric.energy },
+      var ev = Y.modelRank.evidence({ prog: c.prog, p: result.p, jtj: result.jtj, free: result.free, chi2: weighted, m: m, sigma: metric.sigma, energy: metric.energy },
                                     metric.priors, metric.ranges);
       e.weight = Y.modelRank.weightOf(metric.priors, e.canon);
       e.lnZ = ev ? ev.lnZ : (score + metric.penalty * c.elements * Math.log(m)) / 2;   // no curvature: BIC approximation
@@ -188,7 +189,7 @@ Y.modelSearch = (function () {
         case 'cdc': return r.cdc;
         case 'equiv': return cl.members.length;
         case 'prob': case 'score': return cl.lw;
-        case 'prior': return r.weight == null ? 0 : r.weight;
+        case 'prior': return cl.weight != null ? cl.weight : (r.weight == null ? 0 : r.weight);
         case 'status': return r.result.msg;
         case 'notes': return (r.notes || []).join('; ');
         case 'hits': return (r.hits || 0) / (r.starts || 1);
@@ -294,7 +295,7 @@ Y.modelSearch = (function () {
     var penalty = mode === 'bic' ? Number(setup.querySelector('.search-penalty').value) : 0, ranges = dataRanges(data), metric;
     try { metric = scoring(data, st.weight, penalty, { mode: mode, ranges: ranges }); }
     catch (e) { Y.ui.toast(e.message); return; }
-    var settings = { method: st.method, weight: st.weight, maxIter: st.maxIter, tol: st.tol };
+    var settings = { method: st.method, weight: st.weight, maxIter: st.maxIter, tol: st.tol, hessian: mode === 'bayes' };
     var rows = [], selected = null, stopped = false, closed = false, active = null, controller = new AbortController(), logOther = -Infinity;
     function sink(lw) { logOther = Y.modelRank.logAddExp(logOther, lw); }
     var activeModels = [], priorText = '';
@@ -362,9 +363,11 @@ Y.modelSearch = (function () {
           eq.appendChild(sel);
         }
         cell(r.elements); cell(r.parameters);
-        cell(pct(100 * Math.exp(cl.lw - logTotal)));
-        cell((cl.lw - best).toFixed(1), mode === 'bayes' && r.lnZ != null ? 'ln evidence ' + r.lnZ.toFixed(1) + ', ln prior ' + (r.weight > 0 ? Math.log(r.weight).toFixed(2) : '−∞') : '');
-        cell(mode === 'bayes' ? String(r.weight) : '—', mode === 'bayes' ? ((Y.modelRank && metric.priors.circuits[r.canon]) ? 'Listed in catalog/priors.txt: ' + (metric.priors.circuits[r.canon].note || metric.priors.circuits[r.canon].code) : 'Not listed: default weight') : '');
+        var cw = cl.weight != null ? cl.weight : r.weight, cLnZ = cl.lnZ != null ? cl.lnZ : r.lnZ, pCanon = cl.priorCanon || r.canon;
+        var pProb = isFinite(cl.lw) && isFinite(logTotal) ? 100 * Math.exp(cl.lw - logTotal) : 0;
+        cell(pct(pProb));
+        cell(isFinite(cl.lw) && isFinite(best) ? (cl.lw - best).toFixed(1) : '−∞', mode === 'bayes' && cLnZ != null ? 'ln evidence ' + cLnZ.toFixed(1) + ', ln prior ' + (cw > 0 ? Math.log(cw).toFixed(2) : '−∞') : '');
+        cell(mode === 'bayes' ? String(cw) : '—', mode === 'bayes' ? ((Y.modelRank && metric.priors.circuits[pCanon]) ? 'Listed in catalog/priors.txt: ' + (metric.priors.circuits[pCanon].note || metric.priors.circuits[pCanon].code) : 'Not listed: default weight') : '');
         cell(r.rms.toPrecision(4)); cell((r.hits || 0) + ' / ' + (r.starts || 0)); cell(r.result.msg); cell((r.notes || []).join('; '));
         var td = document.createElement('td'); td.className = 'c-res';
         var canvas = document.createElement('canvas'); canvas.setAttribute('aria-label', 'Zr and Zi relative residuals'); td.appendChild(canvas); tr.appendChild(td); plot(canvas, r.samples);

@@ -290,6 +290,34 @@ module.exports = function (Y, ok, close) {
     ok(sc.total === 3 && vals.every((v, k) => Math.abs(sc.result.err[k] - Y.drt.compute(ds, { method: 'gold', source: 'both', iterations: v }).err) < 1e-12),
        'stepwise Gold scan gives the misfit of a DRT with that many iterations');
   }
+
+  // ---------- 14. sigma validation, sweep-order-independent average, rndf labels, cached partsFor
+  {
+    const f = Float64Array.from([1000, 100, 10]), z = sim('R(RC)', [50, 100, 1e-4], f);
+    const bad = Y.fit.run({ id: 1, cdc: 'R1(R2C1)', f, zr: z.re, zi: z.im, sr: Float64Array.from([1, NaN, 1]), si: Float64Array.from([1, 1, 1]),
+      p: Float64Array.from([40, 90, 1e-4]), fit: Uint8Array.from([1, 1, 1]), lo: Float64Array.from([1e-3, 1e-3, 1e-14]), hi: Float64Array.from([1e10, 1e10, 1e5]),
+      method: 'TRDL', weight: 'mod', maxIter: 100, tol: 1e-12 });
+    ok(!bad.ok && /standard deviations/.test(bad.msg), 'fit.run rejects NaN/non-positive sigma with explicit error: ' + bad.msg);
+
+    const d1 = { name: 'up', f: Float64Array.from([10, 100, 1000]), zr: Float64Array.from([150, 100, 50]), zi: Float64Array.from([-5, -50, -5]), mask: new Uint8Array(3) };
+    const d2 = { name: 'down', f: Float64Array.from([1000, 100, 10]), zr: Float64Array.from([52, 102, 152]), zi: Float64Array.from([-7, -52, -7]), mask: new Uint8Array(3) };
+    const av = Y.dataops.average([d1, d2]);
+    ok(av.f[0] === 10 && Math.abs(av.zr[0] - 151) < 1e-12 && Math.abs(av.zr[2] - 51) < 1e-12 && Math.abs(av.zi[0] - -6) < 1e-12,
+       'average aligns ascending and descending sweeps measured at the same frequencies');
+
+    const dn = { name: 'n', f: Float64Array.from([1000, 100, 10]), zr: Float64Array.from([1, 2, 3]), zi: Float64Array.from([-1, -2, -3]), mask: new Uint8Array(3), notes: [100] };
+    Y.dataops.addNoise(dn, 5, 'f', () => 0.8);
+    Y.dataops.removePoints(dn, Uint8Array.from([1, 0, 0]));
+    ok(dn.notes.length === 1 && Math.abs(dn.notes[0] - dn.f[0]) < 1e-12, 'frequency noise updates frequency labels so point deletion preserves them');
+
+    Y.state.setModel(Y.circuit.parse('R(RC)'), { quiet: true });
+    const dm = Y.state.makeDataset({ name: 'm', f, zr: z.re, zi: z.im });
+    const p1 = Y.state.partsFor(dm), p2 = Y.state.partsFor(dm);
+    ok(p1 === p2 && p1.length === 2, 'partsFor caches series contributions at dataset frequencies');
+    Y.state.setParam('R1', 75, [dm]);
+    const p3 = Y.state.partsFor(dm);
+    ok(p3 !== p1 && Math.abs(p3[0].re[0] - 75) < 1e-12, 'partsFor invalidates when a parameter changes');
+  }
 };
 
 if (require.main === module) console.log('Nothing runs on its own here: this module is called from tests/run_core_tests.js.');

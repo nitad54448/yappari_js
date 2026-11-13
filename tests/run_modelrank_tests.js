@@ -41,10 +41,14 @@ test('the shipped catalog/priors.txt reads without warnings', () => {
   assert.equal(pr.params.Q_n.type, 'normal'); assert.equal(pr.params['*'].k, 2);
 });
 
-test('prior file: bad lines reported and skipped, weight 0 excludes', () => {
-  const pr = R.parsePriors('default\t2\ncircuit\tR(RQ)\t0\ncircuit\tR(XQ)\t3\ncircuit  RC  -1\nparam\tQ_n\tnormal\t0.9\t0\nparam\tZ\twindow\t2\nfoo\tbar\n');
-  assert.equal(pr.defaultWeight, 2); assert.equal(R.logPrior(pr, R.canon(Y.circuit.parse('(QR)R'))), -Infinity);
-  assert.equal(pr.warnings.length, 5); assert.equal(pr.params.Q_n.sd, 0.15, 'built-in kept');
+test('prior file: bad lines reported and skipped, duplicate canonical warned, weight 0 excludes', () => {
+  const pr = R.parsePriors('default\t2\ncircuit\tR(RQ)\t0\ncircuit\t(QR)R\t5\ncircuit\tR(XQ)\t3\ncircuit  RC  -1\nparam\tQ_n\tnormal\t0.9\t0\nparam\tZ\twindow\t2\nfoo\tbar\n');
+  assert.equal(pr.defaultWeight, 2); assert.equal(R.weightOf(pr, R.canon(Y.circuit.parse('(QR)R'))), 5);
+  assert.equal(pr.listed, 1, 'canonical duplicate not counted twice');
+  assert.equal(pr.warnings.length, 6); assert(pr.warnings.some(w => /duplicate circuit/.test(w)));
+  const pr0 = R.parsePriors('circuit\tR(RQ)\t0\n');
+  assert.equal(R.logPrior(pr0, R.canon(Y.circuit.parse('(QR)R'))), -Infinity);
+  assert.equal(pr.params.Q_n.sd, 0.15, 'built-in kept');
 });
 
 // Laplace evidence of a one-parameter model against direct integration over ln R (known σ, then unknown noise scale)
@@ -103,6 +107,26 @@ test('a degenerate extra element costs evidence (Occam factor), BIC-like', () =>
   const metric = M.scoring(d, 'mod2', 0, { mode: 'bayes', priors: R.builtin() });
   const t = search('R(RQ)', d, metric), x = search('R(RQ)L', d, metric);
   assert(t.lw > x.lw + 1, 'R(RQ) ' + t.lw.toFixed(2) + ' vs R(RQ)L ' + x.lw.toFixed(2));
+});
+
+test('evidence supports fixed parameters via free indices and class tracks highest prior', () => {
+  const f = Y.dataops.logspace(1e4, 1, 25), d = spectrum('R(RQ)', [50, 500, 1e-5, 1], f, 0.002);
+  const res = Y.fit.run(Object.assign({ id: 0, cdc: 'R1(R2Q1)', p: Float64Array.from([45, 480, 1.2e-5, 1]),
+    fit: Uint8Array.from([1, 1, 1, 0]), lo: Float64Array.from([1e-3, 1e-3, 1e-14, 0]), hi: Float64Array.from([1e10, 1e10, 1e5, 1.2]),
+    method: 'TRDL', weight: 'mod2', maxIter: 500, tol: 1e-12, hessian: true }, d));
+  assert.equal(res.free.length, 3);
+  const metric = M.scoring(d, 'mod2', 0, { mode: 'bayes', priors: R.builtin() });
+  const ev = R.evidence({ prog: Y.circuit.compile(Y.circuit.parse('R1(R2Q1)')), p: res.p, jtj: res.jtj, free: res.free,
+                          chi2: res.chi2w, m: 2 * f.length, sigma: false, energy: metric.energy }, metric.priors, metric.ranges);
+  assert(ev && isFinite(ev.lnZ), 'evidence computed over the 3 free parameters');
+
+  const rows = [], curve = new Float64Array(10).fill(1);
+  R.addEntry(rows, { cdc: 'R1(C1[R2(R3C2)])', canon: '[R(C[R(CR)])]', key: 'C,C,R,R,R', weight: 0.5, lnZ: 100, lw: 100 + Math.log(0.5), rms: 1, curve, parameters: 5 });
+  R.addEntry(rows, { cdc: 'R1(R2C1)(R3C2)', canon: '[R(CR)(CR)]', key: 'C,C,R,R,R', weight: 10, lnZ: 97, lw: 97 + Math.log(10), rms: 1, curve, parameters: 5 });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].rep.cdc, 'R1(C1[R2(R3C2)])', 'higher-lw form is rep');
+  assert.equal(rows[0].weight, 10, 'class prior is the highest prior among equivalent forms');
+  assert.equal(rows[0].priorCanon, '[R(CR)(CR)]');
 });
 
 console.log(checks + ' model ranking checks passed.');

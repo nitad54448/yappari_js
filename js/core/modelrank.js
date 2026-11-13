@@ -61,7 +61,8 @@ Y.modelRank = (function () {
         if (!(w >= 0) || !isFinite(w)) { bad('weight of ' + f[1] + ' must be a number >= 0'); return; }
         try {
           var key = canon(Y.circuit.parse(f[1], { number: false }));
-          if (!(key in pr.circuits)) pr.listed++;
+          if (key in pr.circuits) bad('duplicate circuit ' + f[1] + ' (same as ' + pr.circuits[key].code + '), overwriting');
+          else pr.listed++;
           pr.circuits[key] = { weight: w, code: f[1], note: f.slice(3).join(' ') };
         } catch (e) { bad(f[1] + ': ' + e.message); }
       } else if (what === 'param') {
@@ -106,17 +107,19 @@ Y.modelRank = (function () {
   }
 
   // ---------------------------------------------------------------- evidence
-  // o: { prog, p, jtj (k×k natural JᵀJ of the weighted residuals), chi2 (weighted), m (2N), sigma (measured σ), energy }
+  // o: { prog, p, jtj (nf×nf natural JᵀJ of the weighted residuals), free (optional indices in prog), chi2 (weighted), m (2N), sigma (measured σ), energy }
   // -> { lnZ, lnL, lnPrior, logdet } or null without a usable curvature
   function evidence(o, priors, ranges) {
-    var k = o.prog.names.length, H = o.jtj;
-    if (!H || H.length !== k * k || !(o.chi2 >= 0)) return null;
+    var free = o.free, k = free ? free.length : o.prog.names.length, H = o.jtj;
+    if (!k || !H || H.length !== k * k || !(o.chi2 >= 0)) return null;
     var s2 = o.sigma ? 1 : Math.max(o.chi2 / o.m, 1e-300 * (o.energy || 1));
     var lnL = o.sigma ? -o.chi2 / 2 : -(o.m / 2) * Math.log(Math.max(o.chi2 / (o.energy || 1), 1e-300));
     var A = new Float64Array(k * k), lnPrior = 0, i, j;
     for (i = 0; i < k * k; i++) A[i] = H[i] / s2;
     for (j = 0; j < k; j++) {
-      var pr = paramPrior(o.prog, o.p, j, priors, ranges), z = (pr.x - pr.mu) / pr.sd;
+      var pj = free ? free[j] : j;
+      if (!(pj >= 0 && pj < o.prog.names.length)) return null;
+      var pr = paramPrior(o.prog, o.p, pj, priors, ranges), z = (pr.x - pr.mu) / pr.sd;
       if (!isFinite(z)) return null;
       lnPrior += -0.5 * z * z - Math.log(pr.sd) - 0.5 * LN2PI;
       A[j * k + j] += 1 / (pr.sd * pr.sd);
@@ -148,12 +151,16 @@ Y.modelRank = (function () {
   function refresh(cl) {
     cl.members.sort(function (x, y) { return y.lw - x.lw || x.cdc.length - y.cdc.length || x.cdc.localeCompare(y.cdc); });
     cl.rep = cl.members[0];
-    var lnZ = -Infinity, lnW = -Infinity;
+    var lnZ = -Infinity, lnW = -Infinity, bestPrior = cl.rep;
     cl.members.forEach(function (e) {
       lnZ = logAddExp(lnZ, e.lnZ != null ? e.lnZ : e.lw);
       lnW = Math.max(lnW, e.lnZ != null ? e.lw - e.lnZ : 0);
+      if (e.weight != null && (bestPrior.weight == null || e.weight > bestPrior.weight)) bestPrior = e;
     });
-    cl.lw = lnZ - Math.log(cl.members.length) + lnW;
+    cl.lnZ = lnZ - Math.log(cl.members.length);
+    cl.weight = bestPrior.weight;
+    cl.priorCanon = bestPrior.canon;
+    cl.lw = cl.lnZ + lnW;
     if (cl.pick && !cl.members.some(function (e) { return e.cdc === cl.pick; })) cl.pick = null;
   }
   function order(classes, max, sink) {

@@ -111,8 +111,15 @@ Y.datasetsPanel = (function () {
     list.addEventListener('drop', function (e) {
       if (dragId == null) return;
       e.preventDefault(); e.stopPropagation();
-      var row = e.target.closest('.ds');
-      Y.state.move(dragId, row ? +row.getAttribute('data-id') : null);
+      if (!S.busy) {
+        var row = e.target.closest('.ds'), toId = row ? +row.getAttribute('data-id') : null;
+        var cur = S.datasets.findIndex(function (d) { return d.id === dragId; });
+        var nxt = toId == null ? S.datasets.length : S.datasets.findIndex(function (d) { return d.id === toId; });
+        if (cur >= 0 && toId !== dragId && nxt !== cur && nxt !== cur + 1) {
+          Y.history.take('reorder datasets');
+          Y.state.move(dragId, toId);
+        }
+      }
       dragId = null;
     });
     list.addEventListener('dragend', function () {

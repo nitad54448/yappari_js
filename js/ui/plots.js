@@ -372,10 +372,11 @@ Y.plots = (function () {
   function exportPNG(tab) {
     var parts = { nyq: [P.nyq], zr: [P.zr, P.zrRes], zi: [P.zi, P.ziRes], bode: [P.mod, P.ph], d3: [P.d3], drt: Y.drtTab.plots() }[tab];
     if (!parts) return;
-    if (tab === 'drt') {                          // only the plot open in the accordion, or all when the peak table is open
-      var open = parts.filter(function (p) { return p.canvas.offsetParent !== null; });
-      parts = open.length ? open : parts.filter(function (p) { return p.canvas.width > 0; });
-    }
+    if (tab === 'drt') {                          // only the plot open in the accordion, or all rendered plots when the peak table is open
+      var open = parts.filter(function (p) { return p.canvas.offsetParent !== null && p.W > 0; });
+      parts = open.length ? open : parts.filter(function (p) { return p.W > 0; });
+    } else parts = parts.filter(function (p) { return p.W > 0; });
+    if (!parts.length) { if (Y.ui && Y.ui.toast) Y.ui.toast('Open a plot view first to save it as PNG.', 'warn'); return; }
     var cvs = parts.map(function (p) { return p.canvas; }), w = Math.max.apply(null, cvs.map(function (c) { return c.width; }));
     var h = cvs.reduce(function (a, c) { return a + c.height; }, 0), out = document.createElement('canvas');
     out.width = w; out.height = h;

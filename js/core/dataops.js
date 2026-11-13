@@ -19,7 +19,13 @@ Y.dataops = (function () {
       var m = Math.hypot(ds.zr[k], ds.zi[k]);
       if (target === 'z' || target === 'zr') ds.zr[k] += a * m * (2 * rnd() - 1);
       if (target === 'z' || target === 'zi') ds.zi[k] += a * m * (2 * rnd() - 1);
-      if (target === 'f') ds.f[k] *= 1 + a * (2 * rnd() - 1);
+      if (target === 'f') {
+        var oldF = ds.f[k], newF = oldF * (1 + a * (2 * rnd() - 1));
+        ds.f[k] = newF;
+        if (ds.notes && ds.notes.length) {
+          for (var j = 0; j < ds.notes.length; j++) if (Math.abs(ds.notes[j] / oldF - 1) < 1e-9) ds.notes[j] = newF;
+        }
+      }
     }
   }
 
@@ -107,17 +113,32 @@ Y.dataops = (function () {
     return descending(ds) ? reverseAll(out) : out;
   }
 
-  // point-by-point mean of every point, masked or not; all datasets must share the same frequencies
+  // point-by-point mean of every point, masked or not; all datasets must share the same frequencies (any sweep order)
   function average(list) {
     if (list.length < 2) throw new Error('select at least two datasets to average');
-    var n = list[0].f.length;
-    list.forEach(function (d) {
+    var f0 = list[0].f, n = f0.length, ord0 = null;
+    var perms = list.map(function (d, idx) {
       if (d.f.length !== n) throw new Error('"' + d.name + '" has a different number of points');
-      for (var k = 0; k < n; k++) if (Math.abs(d.f[k] - list[0].f[k]) > 1e-6 * Math.abs(list[0].f[k])) throw new Error('"' + d.name + '" was measured at different frequencies');
+      var k, same = true;
+      for (k = 0; k < n; k++) if (Math.abs(d.f[k] - f0[k]) > 1e-6 * Math.abs(f0[k])) { same = false; break; }
+      if (same || !idx) return null;
+      if (!ord0) { ord0 = Array.from({ length: n }, function (_, i) { return i; }).sort(function (a, b) { return f0[a] - f0[b]; }); }
+      var ordD = Array.from({ length: n }, function (_, i) { return i; }).sort(function (a, b) { return d.f[a] - d.f[b]; });
+      var perm = new Int32Array(n);
+      for (k = 0; k < n; k++) {
+        if (Math.abs(d.f[ordD[k]] - f0[ord0[k]]) > 1e-6 * Math.abs(f0[ord0[k]]))
+          throw new Error('"' + d.name + '" was measured at different frequencies');
+        perm[ord0[k]] = ordD[k];
+      }
+      return perm;
     });
     var zr = new Float64Array(n), zi = new Float64Array(n);
-    list.forEach(function (d) { for (var k = 0; k < n; k++) { zr[k] += d.zr[k] / list.length; zi[k] += d.zi[k] / list.length; } });
-    return { f: Float64Array.from(list[0].f), zr: zr, zi: zi };
+    list.forEach(function (d, idx) {
+      var p = perms[idx];
+      for (var k = 0; k < n; k++) { var j = p ? p[k] : k; zr[k] += d.zr[j]; zi[k] += d.zi[j]; }
+    });
+    for (var k = 0; k < n; k++) { zr[k] /= list.length; zi[k] /= list.length; }
+    return { f: Float64Array.from(f0), zr: zr, zi: zi };
   }
 
   // value of a point in the coordinates of a plot: 'nyq' x=Zr y=-Zi | 'zr' x=f y=Zr | 'zi' x=f y=Zi | 'mod' x=f y=|Z| | 'phase' x=f y=phase (deg)

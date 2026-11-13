@@ -29,6 +29,7 @@ Open the [program](https://nitad54448.github.io/yappari_js/index.html) in Chrome
 18. [Files of the program, tests](#18-files-of-the-program-tests)
 19. [Differences from Yappari 5.1](#19-differences-from-yappari-51-labview)
 20. [Citing](#20-citing)
+21. [Catalogue model search](#21-catalogue-model-search)
 
 ---
 
@@ -89,7 +90,7 @@ the plots must be plain values (#hex, rgb(), rgba()).
 |---|---|
 | **File** | Read: Auto (detect the format) · **separator** · 3 columns · Table with column headers · ZView · **separator** · BioLogic MPT · Gamry DTA · VersaStudio .par · Custom format, xml. Open project · Save project · **separator** · Load 24 demo spectra. |
 | **Data** | Undo the last command. Mask points in the current view · Unmask selected datasets · Delete points in the current view · Delete selected datasets. Normalize · Negate Zi. Add random noise · Spline to a log frequency grid · Smooth (Savitzky–Golay) · Average selected datasets. Save parameters of selected · Save data of selected · **separator** · Simulate spectrum. |
-| **Analysis** | Report of selected datasets · **separator** · Show / Save the DRT of selected datasets · DRT λ search. Z-HIT of selected datasets · Kramers–Kronig test of selected datasets. Label a frequency on the Nyquist plot · Clear Nyquist labels. Command line help. |
+| **Analysis** | Report of selected datasets · **separator** · Show / Save the DRT of selected datasets · DRT λ search. Z-HIT of selected datasets · Kramers–Kronig test of selected datasets. Label a frequency on the Nyquist plot · Clear Nyquist labels. Search models · Help. |
 
 Items that cannot run in the current situation are greyed out, and their tooltip says why: no data loaded, no dataset
 selected, no circuit, no masked points to unmask, no labels to clear, nothing to undo, a fit running, and so on. The
@@ -244,14 +245,14 @@ with ω = 2πf and j² = −1. Zr = Re Z, Zi = Im Z.
 | Code | Element | Impedance | Parameters (element 1) | Default, limits |
 |---|---|---|---|---|
 | R | Resistor | $Z = R$ | `R1` (Ω) | 100; 10⁻³ – 10¹⁰ |
-| C | Capacitor | $Z = \dfrac{1}{j\omega C}$ | `C1` (F) | 10⁻⁹; 10⁻¹⁶ – 10³ |
-| L | Inductor | $Z = j\omega L$ | `L1` (H) | 10⁻⁶; 10⁻¹⁵ – 10³ |
-| Q | Constant phase element | $Z = \dfrac{1}{Q\,(j\omega)^{n}}$ | `Q1` (F·sⁿ⁻¹), `Q1_n` | Q 10⁻⁹; n = 1 (not fitted by default), 0 – 1.2 |
+| C | Capacitor | $Z = \dfrac{1}{j\omega C}$ | `C1` (F) | 10⁻⁹; 10⁻¹⁴ – 10⁵ |
+| L | Inductor | $Z = j\omega L$ | `L1` (H) | 10⁻⁶; 10⁻¹⁰ – 10⁵ |
+| Q | Constant phase element | $Z = \dfrac{1}{Q\,(j\omega)^{n}}$ | `Q1` (F·sⁿ⁻¹), `Q1_n` | Q 10⁻⁹, 10⁻¹⁴ – 10⁵; n = 1 (not fitted by default), 0 – 1.2 |
 | W | Warburg, semi-infinite | $Z = \dfrac{A_w}{\sqrt{\omega}}\,(1 - j)$ | `W1` = A_w (Ω·s^−½) | 100; 10⁻⁶ – 10¹⁰ |
-| Wo | Warburg open (finite length, reflective) | $Z = \dfrac{A_w}{\sqrt{j\omega}}\,\coth\!\left(B\sqrt{j\omega}\right)$ | `Wo1_A`, `Wo1_B` (s^½) | A 100; B 1, 10⁻⁶ – 10⁶ |
-| Ws | Warburg short (finite length, transmissive) | $Z = \dfrac{A_w}{\sqrt{j\omega}}\,\tanh\!\left(B\sqrt{j\omega}\right)$ | `Ws1_A`, `Ws1_B` (s^½) | A 100; B 1, 10⁻⁶ – 10⁶ |
-| G | Gerischer | $Z = \dfrac{R}{\sqrt{1 + j\omega\tau}}$ | `G1_R`, `G1_tau` (s) | R 100; τ 10⁻³, 10⁻¹² – 10⁶ |
-| HN | Havriliak–Negami | $Z = \dfrac{R}{\left(1 + (j\omega\tau)^{\alpha}\right)^{\beta}}$ | `HN1_R`, `HN1_tau`, `HN1_a`, `HN1_b` | α, β = 1 (not fitted by default), 0.01 – 1 |
+| Wo | Warburg open (finite length, reflective) | $Z = \dfrac{A_w}{\sqrt{j\omega}}\,\coth\!\left(B\sqrt{j\omega}\right)$ | `Wo1_A`, `Wo1_B` (s^½) | A 100, 10⁻⁶ – 10¹⁰; B 1, 10⁻⁴ – 10³ |
+| Ws | Warburg short (finite length, transmissive) | $Z = \dfrac{A_w}{\sqrt{j\omega}}\,\tanh\!\left(B\sqrt{j\omega}\right)$ | `Ws1_A`, `Ws1_B` (s^½) | A 100, 10⁻⁶ – 10¹⁰; B 1, 10⁻⁴ – 10³ |
+| G | Gerischer | $Z = \dfrac{R}{\sqrt{1 + j\omega\tau}}$ | `G1_R`, `G1_tau` (s) | R 100, 10⁻³ – 10¹⁰; τ 10⁻³, 10⁻⁹ – 10⁴ |
+| HN | Havriliak–Negami | $Z = \dfrac{R}{\left(1 + (j\omega\tau)^{\alpha}\right)^{\beta}}$ | `HN1_R`, `HN1_tau`, `HN1_a`, `HN1_b` | R 100, 10⁻³ – 10¹⁰; τ 10⁻³, 10⁻⁹ – 10⁴; α, β = 1 (not fitted by default), 0.01 – 1 |
 
 Remarks:
 
@@ -486,7 +487,7 @@ Masks apply to fits only: a masked point is left out of every fit, and everythin
 * **Save data** writes every point, with a `masked` column (1 = masked). Reading the file back with *Table with
   column headers* restores the masks.
 * **Frequency labels** can sit on masked points: masking a labelled point leaves its label in place.
-* **Delete points in the current view** removes every point in view, masked or not, for good; the confirmation
+* **Delete points in the current view** removes every point in view, masked or not (Undo brings them back); the confirmation
   says how many of them are masked.
 
 ---
@@ -801,7 +802,7 @@ datasets. Numbers accept SI prefixes where a frequency is expected (`1k`, `2.5M`
 | Anywhere | F9 fit selected (Individual or Global, as set in the Fit tab); Ctrl+S save project; drop files to read them |
 | Plots | Drag to zoom, Shift-drag or right-drag to pan, wheel to zoom, double-click to autoscale; click a legend entry to hide or show it |
 | Parameter value | Mouse wheel or ↑/↓ change the value; Shift for larger steps, Alt for smaller ones |
-| Parameters tab | ← → right of the dataset name: previous or next dataset of the list (it becomes the selection) |
+| Parameters tab | ← → right of the dataset name: cycle through the selected datasets (selection kept), or select the previous/next dataset when one is selected |
 | Dataset list | Ctrl+A all, Shift+click range, Ctrl+click one more, Delete, F2 or double-click to rename, drag to reorder |
 | Circuit drawing | Click to select, Delete to remove, Ctrl+Z to undo, Esc to deselect |
 | Tabs | ←/→ move between tabs when a tab has the focus |
@@ -814,6 +815,7 @@ datasets. Numbers accept SI prefixes where a frequency is expected (`1k`, `2.5M`
 
 ```
 index.html            page layout
+help.html             full built-in user manual
 style.css             the whole look: page, plots, circuit drawing and report (light and dark)
 js/core/namespace.js  global object Y; Y.defineCore keeps the source of DOM-free modules for the workers
 js/core/elements.js   element library: parameters, start values, limits, Z(ω)
@@ -824,18 +826,21 @@ js/core/globalfit.js  global fit with shared and local parameters (block Levenbe
 js/core/dataops.js    noise, Zi sign, correction factor, log spline, Savitzky–Golay, average, view selection
 js/core/drt.js        DRT (Tikhonov NNLS, Fisk, Gold, λ search, peaks) and Z-HIT
 js/core/kk.js         Kramers–Kronig test (Lin-KK): linear least squares on a chain of RC elements
+js/core/modelrank.js  Bayesian ranking (Laplace evidence, priors.txt parser, equivalent-circuit classes)
 js/io/readers.js      3 columns, tables with headers, MFLI, ZView, VersaStudio, XML definitions, format detection
 js/io/writers.js      data, parameters, project files, downloads
 js/state.js           datasets, selection, circuit, parameters, settings, event bus
 js/history.js         restore points, undo
 js/workers.js         Web Worker pool built from a Blob (works from file://), main-thread fallback
-js/ui/*.js            theme (reads style.css), plots (canvas 2D and 3D), schematic, Model tab, DRT tab, panels, dialogs, menus, report
+js/ui/*.js            theme (reads style.css), plots (canvas 2D and 3D), schematic, Model tab, DRT tab, panels, dialogs, menus, report, model search
 js/app.js             start-up, tabs, side panel, fit bar
+catalog/              topology catalogues (models_1..7_elements.txt) and literature priors (priors.txt)
 files/                example data files
 config/definitions/   XML presets, index.json and schema documentation
-script/               third-party libraries, none needed for now
-tests/                node tests/run_core_tests.js runs all Node tests (core, readers, DRT, Z-HIT, the review
-                      fixes, the files/ examples; sample files missing from files/ are skipped);
+script/               generate_models.py (series/parallel topology catalogue generator)
+tests/                node tests/run_core_tests.js runs core, IO, DRT, Z-HIT and review-fix tests;
+                      run_xml_tests.js, run_plot_tests.js, run_modelrank_tests.js, run_model_search_tests.js,
+                      run_worker_search_tests.js cover XML presets, plot scaling and model search;
                       python tests/browser_test.py [out_dir] drives index.html in headless Chromium (Playwright)
                       and saves screenshots
 ```
@@ -846,6 +851,9 @@ Run the numerical and XML suites from the project directory:
 node tests/run_core_tests.js
 node tests/run_xml_tests.js
 node tests/run_plot_tests.js
+node tests/run_modelrank_tests.js
+node tests/run_model_search_tests.js
+node tests/run_worker_search_tests.js
 ```
 
 For browser tests, install Python Playwright, Pillow and Chromium once, then run:
@@ -887,7 +895,9 @@ Documentation and the LabVIEW version: https://nitad54448.github.io/yappari-5-1/
 * B. A. Boukamp, Distribution (function) of relaxation times, successor to complex nonlinear least squares analysis of electrochemical impedance spectroscopy?, *J. Phys. Energy* **2020**, 2, 042001, https://doi.org/10.1088/2515-7655/aba9e0.
 * K. T. Malkow, Reply to 'A comment on "On the futility of the Fuoss–Kirkwood relation" by Gradišar & Boškoski (*Electrochem. Commun.* 182 (2026) 108100)', *SSRN* **2026**, https://ssrn.com/abstract=6952403; Ž. Gradišar, P. Boškoski, *Electrochem. Commun.* **2026**, 182, 108100, https://doi.org/10.1016/j.elecom.2025.108100.
 
-## Catalogue model search
+---
+
+## 21. Catalogue model search
 
 In Individual mode, select exactly one dataset and open **Analysis → Search models**. Choose a maximum of 1–7 elements (default **5**) and allowed types (all nine are checked). Put `models_1_elements.txt` through `models_7_elements.txt` in `catalog/` next to `index.html`; extensionless names also work. Files up to the chosen maximum load automatically. Each nonempty line is a Boukamp circuit; lines beginning with `#` are ignored. The file number must match the circuit's element count. Serve the application over HTTP/HTTPS so its catalogue can be fetched.
 

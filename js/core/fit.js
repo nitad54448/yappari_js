@@ -65,8 +65,11 @@ Y.defineCore('fit', function (Y) {
     var wt = sig ? null : weights(job.zr, job.zi, job.weight);
     this.swr = new Float64Array(n); this.swi = new Float64Array(n);
     for (k = 0; k < n; k++) {
-      if (sig) { this.swr[k] = 1 / job.sr[k]; this.swi[k] = 1 / job.si[k]; }
-      else this.swr[k] = this.swi[k] = Math.sqrt(wt[k]);
+      if (sig) {
+        if (!(job.sr[k] > 0) || !(job.si[k] > 0) || !isFinite(job.sr[k]) || !isFinite(job.si[k]))
+          throw new Error('measured standard deviations must be positive and finite at point ' + (k + 1));
+        this.swr[k] = 1 / job.sr[k]; this.swi[k] = 1 / job.si[k];
+      } else this.swr[k] = this.swi[k] = Math.sqrt(wt[k]);
     }
     this.ev = Y.circuit.makeEvaluator(prog, this.w);
     this.cr = new Float64Array(n); this.ci = new Float64Array(n);
@@ -452,18 +455,19 @@ Y.defineCore('fit', function (Y) {
   }
 
   // ---------------------------------------------------------------- statistics
-  function finalStats(P, x) {
-    var m = 2 * P.n, nf = x.length, r = new Float64Array(m), k, q, a, c, i;
-    var chi2 = P.resid(x, r);
-    var mean = 0;
+  function r2Of(P) {
+    var m = 2 * P.n, mean = 0, sst = 0, ssr = 0, k;
     for (k = 0; k < P.n; k++) mean += P.zr[k] + P.zi[k];
     mean /= m;
-    var sst = 0, ssr = 0;
     for (k = 0; k < P.n; k++) {
       var u = P.zr[k] - mean, v = P.zi[k] - mean, e1 = P.zr[k] - P.cr[k], e2 = P.zi[k] - P.ci[k];
       sst += u * u + v * v; ssr += e1 * e1 + e2 * e2;
     }
-    var r2 = sst > 0 ? 1 - ssr / sst : NaN;
+    return sst > 0 ? 1 - ssr / sst : NaN;
+  }
+
+  function finalStats(P, x, chi2, r2, getJ) {
+    var m = 2 * P.n, nf = x.length, q, a, c, i;
     var dof = m - nf, chi2red = dof > 0 ? chi2 / dof : NaN;
     var np = P.p.length, se = new Float64Array(np).fill(NaN), atBound = new Uint8Array(np), idx = [];
     for (q = 0; q < nf; q++) {
@@ -471,8 +475,8 @@ Y.defineCore('fit', function (Y) {
       if (onB) atBound[P.free[q]] = 1; else idx.push(q);
     }
     if (idx.length && dof > 0 && chi2 < Infinity) {
-      var J = new Float64Array(m * nf), sub = idx.length, A = new Float64Array(sub * sub);
-      P.jac(x, r, J, true);
+      var J = getJ(), sub = idx.length, A = new Float64Array(sub * sub);
+      P.setX(x);
       for (a = 0; a < sub; a++) for (c = 0; c <= a; c++) {
         var ca = idx[a] * m, cb = idx[c] * m, t = 0;
         for (i = 0; i < m; i++) t += J[ca + i] * J[cb + i];
@@ -484,7 +488,6 @@ Y.defineCore('fit', function (Y) {
         var j = P.free[q], vv = chi2red * inv[a * sub + a];
         if (vv >= 0) se[j] = P.isLog[q] ? 100 * Math.sqrt(vv) : 100 * Math.sqrt(vv) * P.sc[q] / Math.abs(P.p[j]);
       }
-      P.resid(x, r);
     }
     return { chi2w: chi2, chi2red: chi2red, r2: r2, dof: dof, se: se, atBound: atBound };
   }
@@ -493,9 +496,10 @@ Y.defineCore('fit', function (Y) {
   // Gauss-Newton Hessian JᵀJ of the weighted residuals at x, in natural coordinates: ln p for the parameters that span
   // decades (scale 'log'), p for n, α, β; fitted parameters in circuit order (P.free), row-major. Central differences.
   // Asked for with job.hessian (the model search: Laplace approximation of the evidence, Y.modelSearch).
-  function naturalJtJ(P, x) {
-    var m = 2 * P.n, nf = x.length, J = new Float64Array(m * nf), r = new Float64Array(m), d = new Float64Array(nf), q, a, i;
-    P.resid(x, r); P.jac(x, r, J, true);
+  function naturalJtJ(P, x, J0) {
+    var m = 2 * P.n, nf = x.length, J = J0 || new Float64Array(m * nf), d = new Float64Array(nf), q, a, i;
+    if (!J0) { var r = new Float64Array(m); P.resid(x, r); P.jac(x, r, J, true); P.resid(x, r); }
+    else P.setX(x);
     for (q = 0; q < nf; q++) {                         // dx / d(natural): 1 for x = ln p; p / s for x = p / s with a 'log' parameter
       var j = P.free[q];
       d[q] = P.isLog[q] ? 1 : P.prog.params[j].scale === 'log' ? P.p[j] / P.sc[q] : 1 / P.sc[q];
@@ -506,7 +510,6 @@ Y.defineCore('fit', function (Y) {
       for (i = 0; i < m; i++) t += J[cq + i] * J[ca + i];
       H[q * nf + a] = H[a * nf + q] = t * d[q] * d[a];
     }
-    P.resid(x, r);
     return H;
   }
 
@@ -520,14 +523,15 @@ Y.defineCore('fit', function (Y) {
     for (var k = 0; k < P.n; k++) { var a = P.swr[k] * P.zr[k], b = P.swi[k] * P.zi[k]; s += a * a + b * b; }
     return s;
   }
-  function stalled(P, x, tol) {
-    var m = 2 * P.n, nf = x.length, r = new Float64Array(m), q, a, c;
+  function stalled(P, x, tol, r0, f0, getJ) {
+    var m = 2 * P.n, nf = x.length, shared = !!getJ, r = r0 || new Float64Array(m), q, a, c;
     if (!nf) return false;
-    var f = P.resid(x, r);
-    if (!(f < Infinity) || f <= 1e-16 * dataScale(P)) { P.resid(x, r); return false; }   // residuals at round-off level
-    var J = new Float64Array(m * nf), A = new Float64Array(nf * nf), g = new Float64Array(nf), act = new Uint8Array(nf);
-    P.jac(x, r, J, true); normalEq(J, r, m, nf, A, g);
-    if (!activeSet(P, x, g, act)) { P.resid(x, r); return false; }
+    var f = shared ? f0 : P.resid(x, r);
+    if (!(f < Infinity) || f <= 1e-16 * dataScale(P)) { if (!shared) P.resid(x, r); return false; }   // residuals at round-off level
+    var J = shared ? getJ() : new Float64Array(m * nf), A = new Float64Array(nf * nf), g = new Float64Array(nf), act = new Uint8Array(nf);
+    if (!shared) P.jac(x, r, J, true);
+    normalEq(J, r, m, nf, A, g);
+    if (!activeSet(P, x, g, act)) { if (shared) P.setX(x); else P.resid(x, r); return false; }
     var F = [];
     for (q = 0; q < nf; q++) if (!act[q]) F.push(q);
     var nF = F.length, M = new Float64Array(nF * nF), b = new Float64Array(nF);
@@ -551,7 +555,7 @@ Y.defineCore('fit', function (Y) {
       var fn = P.resid(xn, new Float64Array(m));
       better = fn < f * (1 - Math.max(1e-6, 100 * tol));
     }
-    P.resid(x, r);                                     // leave P at the final point
+    if (shared) P.setX(x); else P.resid(x, r);         // leave P at the final point
     return better;
   }
 
@@ -570,18 +574,21 @@ Y.defineCore('fit', function (Y) {
       if (!Number.isInteger(job.maxIter) || job.maxIter < 1 || job.maxIter > 65535) throw new Error('Maximum iterations must be an integer from 1 to 65535');
       var o = { maxIter: job.maxIter, tol: job.tol > 0 ? job.tol : 1e-12 };
       var x = P.initialX(), res;
-      if (!x.length) { P.resid(x, new Float64Array(2 * P.n)); res = { x: x, it: 0, msg: 'no free parameters: statistics only' }; }
+      if (!x.length) res = { x: x, it: 0, msg: 'no free parameters: statistics only' };
       else if (job.method === 'NM') res = nelderMead(P, x, o);
       else if (job.method === 'LM' || job.method === 'LMB') res = lm(P, x, o);
       else res = trdl(P, x, o);
-      if (/^converged/.test(res.msg) && !/zero gradient/.test(res.msg) && stalled(P, res.x, o.tol))
+      var m = 2 * P.n, nf = res.x.length, r = new Float64Array(m), chi2 = P.resid(res.x, r), r2 = r2Of(P), J = null;
+      function getJ() { if (!J) { J = new Float64Array(m * nf); P.jac(res.x, r, J, true); P.setX(res.x); } return J; }
+      if (/^converged/.test(res.msg) && !/zero gradient/.test(res.msg) && stalled(P, res.x, o.tol, r, chi2, getJ))
         res.msg = STALL_MSG;
-      var st = finalStats(P, res.x);
+      var st = finalStats(P, res.x, chi2, r2, getJ);
+      P.setX(res.x);
       if (!res.fail && !isFinite(st.chi2w)) throw new Error('the model or weighted residuals are non-finite; check the parameter values and data');
       var out = { id: job.id, ok: !res.fail, p: Float64Array.from(P.p), se: st.se, atBound: st.atBound,
                chi2w: st.chi2w, chi2red: st.chi2red, r2: st.r2, dof: st.dof, n: P.n,
                iter: res.it, nev: P.nev, msg: res.msg, ms: Date.now() - t0 };
-      if (job.hessian && !res.fail && res.x.length) { out.jtj = naturalJtJ(P, res.x); out.free = Uint16Array.from(P.free); }
+      if (job.hessian && !res.fail && nf && chi2 < Infinity) { out.jtj = naturalJtJ(P, res.x, getJ()); out.free = Uint16Array.from(P.free); }
       return out;
     } catch (e) {
       return { id: job.id, ok: false, msg: String((e && e.message) || e) };

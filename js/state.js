@@ -320,7 +320,7 @@ Y.state = (function () {
   }
 
   // ---------------------------------------------------------------- model values (cached)
-  function invalidate(ds) { ds.calc = null; ds.curve = null; }
+  function invalidate(ds) { ds.calc = null; ds.curve = null; ds.parts = null; }
   function invalidateAll() { S.datasets.forEach(invalidate); }
 
   function calcFor(ds) {
@@ -336,11 +336,20 @@ Y.state = (function () {
   function partsFor(ds, f) {
     var tree = S.model.tree;
     if (!tree || !S.model.prog) return [];
+    if (!S.model.parts) {
+      S.model.parts = (tree.t === 's' ? tree.c : [tree]).map(function (node, i) {
+        return { prog: Y.circuit.compile(node), label: Y.circuit.toCDC(node, true).replace(/^\[(.*)\]$/, '$1'), i: i };
+      });
+    }
+    var useDsF = !f || f === ds.f;
     f = f || ds.f;
-    return (tree.t === 's' ? tree.c : [tree]).map(function (node, i) {
-      var prog = Y.circuit.compile(node), z = Y.circuit.impedance(prog, f, Float64Array.from(prog.names, function (nm) { return ds.p[nm]; }));
-      return { label: Y.circuit.toCDC(node, true).replace(/^\[(.*)\]$/, '$1'), i: i, re: z.re, im: z.im };
+    if (useDsF && ds.parts && ds.partsVer === S.model.version) return ds.parts;
+    var res = S.model.parts.map(function (pt) {
+      var z = Y.circuit.impedance(pt.prog, f, Float64Array.from(pt.prog.names, function (nm) { return ds.p[nm]; }));
+      return { label: pt.label, i: pt.i, re: z.re, im: z.im };
     });
+    if (useDsF) { ds.parts = res; ds.partsVer = S.model.version; }
+    return res;
   }
   // smooth model curve over the measured frequency range (for plotting lines)
   function curveFor(ds) {
