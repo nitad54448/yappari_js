@@ -420,7 +420,7 @@ Y.readers = (function () {
       if (cf < 0 || ((cr < 0 || ci < 0) && (er < 0 || ei < 0 || ir < 0 || ii < 0))) continue;
       var f = [], zr = [], zi = [];
       rows.forEach(function (v) {
-        if (!(v[cf] > 0)) return;
+        if (!(v[cf] > 0 && isFinite(v[cf]))) return;
         var a, b;
         if (cr >= 0 && ci >= 0) { a = v[cr]; b = v[ci]; }
         else {

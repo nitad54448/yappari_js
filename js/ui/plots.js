@@ -196,8 +196,10 @@ Y.plots = (function () {
 
   function linkX(a, b) {
     function link(from, to, v) {
+      var keepY = !S.settings.plotAuto;
       viewChanged(from);
-      to.setXView(v.x0, v.x1, !S.settings.plotAuto);
+      if (!to || !v || v.x0 === undefined) return;
+      to.setXView(v.x0, v.x1, keepY);
       to.auto = S.settings.plotAuto;
     }
     a.o.onView = function (v) { link(a, b, v); };
